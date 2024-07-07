@@ -1,0 +1,57 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+
+    <qresource prefix="sources">
+        <file alias="terminal">images/terminal.png</file>
+        <file alias="binance">images/binance.png</file>
+        <file alias="blog">images/blog.png</file>
+        <file alias="crypto">images/crypto.png</file>
+        <file alias="medium">images/medium.png</file>
+        <file alias="telegram">images/telegram.png</file>
+        <file alias="upbit">images/upbit.png</file>
+        <file alias="usgov">images/usgov.png</file>
+        <file alias="webs">images/webs.png</file>
+    </qresource>
+
+    <qresource prefix="icons">
+        <file alias="chart_icon">images/chart_icon.svg</file>
+        <file alias="close_icon">images/close_icon.svg</file>
+        <file alias="dollar_icon">images/dollar_icon.svg</file>
+        <file alias="double_quotes_up">images/double_quotes_up.svg</file>
+        <file alias="external_link">images/external_link.svg</file>
+        <file alias="news_feed_icon">images/news_feed_icon.svg</file>
+        <file alias="notification_off">images/notification_off.svg</file>
+        <file alias="notification_on">images/notification_on.svg</file>
+        <file alias="options_icon">images/options_icon.svg</file>
+        <file alias="perps_config_icon">images/perps_config_icon.svg</file>
+        <file alias="plutus_icon">images/plutus_icon.png</file>
+        <file alias="preview_icon">images/preview_icon.svg</file>
+        <file alias="terminal_icon">images/terminal_icon.svg</file>
+        <file alias="no_token">images/no_token.png</file>
+        <file alias="gallery_icon">images/gallery_icon.svg</file>
+        <file alias="user_add">images/user_add.svg</file>
+        <file alias="new_acc">images/new_acc.svg</file>
+        <file alias="config_icon">images/config_icon.svg</file>
+        <file alias="delete_icon">images/delete_icon.svg</file>
+        <file alias="pushpin_icon">images/pushpin_icon.svg</file>
+        <file alias="unpin_icon">images/unpin_icon.svg</file>
+        <file alias="focus_icon">images/focus_icon.svg</file>
+        <file alias="disable">images/disable_icon.svg</file>
+    </qresource>
+
+    <qresource prefix="general">
+        <file alias="splash_screen">images/splash_screen.png</file>
+    </qresource>
+
+    <qresource prefix="exchanges">
+        <file alias="foxify">images/exchanges/foxify.svg</file>
+        <file alias="bitget">images/exchanges/bitget.png</file>
+    </qresource>
+
+    <qresource prefix="sfx">
+        <file alias="coin">sfx/coin.wav</file>
+        <file alias="powerup">sfx/powerup.wav</file>
+        <file alias="1_up">sfx/1_up.wav</file>
+    </qresource>
+
+</RCC>

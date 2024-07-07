@@ -1,0 +1,103 @@
+[tool.poetry]
+name = "plutus-terminal"
+version = "0.1.0"
+description = ""
+authors = ["Thr3ee <thr3ee.crypto@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "plutus_terminal"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+keyring = "^24.2.0"
+lightweight-charts = "^2.0.0"
+pyside6 = "^6.5.2"
+httpx = "^0.25.0"
+pandas = "^2.1.1"
+tenacity = "^8.2.3"
+web3 = "^6.10.0"
+textsearch = "^0.0.24"
+peewee = "^3.17.0"
+qasync = "^0.27.0"
+google-re2 = "^1.1"
+orjson = "^3.9.10"
+ccxt = "^4.2.56"
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.5.1"
+isort = "^5.12.0"
+pyside6-stubs = "^6.4.2.0"
+pandas-stubs = "^2.0.3.230814"
+types-peewee = "^3.17.0.0"
+ruff = "^0.3.3"
+pre-commit = "^3.7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["ALL"]
+ignore-init-module-imports = false
+logger-objects = ["log_utils.setup_logging"]
+ignore = [
+    "UP017",
+    "UP007",
+    "F401",
+    "ANN101",
+    "FBT001",
+    "FBT002",
+    "FBT003",
+    "PGH003",
+    "N802",
+    "ICN001",
+    "ANN102",
+    "ERA001",
+    "TD002",
+    "TD003",
+    "FIX002",
+    "ISC001",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-wrap-aliases = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-branches = 15
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "D104" ]
+"plutus_terminal/ui/resources.py" = ["ALL"]
+"plutus_terminal/ui/widgets/positions_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
+"plutus_terminal/ui/widgets/orders_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
+"plutus_terminal/ui/widgets/options_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
+
+[[tool.mypy.overrides]]
+module = "qasync"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "ccxt.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "textsearch.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "re2"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "lightweight_charts.*"
+ignore_missing_imports = true
