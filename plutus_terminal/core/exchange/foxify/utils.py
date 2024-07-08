@@ -107,6 +107,23 @@ def build_vault_contract(
     return web3_provider.eth.contract(address=FOXIFY_VAULT, abi=vault_abi)
 
 
+def build_referral_storage_contract(web3_provider: AsyncWeb3) -> AsyncContract:
+    """Build referral contract.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+
+    Returns:
+        AsyncContract: Contract for referral
+    """
+    with Path.open(
+        Path(__file__).parent.joinpath("abi/foxify_referral_storage.json"),
+    ) as f:
+        referral_abi = json.load(f)
+
+    return web3_provider.eth.contract(address=FOXIFY_REFERRAL_STORAGE, abi=referral_abi)
+
+
 def build_position_router_contract(
     web3_provider: AsyncWeb3,
 ) -> AsyncContract:
@@ -253,3 +270,51 @@ async def approve_stable(
             "https://arbiscan.io/tx/",
             LOGGER,
         )
+
+
+async def ensure_referral(
+    web3_provider: AsyncWeb3,
+    web3_account: LocalAccount,
+) -> None:
+    """Ensure referral is set.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+        web3_account (LocalAccount): Web3 account.
+    """
+    referral_contract = build_referral_storage_contract(web3_provider)
+    current_referral = await referral_contract.functions.traderReferralCodes(
+        web3_account.address,
+    ).call()
+    if current_referral == REFERRAL_CODE:
+        return
+
+    transaction_count: Nonce = await web3_provider.eth.get_transaction_count(
+        web3_account.address,
+    )
+
+    transaction_params: TxParams = {
+        "gas": Wei(400000),
+        "from": web3_account.address,
+        "nonce": transaction_count,
+        "value": Wei(0),
+        "maxFeePerGas": await web3_utils.estimate_gas_price(web3_provider, Gwei(0)),
+        "maxPriorityFeePerGas": web3_provider.to_wei(0, "gwei"),
+    }
+    set_referral_trasaction = await referral_contract.functions.setTraderReferralCodeByUser(
+        REFERRAL_CODE,
+    ).build_transaction(transaction_params)
+    # Estimate gas for transaction with extra gas for speed
+    set_referral_trasaction.update(
+        {"gas": await web3_utils.estimate_gas(web3_provider, set_referral_trasaction)},
+    )
+    signed_txn = web3_account.sign_transaction(set_referral_trasaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+
+    await web3_utils.await_receipt_and_report(
+        txn,
+        web3_provider,
+        "Referral set.",
+        "https://arbiscan.io/tx/",
+        LOGGER,
+    )

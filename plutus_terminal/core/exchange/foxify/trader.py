@@ -184,6 +184,7 @@ class FoxifyTrader(ExchangeTrader):
         Returns:
             TradeResults: Result of the trade.
         """
+        await foxify_utils.ensure_referral(self.web3_provider, self.web3_account)
         nonce: Nonce = await self.web3_provider.eth.get_transaction_count(
             self.web3_account.address,
         )
@@ -243,14 +244,19 @@ class FoxifyTrader(ExchangeTrader):
         """
         if trade_arguments["trade_type"] == PerpsTradeType.MARKET:
             return await self.close_position(trade_arguments)
+        if trade_arguments["trade_type"] in (
+            PerpsTradeType.TRIGGER_TP,
+            PerpsTradeType.TRIGGER_SL,
+        ):
+            return await self._create_reduce_trigger_order(trade_arguments)
         msg = f"Not supported {trade_arguments['trade_type']}"
         raise NotImplementedError(msg)
 
-    async def _create_reduce_limit_order(
+    async def _create_reduce_trigger_order(
         self,
         trade_arguments: foxify_utils.ReduceTradingArgs,
     ) -> TradeResults:
-        """Create a reduce only limit order.
+        """Create a reduce only trigger order.
 
         Args:
             trade_arguments (foxify.utils.OpenTradingArgs): Arguments necessary for the trade.
