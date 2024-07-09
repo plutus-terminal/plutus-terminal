@@ -106,7 +106,7 @@ class NewsManager:
             end_time_ms = time.time_ns() / 1000000
             processed_time_ms = end_time_ms - start_time_ms  # type: ignore
             LOGGER.debug(
-                "Processed message received. Process time: %s.2f ms message: %s",
+                "Processed message received. Process time: %f.2f ms message: %s",
                 processed_time_ms,
                 raw_news,
             )
