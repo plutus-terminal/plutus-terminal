@@ -118,6 +118,3 @@ cython_debug/
 
 # database
 *.db
-
-# logs
-logs/
