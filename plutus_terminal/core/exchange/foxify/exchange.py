@@ -297,6 +297,75 @@ class FoxifyExchange(ExchangeBase):
                 stop_loss_execution,
             )
 
+    @asyncSlot
+    async def edit_order(
+        self,
+        order_data: OrderData,
+        new_size_stable: Decimal,
+        new_execution_price: Decimal,
+    ) -> None:
+        """Edit existent order.
+
+        Args:
+            order_data (OrderData): Order to edit.
+            new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
+                by de configured leverage.
+            new_execution_price (Decimal, optional): Execution price.
+        """
+        toast_id = Toast.show_message(
+            f"Editing order {order_data['id']}",
+            type_=ToastType.WARNING,
+        )
+
+        if new_size_stable > order_data["size_stable"]:
+            msg = "New size must be smaller than current size."
+            raise ValueError(msg)
+
+        order_extra = order_data.get("extra", None)
+        if order_extra is None:
+            msg = "Missing 'extra' attribute in order_data."
+            raise AttributeError(msg)
+        order_index = order_extra.get("index", None)
+        if order_index is None:
+            msg = "Missing 'index' attribute in order_extra."
+            raise AttributeError(msg)
+        order_trigger_above_threshold = order_extra.get("trigger_above_threshold", None)
+        if order_trigger_above_threshold is None:
+            msg = "Missing 'trigger_above_threshold' attribute in order_extra."
+            raise AttributeError(msg)
+
+        edit_args = foxify_utils.EditOrderArgs(
+            {
+                "order_index": order_index,
+                "size_delta": new_size_stable,
+                "acceptable_price": new_execution_price,
+                "trigger_above_threshold": order_trigger_above_threshold,
+                "trade_type": order_data["order_type"],
+            },
+        )
+
+        try:
+            trade_result = await self.trader.edit_order(edit_args)
+        except TransactionFailedError as error:
+            Toast.update_message(
+                toast_id,
+                f"Failed to edit order > {error}",
+                type_=ToastType.ERROR,
+            )
+            return
+        if isinstance(trade_result, dict):
+            msg = "Unexpected error when creating order."
+            raise TransactionFailedError(msg)
+
+        await web3_utils.await_receipt_and_report(
+            trade_result,
+            self.web3_provider,
+            "Order Edited.",
+            "https://arbiscan.io/tx/",
+            LOGGER,
+            toast_id,
+        )
+
     @asyncSlot()
     async def create_reduce_order(
         self,
@@ -388,13 +457,24 @@ class FoxifyExchange(ExchangeBase):
         Args:
             order_data  (dict): Arguments necessary for the trade.
 
+        Raises:
+            TransactionFailed: If the transaction fails.
+
         """
         toast_id = Toast.show_message(
             f"Canceling {order_data['order_type'].name} order for {order_data['pair']}",
             type_=ToastType.WARNING,
         )
 
-        order_index = await self._fetcher.fetch_order_index(order_data["id"])
+        order_extra = order_data.get("extra", None)
+        if order_extra is None:
+            msg = "Missing 'extra' attribute in order_data."
+            raise AttributeError(msg)
+        order_index = order_extra.get("index", None)
+        if order_index is None:
+            msg = "Missing 'index' attribute in order_extra."
+            raise AttributeError(msg)
+
         cancel_args = foxify_utils.CancelOrderArgs(
             {
                 "order_index": order_index,

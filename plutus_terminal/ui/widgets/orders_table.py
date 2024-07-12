@@ -80,7 +80,12 @@ class OrdersTableModel(QAbstractTableModel):
             if current_header == "order_type":
                 return value.name.replace("_", " ").title()
             if current_header == "trigger_price":
-                if self._data[index.row()]["order_type"] == PerpsTradeType.LIMIT:
+                if self._data[index.row()]["order_type"] is PerpsTradeType.TRIGGER_TP:
+                    if self._data[index.row()]["trade_direction"] is PerpsTradeDirection.LONG:
+                        sine = ">"
+                    else:
+                        sine = "<"
+                elif self._data[index.row()]["order_type"] is PerpsTradeType.TRIGGER_SL:
                     if self._data[index.row()]["trade_direction"] is PerpsTradeDirection.LONG:
                         sine = "<"
                     else:

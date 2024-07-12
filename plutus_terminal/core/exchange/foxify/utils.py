@@ -88,6 +88,16 @@ class CancelOrderArgs(TypedDict):
     reduce_only: bool
 
 
+class EditOrderArgs(TypedDict):
+    """Args for editing order."""
+
+    order_index: int
+    size_delta: Decimal
+    acceptable_price: Decimal
+    trigger_above_threshold: bool
+    trade_type: PerpsTradeType
+
+
 def build_vault_contract(
     web3_provider: AsyncWeb3,
 ) -> AsyncContract:

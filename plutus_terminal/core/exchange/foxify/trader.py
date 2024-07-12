@@ -159,10 +159,10 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._position_execution_fee,
                 },
             )
-            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         except (ContractLogicError, ValueError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
+        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         signed_tx = self.web3_account.sign_transaction(tx)
         return await self.web3_provider.eth.send_raw_transaction(
             signed_tx.rawTransaction,
@@ -217,10 +217,10 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._order_execution_fee,
                 },
             )
-            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         except (ContractLogicError, ValueError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
+        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         signed_tx = self.web3_account.sign_transaction(tx)
         return await self.web3_provider.eth.send_raw_transaction(
             signed_tx.rawTransaction,
@@ -259,7 +259,7 @@ class FoxifyTrader(ExchangeTrader):
         """Create a reduce only trigger order.
 
         Args:
-            trade_arguments (foxify.utils.OpenTradingArgs): Arguments necessary for the trade.
+            trade_arguments (foxify.utils.ReduceTradingArgs): Arguments necessary for the trade.
 
         Raises:
             TransactionFailed: If the transaction fails.
@@ -272,13 +272,13 @@ class FoxifyTrader(ExchangeTrader):
             self.web3_account.address,
         )
 
-        if trade_arguments["trade_type"] == PerpsTradeType.TRIGGER_SL:
-            if trade_arguments["trade_direction"] == PerpsTradeDirection.LONG:
+        if trade_arguments["trade_type"] is PerpsTradeType.TRIGGER_SL:
+            if trade_arguments["trade_direction"] is PerpsTradeDirection.LONG:
                 trigger_above_price = False
             else:
                 trigger_above_price = True
-        elif trade_arguments["trade_type"] == PerpsTradeType.TRIGGER_TP:
-            if trade_arguments["trade_direction"] == PerpsTradeDirection.LONG:
+        elif trade_arguments["trade_type"] is PerpsTradeType.TRIGGER_TP:
+            if trade_arguments["trade_direction"] is PerpsTradeDirection.LONG:
                 trigger_above_price = True
             else:
                 trigger_above_price = False
@@ -312,10 +312,10 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._order_execution_fee + 1,
                 },
             )
-            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         except (ContractLogicError, ValueError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
+        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         signed_tx = self.web3_account.sign_transaction(tx)
         return await self.web3_provider.eth.send_raw_transaction(
             signed_tx.rawTransaction,
@@ -364,10 +364,10 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._position_execution_fee,
                 },
             )
-            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         except (ContractLogicError, ValueError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
+        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
         signed_tx = self.web3_account.sign_transaction(tx)
         return await self.web3_provider.eth.send_raw_transaction(
             signed_tx.rawTransaction,
@@ -423,12 +423,12 @@ class FoxifyTrader(ExchangeTrader):
 
     async def edit_order(
         self,
-        trade_arguments,
+        trade_arguments: foxify_utils.EditOrderArgs,
     ) -> TradeResults:
         """Update the given order.
 
         Args:
-            trade_arguments (dict): Arguments necessary for the trade.
+            trade_arguments (EditOrderArgs): Arguments necessary for the trade.
 
         Raises:
             TransactionFailed: If the transaction fails.
@@ -436,3 +436,108 @@ class FoxifyTrader(ExchangeTrader):
         Returns:
             TradeResults: Result of the trade.
         """
+        if trade_arguments["trade_type"] == PerpsTradeType.LIMIT:
+            return await self._edit_limit_order(trade_arguments)
+        if trade_arguments["trade_type"] in (
+            PerpsTradeType.TRIGGER_TP,
+            PerpsTradeType.TRIGGER_SL,
+        ):
+            return await self._edit_trigger_order(trade_arguments)
+        msg = f"Not supported {trade_arguments['trade_type']}"
+        raise NotImplementedError(msg)
+
+    async def _edit_limit_order(self, trade_arguments: foxify_utils.EditOrderArgs) -> TradeResults:
+        """Edit a limit order.
+
+        Args:
+            trade_arguments (foxify.utils.EditOrderArgs): Arguments necessary for the trade.
+
+        Raises:
+            TransactionFailed: If the transaction fails.
+
+        Returns:
+            TradeResults: Result of the trade.
+        """
+        LOGGER.info("Editing order: %s", trade_arguments)
+        nonce: Nonce = await self.web3_provider.eth.get_transaction_count(
+            self.web3_account.address,
+        )
+        try:
+            tx = await self._order_book_contract.functions.updateIncreaseOrder(
+                trade_arguments["order_index"],
+                int(trade_arguments["size_delta"] * self._price_precision),
+                trade_arguments["acceptable_price"],
+                trade_arguments["trigger_above_threshold"],
+            ).build_transaction(
+                {
+                    "nonce": nonce,
+                    "from": self.web3_account.address,
+                    "maxFeePerGas": await web3_utils.estimate_gas_price(
+                        self.web3_provider,
+                        self.extra_gas,
+                    ),
+                    "maxPriorityFeePerGas": self.web3_provider.to_wei(
+                        self.extra_gas,
+                        "gwei",
+                    ),
+                    "gas": Wei(1000000),
+                },
+            )
+        except (ContractLogicError, ValueError) as error:
+            LOGGER.exception("Transaction failed")
+            raise TransactionFailedError from error
+        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+        signed_tx = self.web3_account.sign_transaction(tx)
+        return await self.web3_provider.eth.send_raw_transaction(
+            signed_tx.rawTransaction,
+        )
+
+    async def _edit_trigger_order(
+        self,
+        trade_arguments: foxify_utils.EditOrderArgs,
+    ) -> TradeResults:
+        """Edit a trigger order.
+
+        Args:
+            trade_arguments (foxify.utils.EditOrderArgs): Arguments necessary for the trade.
+
+        Raises:
+            TransactionFailed: If the transaction fails.
+
+        Returns:
+            TradeResults: Result of the trade.
+        """
+        LOGGER.info("Editing order: %s", trade_arguments)
+        nonce: Nonce = await self.web3_provider.eth.get_transaction_count(
+            self.web3_account.address,
+        )
+        try:
+            tx = await self._order_book_contract.functions.updateDecreaseOrder(
+                trade_arguments["order_index"],
+                0,
+                int(trade_arguments["size_delta"] * self._price_precision),
+                trade_arguments["acceptable_price"],
+                trade_arguments["trigger_above_threshold"],
+            ).build_transaction(
+                {
+                    "nonce": nonce,
+                    "from": self.web3_account.address,
+                    "maxFeePerGas": await web3_utils.estimate_gas_price(
+                        self.web3_provider,
+                        self.extra_gas,
+                    ),
+                    "maxPriorityFeePerGas": self.web3_provider.to_wei(
+                        self.extra_gas,
+                        "gwei",
+                    ),
+                    "gas": Wei(1000000),
+                },
+            )
+        except (ContractLogicError, ValueError) as error:
+            LOGGER.exception("Transaction failed")
+            raise TransactionFailedError from error
+        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+        signed_tx = self.web3_account.sign_transaction(tx)
+        return await self.web3_provider.eth.send_raw_transaction(
+            signed_tx.rawTransaction,
+        )

@@ -498,20 +498,36 @@ class ExchangeBase(ABC):
         """
 
     @abstractmethod
+    async def edit_order(
+        self,
+        order_data: OrderData,
+        new_size_stable: Decimal,
+        execution_price: Optional[Decimal],
+    ) -> None:
+        """Edit existent order.
+
+        Args:
+            order_data (OrderData): Order to edit.
+            new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
+                by de configured leverage.
+            execution_price (Optional[Decimal], optional): Execution price.
+        """
+        ...
+
+    @abstractmethod
     async def create_reduce_order(
         self,
         pair: str,
-        amount: Decimal,
+        size: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
-        execution_price: Decimal,
-        is_stop_loss: bool,
+        execution_price: Optional[Decimal],
     ) -> None:
         """Create new reduce only order.
 
         Args:
             pair (str):  Pair to open trade for.
-            amount (Decimal): Value in stable to open trade for, this will be multiplied
+            size (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
@@ -521,17 +537,14 @@ class ExchangeBase(ABC):
         """
 
     @abstractmethod
-    async def cancel_order(self, trade_arguments) -> TradeResults:  # noqa: ANN001
+    async def cancel_order(self, order_data: OrderData) -> None:
         """Cancel the given order.
 
         Args:
-            trade_arguments (dict): Arguments necessary for the trade.
+            order_data (OrderData): Order to close.
 
         Raises:
             TransactionFailed: If the transaction fails.
-
-        Returns:
-            TradeResults: Result of the trade.
         """
         ...
 

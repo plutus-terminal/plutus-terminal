@@ -525,56 +525,41 @@ class FoxifyFetcher(ExchangeFetcher):
             ).call()
 
             reduce_only = order["type"] == "decrease"
+            is_long = chain_order[4]
+            trigger_price = Decimal(chain_order[5])
+            trigger_above_threshold = chain_order[6]
+            extras = {
+                "is_long": is_long,
+                "trigger_above_threshold": trigger_above_threshold,
+                "index": order["index"],
+            }
+
+            order_type = PerpsTradeType.LIMIT
+            if trigger_price > 0 and reduce_only:
+                if (is_long and trigger_above_threshold) or (
+                    not is_long and not trigger_above_threshold
+                ):
+                    order_type = PerpsTradeType.TRIGGER_TP
+                else:
+                    order_type = PerpsTradeType.TRIGGER_SL
 
             all_orders.append(
                 OrderData(
                     {
                         "id": order["id"],
                         "pair": self.pair_map[order["indexToken"]],
-                        "trigger_price": Decimal(chain_order[5]) / self._vault_price_precision,
+                        "trigger_price": trigger_price / self._vault_price_precision,
                         "size_stable": Decimal(order["size"]) / self._vault_price_precision,
                         "trade_direction": (
-                            PerpsTradeDirection.LONG
-                            if chain_order[4]
-                            else PerpsTradeDirection.SHORT
+                            PerpsTradeDirection.LONG if is_long else PerpsTradeDirection.SHORT
                         ),
-                        "order_type": PerpsTradeType.LIMIT,
+                        "order_type": order_type,
                         "reduce_only": reduce_only,
+                        "extra": extras,
                     },
                 ),
             )
         return all_orders
-
-    @retry(
-        wait=wait_exponential(multiplier=1, min=0.15, max=5),
-        before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
-        retry_error_callback=log_retry(LOGGER),
-    )
-    async def fetch_order_index(self, order_id: str) -> int:
-        """Fetch order index from order id."""
-        query = """
-        query FetchOrderIndex($account: String!, $id: String!) {
-          orders(
-            orderBy: createdTimestamp
-            orderDirection: desc
-            where: {account: $account, status: open, id: $id}
-          ) {
-            index
-          }
-        }
-        """
-        variables = {"account": self.web3_account.address.lower(), "id": order_id}
-        response = await self.aclient.post(
-            self._goldsky_url,
-            json={"query": query, "variables": variables},
-        )
-        response.raise_for_status()
-        data = response.json()
-        order_data = data["data"]["orders"]
-        if not order_data:
-            msg = f"Order {order_id} not found"
-            raise ValueError(msg)
-        return int(order_data[0]["index"])
 
     @retry(
         reraise=True,

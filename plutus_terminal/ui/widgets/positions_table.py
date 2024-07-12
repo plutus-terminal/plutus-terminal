@@ -483,7 +483,7 @@ class PositionCloseAction(QWidgetAction):
         reduce_args["size"] = Decimal(self._amount_box.value())
         reduce_args["trade_direction"] = self._position["trade_direction"]
         if self.limit_button.isChecked():
-            reduce_args["trade_type"] = PerpsTradeType.TRIGGER_TP
+            reduce_args["trade_type"] = PerpsTradeType.LIMIT
             reduce_args["execution_price"] = Decimal(self._price_box.value())
         else:
             reduce_args["trade_type"] = PerpsTradeType.MARKET
