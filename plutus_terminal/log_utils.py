@@ -4,6 +4,9 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 import logging.config
 from pathlib import Path
+import sys
+from types import TracebackType
+from typing import Any
 
 from tenacity import RetryCallState
 
@@ -28,6 +31,8 @@ def setup_logging() -> None:
         },
         disable_existing_loggers=False,
     )
+
+    sys.excepthook = log_uncaught_exceptions
 
 
 def create_default_config() -> None:
@@ -59,12 +64,13 @@ class=StreamHandler
 level=INFO
 formatter=detailed
 args=(sys.stdout,)
+encoding=utf-8
 
 [handler_fileHandler]
 class=FileHandler
 level=DEBUG
 formatter=sampleFormatter
-args=("%(log_path)s", "a")
+args=(r"%(log_path)s", "a", "utf-8")
 
 [formatter_sampleFormatter]
 format=%(asctime)s - %(name)s - %(levelname)s - %(message)s
@@ -75,6 +81,26 @@ format=%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
     if not CONFIG_PATH.parent.joinpath("logs").exists():
         Path.mkdir(CONFIG_PATH.parent.joinpath("logs"), parents=True)
+
+
+def log_uncaught_exceptions(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_traceback: TracebackType | None,
+) -> Any:  # noqa: ANN401
+    """Log uncaught exceptions.
+
+    Args:
+        exc_type (type[BaseException]): Exception type.
+        exc_value (BaseException): Exception value.
+        exc_traceback (TracebackType): Exception traceback.
+    """
+    logger = logging.getLogger("plutus_terminal")
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
 
 def log_retry(logger: logging.Logger) -> Callable[[RetryCallState], None]:

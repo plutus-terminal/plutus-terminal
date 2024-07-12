@@ -100,7 +100,10 @@ class PhoenixNews(NewsFetcher):
             return
         await self._socket.send(f"login {phoenix_api_key}")
         login_attempt = await self._socket.recv()
-        LOGGER.info("PhoenixNews login attempt: %s", login_attempt)
+        login_attempt = json.loads(login_attempt)
+        login_attempt.pop("apiKey", None)
+        login_attempt.pop("address", None)
+        LOGGER.info("PhoenixNews login result: %s", login_attempt)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.4, max=2),
