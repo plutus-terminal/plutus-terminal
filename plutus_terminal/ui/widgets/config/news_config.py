@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 from typing import Optional
+from PySide6.QtMultimedia import QSoundEffect
 
 import keyring
 import orjson
@@ -367,12 +368,15 @@ class KeywordMatchingWidget(BaseFilterWidget):
         """Initialize widget."""
         super().__init__(user_filter=user_filter, parent=parent)
 
+        self._sfx = QSoundEffect()
+
         self._main_layout = QtWidgets.QHBoxLayout(self)
         self._if_label = QtWidgets.QLabel("IF")
         self._match_pattern = QtWidgets.QLineEdit()
         self._then_label = QtWidgets.QLabel("THEN")
         self._action_combo = QtWidgets.QComboBox()
         self._sound_combo = QtWidgets.QComboBox()
+        self._sound_button = QtWidgets.QPushButton()
         self._coin_line = QtWidgets.QLineEdit()
         self._color_picker = ColorButton(color=QtGui.QColor("red"))
         self._delete_btn = QtWidgets.QPushButton()
@@ -408,9 +412,13 @@ class KeywordMatchingWidget(BaseFilterWidget):
 
         for path in list_resources_from_prefix("sfx"):
             self._sound_combo.addItem(
-                path.split("/")[-1].replace(".wav", ""),
-                userData=path,
+                path,
+                userData=f":/sfx/{path}",
             )
+        self._sound_button.setIcon(QtGui.QPixmap(":/icons/music"))
+        self._sound_button.setProperty("class", "borderless")
+        self._sound_button.setToolTip("Play Sound")
+        self._sound_button.clicked.connect(self.on_play_sound)
 
         self._coin_line.setPlaceholderText("Coin to assign")
 
@@ -420,19 +428,28 @@ class KeywordMatchingWidget(BaseFilterWidget):
         self._delete_btn.setToolTip("Delete Filter")
         self._delete_btn.clicked.connect(self.on_delete)
 
+    def on_play_sound(self) -> None:
+        """Play sound."""
+        sfx_path = self._sound_combo.itemData(self._sound_combo.currentIndex())
+        self._sfx.setSource(QtCore.QUrl.fromLocalFile(sfx_path))
+        self._sfx.play()
+
     def on_action_change(self, index: int) -> None:
         """Handle action change."""
         action = self._action_combo.itemData(index)
         if action == ActionType.COIN_ASSOCIATION:
             self._sound_combo.setVisible(False)
+            self._sound_button.setVisible(False)
             self._coin_line.setVisible(True)
             self._color_picker.setVisible(True)
         elif action == ActionType.SOUND_ASSOCIATION:
             self._sound_combo.setVisible(True)
+            self._sound_button.setVisible(True)
             self._coin_line.setVisible(False)
             self._color_picker.setVisible(True)
         elif action == ActionType.IGNORE:
             self._sound_combo.setVisible(False)
+            self._sound_button.setVisible(False)
             self._coin_line.setVisible(False)
             self._color_picker.setVisible(False)
 
@@ -449,6 +466,7 @@ class KeywordMatchingWidget(BaseFilterWidget):
         )
         self._main_layout.addWidget(self._action_combo)
         self._main_layout.addWidget(self._sound_combo)
+        self._main_layout.addWidget(self._sound_button)
         self._main_layout.addWidget(self._coin_line)
         self._main_layout.addWidget(self._color_picker)
         self._main_layout.addWidget(self._delete_btn)
@@ -510,6 +528,7 @@ class DataMatchingWidget(BaseFilterWidget):
     ) -> None:
         """Initialize widget."""
         super().__init__(user_filter=user_filter, parent=parent)
+        self._sfx = QSoundEffect()
 
         self._main_layout = QtWidgets.QHBoxLayout(self)
         self._if_label = QtWidgets.QLabel("IF")
@@ -519,6 +538,7 @@ class DataMatchingWidget(BaseFilterWidget):
         self._then_label = QtWidgets.QLabel("THEN")
         self._action_combo = QtWidgets.QComboBox()
         self._sound_combo = QtWidgets.QComboBox()
+        self._sound_button = QtWidgets.QPushButton()
         self._coin_line = QtWidgets.QLineEdit()
         self._delete_btn = QtWidgets.QPushButton()
 
@@ -558,9 +578,13 @@ class DataMatchingWidget(BaseFilterWidget):
 
         for path in list_resources_from_prefix("sfx"):
             self._sound_combo.addItem(
-                path.split("/")[-1].replace(".wav", ""),
-                userData=path,
+                path,
+                userData=f":/sfx/{path}",
             )
+        self._sound_button.setIcon(QtGui.QPixmap(":/icons/music"))
+        self._sound_button.setProperty("class", "borderless")
+        self._sound_button.setToolTip("Play Sound")
+        self._sound_button.clicked.connect(self.on_play_sound)
 
         self._coin_line.setPlaceholderText("Coin to assign")
 
@@ -570,17 +594,26 @@ class DataMatchingWidget(BaseFilterWidget):
         self._delete_btn.setToolTip("Delete Filter")
         self._delete_btn.clicked.connect(self.on_delete)
 
+    def on_play_sound(self) -> None:
+        """Play sound."""
+        sfx_path = self._sound_combo.itemData(self._sound_combo.currentIndex())
+        self._sfx.setSource(QtCore.QUrl.fromLocalFile(sfx_path))
+        self._sfx.play()
+
     def on_action_change(self, index: int) -> None:
         """Handle action change."""
         action = self._action_combo.itemData(index)
         if action == ActionType.COIN_ASSOCIATION:
             self._sound_combo.setVisible(False)
+            self._sound_button.setVisible(False)
             self._coin_line.setVisible(True)
         elif action == ActionType.SOUND_ASSOCIATION:
             self._sound_combo.setVisible(True)
+            self._sound_button.setVisible(True)
             self._coin_line.setVisible(False)
         elif action == ActionType.IGNORE:
             self._sound_combo.setVisible(False)
+            self._sound_button.setVisible(False)
             self._coin_line.setVisible(False)
 
     def _setup_layout(self) -> None:
@@ -601,6 +634,7 @@ class DataMatchingWidget(BaseFilterWidget):
         )
         self._main_layout.addWidget(self._action_combo)
         self._main_layout.addWidget(self._sound_combo)
+        self._main_layout.addWidget(self._sound_button)
         self._main_layout.addWidget(self._coin_line)
         self._main_layout.addWidget(self._delete_btn)
 

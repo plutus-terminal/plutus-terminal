@@ -10,6 +10,7 @@ from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QSoundEffect
 
 from plutus_terminal.core.config import CONFIG
+from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.news_widget import NewsWidget
 from plutus_terminal.ui.widgets.toast import Toast
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
@@ -61,7 +62,7 @@ class NewsList(QtWidgets.QWidget):
 
     def _load_sfxs(self) -> None:
         """Load sound effects in memory."""
-        for sfx_name in ["coin", "powerup", "1_up"]:
+        for sfx_name in list_resources_from_prefix("sfx"):
             sfx_path = f":/sfx/{sfx_name}"
             sfx = QSoundEffect()
             sfx.setSource(QUrl.fromLocalFile(sfx_path))

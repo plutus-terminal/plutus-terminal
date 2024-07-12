@@ -25,17 +25,6 @@ def list_resources_from_prefix(prefix: str) -> list[str]:
     """List all resources of the given prefix."""
     qdir = QDir(":/")
     qdir.setFilter(QDir.Filter.Files | QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot)
-
     qdir.setPath(qdir.filePath(prefix))
-
     entries = qdir.entryList()
-
-    resources = []
-    for entry in entries:
-        path = f":/{prefix}/{entry}"
-        if QResource(path).isFile():
-            resources.append(path)
-        elif QResource(path).isDir():
-            resources.extend(list_resources_from_prefix(f"{prefix}/{entry}"))
-
-    return resources
+    return entries

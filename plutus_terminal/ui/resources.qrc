@@ -37,6 +37,7 @@
         <file alias="unpin_icon">images/unpin_icon.svg</file>
         <file alias="focus_icon">images/focus_icon.svg</file>
         <file alias="disable">images/disable_icon.svg</file>
+        <file alias="music">images/music.svg</file>
     </qresource>
 
     <qresource prefix="general">
@@ -52,6 +53,13 @@
         <file alias="coin">sfx/coin.wav</file>
         <file alias="powerup">sfx/powerup.wav</file>
         <file alias="1_up">sfx/1_up.wav</file>
+        <file alias="bowserfalls">sfx/bowserfalls.wav</file>
+        <file alias="bump">sfx/bump.wav</file>
+        <file alias="flagpole">sfx/flagpole.wav</file>
+        <file alias="jump_1">sfx/jump_1.wav</file>
+        <file alias="pause">sfx/pause.wav</file>
+        <file alias="pipe">sfx/pipe.wav</file>
+        <file alias="vine">sfx/vine.wav</file>
     </qresource>
 
 </RCC>
