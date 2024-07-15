@@ -27,6 +27,7 @@ class NewsList(QtWidgets.QWidget):
     """
 
     pair_clicked = Signal(str)
+    refresh_news = Signal()
 
     def __init__(
         self,
@@ -42,7 +43,7 @@ class NewsList(QtWidgets.QWidget):
         self.top_bar = TopBar("News Feed")
         self._top_bar_show_images = QtWidgets.QRadioButton()
         self._top_bar_notifications = QtWidgets.QRadioButton()
-        self._top_bar_results = QtWidgets.QComboBox()
+        self._top_bar_max_news = QtWidgets.QComboBox()
 
         self._scroll_area = QtWidgets.QScrollArea()
         self._content_area = QtWidgets.QWidget()
@@ -52,7 +53,7 @@ class NewsList(QtWidgets.QWidget):
 
         self._selected_news_widget: Optional[NewsWidget] = None
 
-        self.max_widgets = 50
+        self.max_news = 50
 
         self._load_sfxs()
         self._setup_widgets()
@@ -96,11 +97,14 @@ class NewsList(QtWidgets.QWidget):
         self._top_bar_notifications.setToolTip("Enable Desktop Notifications")
         self._top_bar_notifications.toggled.connect(self.notifications_toggled)
 
-        self._top_bar_results.addItems(["50 results", "100 results", "200 results"])
+        self._top_bar_max_news.addItems(["50 results", "100 results", "200 results"])
+        self._top_bar_max_news.currentIndexChanged.connect(
+            self.update_max_news,
+        )
 
         self.top_bar.add_widget(self._top_bar_show_images)
         self.top_bar.add_widget(self._top_bar_notifications)
-        self.top_bar.add_widget(self._top_bar_results)
+        self.top_bar.add_widget(self._top_bar_max_news)
 
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setVerticalScrollBarPolicy(
@@ -253,13 +257,13 @@ class NewsList(QtWidgets.QWidget):
 
         # Remove oldest widget if the limit is reached
         self._scroll_area.blockSignals(True)
-        if self._scroll_layout.count() > self.max_widgets:
+        if self._scroll_layout.count() > self.max_news:
             old_widget = self._scroll_layout.takeAt(
                 self._scroll_layout.count() - 1,
             ).widget()
             if old_widget == self._selected_news_widget:
                 self._selected_news_widget = self._scroll_layout.itemAt(
-                    self.max_widgets - 1,
+                    self.max_news - 1,
                 ).widget()  # type: ignore
             old_widget.deleteLater()
         self._scroll_area.blockSignals(False)
@@ -288,6 +292,7 @@ class NewsList(QtWidgets.QWidget):
                 self._scroll_layout.count() - 1,
             ).widget()
             old_widget.deleteLater()
+        self._selected_news_widget = None
 
     def _open_link(self) -> None:
         """Open link of selected news in browser."""
@@ -326,3 +331,10 @@ class NewsList(QtWidgets.QWidget):
         """
         self._exchange = exchange
         self._selected_news_widget = None
+
+    def update_max_news(self, max_news_index: int) -> None:
+        """Update max news."""
+        max_news_text = self._top_bar_max_news.itemText(max_news_index)
+        max_news = int(max_news_text.split(" ")[0])
+        self.max_news = max_news
+        self.refresh_news.emit()

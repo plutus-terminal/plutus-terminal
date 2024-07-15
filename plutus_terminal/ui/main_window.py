@@ -181,6 +181,7 @@ class PlutusTerminal(QMainWindow):
         self._trade_table.cancel_order.connect(self._current_exchange.cancel_order)
 
         self._news_list.pair_clicked.connect(self._change_current_pair)
+        self._news_list.refresh_news.connect(self._fill_news_list)
         await self._fill_news_list()
         self._news_message_bus.news_signal.connect(self._news_list.add_news)
 
@@ -278,9 +279,10 @@ class PlutusTerminal(QMainWindow):
         history_dataframe = pandas.DataFrame(history)
         self._chart.set_start_data(history_dataframe)
 
+    @asyncSlot()
     async def _fill_news_list(self) -> None:
         """Fill news list with old news."""
-        old_news = await self._news_manager.fetch_old_news(25)
+        old_news = await self._news_manager.fetch_old_news(self._news_list.max_news)
         self._news_list.fill_old_news(old_news)
 
     @asyncSlot()
