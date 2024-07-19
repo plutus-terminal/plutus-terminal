@@ -43,3 +43,8 @@ class DoubleSpinBoxWithButton(QtWidgets.QDoubleSpinBox):
             self.width() - button_size.width() - 10,
             (self.height() - button_size.height()) // 2,
         )
+
+    def show(self) -> None:
+        """Override show method to update button position."""
+        super().show()
+        self.update_button_position()

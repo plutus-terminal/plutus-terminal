@@ -86,7 +86,7 @@ class FoxifyFetcher(ExchangeFetcher):
         self._message_bus = message_bus
         self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
         self.connection_count: dict = defaultdict(int)
-        self._cached_prices: dict = {}
+        self._cached_prices: dict[str, PriceData] = {}
         self._cached_positions: list[PerpsPosition] = []
         self._cached_funding_rates: dict[str, dict[bool, int]] = {}
         self._synced = True
@@ -628,7 +628,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 )
                 await asyncio.sleep(0.2)
 
-    def get_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
 
         Args:
@@ -652,6 +652,54 @@ class FoxifyFetcher(ExchangeFetcher):
 
         size = perps_position["position_size_stable"]
         return (size * funding_fee) / self._funding_rate_precision
+
+    def get_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
+        """Get liquidation price for a given position.
+
+        This formula is not perfect and should be improved, values don't match
+        the ones given on the front end, but are close.
+
+        Args:
+            perps_position (PerpsPosition): Position to get liquidation price for.
+
+        Returns:
+            Decimal: Liquidation price in USD Stable Format.
+        """
+        collateral = perps_position["collateral_stable"]
+        borrow_fee = self.get_borrow_fee(perps_position)
+        position_fee = self.get_position_fee(perps_position["position_size_stable"])
+        size = perps_position["position_size_stable"]
+
+        open_price = perps_position["open_price"]
+
+        return open_price - (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
+
+    def get_pnl_percent(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[float],
+    ) -> Decimal:
+        """Get pnl percent for a given position.
+
+        Args:
+            perps_position (PerpsPosition): Position to get pnl for.
+            current_price (Optional[Decimal]): Current price of the pair.
+
+        Returns:
+            Decimal: PNL in USD Stable Format.
+        """
+        open_price = perps_position["open_price"]
+        trade_direction = perps_position["trade_direction"]
+        leverage = perps_position["leverage"]
+        trade_direction_multiplier = 1 if trade_direction == PerpsTradeDirection.LONG else -1
+        if current_price is None:
+            current_price = self._cached_prices[perps_position["pair"]]["price"]
+        return (
+            ((Decimal(current_price) / open_price) - 1)
+            * 100
+            * leverage
+            * trade_direction_multiplier
+        )
 
     async def stop(self) -> None:
         """Stop infinite loops and close connections."""

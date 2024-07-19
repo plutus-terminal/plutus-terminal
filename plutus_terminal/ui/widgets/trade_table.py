@@ -15,27 +15,19 @@ from plutus_terminal.ui.widgets.positions_table import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from decimal import Decimal
-
     from plutus_terminal.core.exchange.base import ExchangeBase
 
 
 class TradeTable(QtWidgets.QWidget):
     """Widget to visualize and manage open trades."""
 
-    close_trade = Signal(PerpsPosition)
-    reduce_trade = Signal(dict)
     pair_clicked = Signal(str)
     order_clicked = Signal(str)
-    cancel_order = Signal(OrderData)
     edit_order = Signal(OrderData)
 
     def __init__(
         self,
-        format_simple_pair: Callable[[str], str],
-        get_position_fee: Callable[[Decimal], Decimal],
-        get_funding_fee: Callable[[PerpsPosition], Decimal],
+        exchange: ExchangeBase,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared viarables."""
@@ -44,10 +36,12 @@ class TradeTable(QtWidgets.QWidget):
         self._main_layout = QtWidgets.QVBoxLayout()
 
         self._tab_widget = QtWidgets.QTabWidget()
-        self._positions_model = PositionsTableModel(format_simple_pair)
-        self._positions_table = PositionsTableView(get_position_fee, get_funding_fee)
-        self._orders_model = OrdersTableModel(format_simple_pair)
-        self._orders_table = OrdersTableView()
+        self._positions_model = PositionsTableModel(exchange.format_simple_pair_from_pair)
+        self._positions_table = PositionsTableView(
+            exchange,
+        )
+        self._orders_model = OrdersTableModel(exchange.format_simple_pair_from_pair)
+        self._orders_table = OrdersTableView(exchange)
 
         self._setup_widgets()
         self._setup_layout()
@@ -58,14 +52,10 @@ class TradeTable(QtWidgets.QWidget):
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self._positions_table.setModel(self._positions_model)
-        self._positions_table.close_trade.connect(self.close_trade)
-        self._positions_table.reduce_trade.connect(self.reduce_trade)
         self._positions_table.row_clicked.connect(self.pair_clicked)
         self._tab_widget.addTab(self._positions_table, "Positions (0)")
 
         self._orders_table.setModel(self._orders_model)
-        self._orders_table.cancel_order.connect(self.cancel_order)
-        self._orders_table.edit_order.connect(self.edit_order)
         self._tab_widget.addTab(self._orders_table, "Orders (0)")
 
     def _setup_layout(self) -> None:
@@ -85,7 +75,7 @@ class TradeTable(QtWidgets.QWidget):
 
     def update_prices(self, cached_prices: dict) -> None:
         """Update prices."""
-        self._positions_table.update_pnl(cached_prices)
+        self._positions_table.update_cached_prices(cached_prices)
 
     def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
         """Update info based on new exchange.

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QTableView,
     QWidget,
 )
+from qasync import asyncSlot
 
 from plutus_terminal.core.exchange.types import (
     OrderData,
@@ -146,16 +147,16 @@ class OrdersTableModel(QAbstractTableModel):
 class OrdersTableView(QTableView):
     """Table view to display open orders."""
 
-    cancel_order = Signal(OrderData)
-    edit_order = Signal(OrderData)
     row_clicked = Signal(str)
 
     def __init__(
         self,
+        exchange: ExchangeBase,
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared viarables."""
         super().__init__(parent)
+        self._exchange = exchange
         self.clicked.connect(self.on_row_click)
         self._setup_style()
 
@@ -179,12 +180,10 @@ class OrdersTableView(QTableView):
             buttons = OrderButtons()
             buttons_index = self.model().index(row, list(HEADER_MAP).index("buttons"))
             order_data = buttons_index.data(Qt.ItemDataRole.UserRole)
-            buttons.edit_button.clicked.connect(
-                partial(self.edit_order.emit, order_data),
-            )
-            buttons.cancel_button.clicked.connect(
-                partial(self.cancel_order.emit, order_data),
-            )
+            # buttons.edit_button.clicked.connect(
+            #     partial(self.edit_order.emit, order_data),
+            # )
+            buttons.cancel_button.clicked.connect(partial(self.cancel_order, order_data))
             self.setIndexWidget(buttons_index, buttons)
             self.setRowHeight(row, int(self.sizeHintForRow(row) * 1.1))
 
@@ -201,6 +200,11 @@ class OrdersTableView(QTableView):
                 list(HEADER_MAP).index("buttons"),
                 int(widget.sizeHint().width() * 1.1),
             )
+
+    @asyncSlot()
+    async def cancel_order(self, order_data: OrderData) -> None:
+        """Cancel order."""
+        await self._exchange.cancel_order(order_data)
 
     def on_row_click(self, index: QModelIndex) -> None:
         """Handle click on row."""

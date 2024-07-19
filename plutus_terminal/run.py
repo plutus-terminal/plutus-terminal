@@ -22,8 +22,6 @@ from plutus_terminal.ui import resources
 from plutus_terminal.ui.main_window import PlutusTerminal
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 
-LOGGER = logging.getLogger(__name__)
-
 
 class PlutusSystemTrayApp(QApplication):
     """Plutus System Tray App."""
@@ -31,7 +29,6 @@ class PlutusSystemTrayApp(QApplication):
     def __init__(self, argv: list[str]) -> None:
         """Initialize."""
         super().__init__(argv)
-        self._start_time = default_timer()
         self.splash_screen = QSplashScreen()
         self.splash_screen.setPixmap(QPixmap(":/general/splash_screen"))
         self.splash_screen.show()
@@ -66,12 +63,6 @@ class PlutusSystemTrayApp(QApplication):
         await self.main_window.init_async()
         self.splash_screen.hide()
         self.main_window.show()
-
-        start_duration = default_timer() - self._start_time
-        LOGGER.debug(
-            "Plutus Terminal started in %s seconds",
-            start_duration,
-        )
 
     def validate_if_account(self) -> None:
         """Validate if there is at least one account.

@@ -79,6 +79,15 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         )
         self._trade_type_limit_layout = QtWidgets.QGridLayout()
 
+        self._info_frame = QtWidgets.QFrame()
+        self._info_layout = QtWidgets.QGridLayout()
+        self._leverage_info_label = QtWidgets.QLabel("Leverage:")
+        self._leverage_info_value = QtWidgets.QLabel("--")
+        self._fees_label = QtWidgets.QLabel("Fees:")
+        self._fees_value = QtWidgets.QLabel("--")
+        self._liq_price_label = QtWidgets.QLabel("Est. Liq. Price:")
+        self._liq_price_value = QtWidgets.QLabel("--")
+
         self._long_button = QtWidgets.QPushButton("Open Long")
         self._short_button = QtWidgets.QPushButton("Open Short")
 
@@ -156,9 +165,24 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Minimum,
         )
 
+        self._trade_type_market.amount_changed.connect(
+            self._update_info,
+        )
         self._trade_type_limit.price_refresh_btn.clicked.connect(
             self._refresh_limit_price,
         )
+        self._trade_type_limit.target_price_box.button.clicked.connect(
+            self._refresh_limit_price,
+        )
+        self._trade_type_limit.amount_changed.connect(
+            self._update_info,
+        )
+
+        self._info_frame.setObjectName("newsFrameQuote")
+        self._leverage_info_value.setText(f"{self._leverage_spin.value()}x")
+        self._leverage_info_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self._fees_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self._liq_price_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
         self._long_button.setProperty("class", "LONG")
         self._long_button.setMinimumHeight(40)
@@ -196,15 +220,24 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         self.main_layout.addWidget(self._trade_tab, 4, 0, 1, 2)
 
+        self._info_layout.addWidget(self._leverage_info_label, 0, 0)
+        self._info_layout.addWidget(self._leverage_info_value, 0, 1)
+        self._info_layout.addWidget(self._fees_label, 1, 0)
+        self._info_layout.addWidget(self._fees_value, 1, 1)
+        self._info_layout.addWidget(self._liq_price_label, 2, 0)
+        self._info_layout.addWidget(self._liq_price_value, 2, 1)
+        self._info_frame.setLayout(self._info_layout)
+        self.main_layout.addWidget(self._info_frame, 5, 0, 1, 2)
+
         self.main_layout.addWidget(
             self._long_button,
-            5,
+            6,
             0,
             alignment=QtCore.Qt.AlignmentFlag.AlignBottom,
         )
         self.main_layout.addWidget(
             self._short_button,
-            5,
+            6,
             1,
             alignment=QtCore.Qt.AlignmentFlag.AlignBottom,
         )
@@ -238,6 +271,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_spin.setValue(leverage_value)
         self._leverage_spin.blockSignals(False)
 
+        self._update_info()
         self._update_leverage_buttons(leverage_value)
 
         await self._set_leverage()
@@ -273,6 +307,20 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         pair = self._pair_combo_box.currentData()
         coin = self._exchange.format_coin_from_pair(pair)
         await self._exchange.set_leverage(coin, leverage_value)
+
+    def _update_info(self) -> None:
+        """Update info."""
+        current_widget = self._trade_tab.currentWidget()
+        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
+            return
+        amount = current_widget.amount_box.value()
+        position_fee = self._exchange.get_position_fee(
+            Decimal(amount) * self._leverage_spin.value(),
+        )
+        self._fees_value.setText(f"${position_fee}")
+
+        leverage_value = self._leverage_spin.value()
+        self._leverage_info_value.setText(f"{leverage_value}x")
 
     @asyncSlot()
     async def _handle_quick_trade_click(
@@ -363,6 +411,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
     def _update_tab(self) -> None:
         """Update tab buttons."""
+        self._update_info()
         self._trade_type_market.update_button_position()
         self._trade_type_limit.update_button_position()
 
@@ -392,6 +441,8 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 class MarketTradeWidget(QtWidgets.QWidget):
     """Widget to fill a market trade."""
 
+    amount_changed = Signal()
+
     def __init__(
         self,
         quote_symbol: str,
@@ -408,6 +459,7 @@ class MarketTradeWidget(QtWidgets.QWidget):
         self.amount_box = DoubleSpinBoxWithButton(
             button_text=quote_symbol,
         )
+        self.amount_box.valueChanged.connect(lambda _: self.amount_changed.emit())
         self.percent_group = QtWidgets.QButtonGroup(self)
         self.percent_group_layout = QtWidgets.QHBoxLayout()
         for value in ("25%", "50%", "75%", "100%"):
@@ -473,6 +525,8 @@ class MarketTradeWidget(QtWidgets.QWidget):
 class LimitTradeWidget(QtWidgets.QWidget):
     """Widget to fill a limit trade."""
 
+    amount_changed = Signal()
+
     def __init__(
         self,
         quote_symbol: str,
@@ -489,6 +543,7 @@ class LimitTradeWidget(QtWidgets.QWidget):
         self.amount_box = DoubleSpinBoxWithButton(
             button_text=quote_symbol,
         )
+        self.amount_box.valueChanged.connect(lambda _: self.amount_changed.emit())
         self.percent_group = QtWidgets.QButtonGroup(self)
         self.percent_group_layout = QtWidgets.QHBoxLayout()
         for value in ("25%", "50%", "75%", "100%"):

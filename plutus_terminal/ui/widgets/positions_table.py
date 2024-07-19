@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from functools import partial
 from typing import TYPE_CHECKING, Any, Optional
 
 from PySide6.QtCore import (
@@ -32,9 +31,11 @@ from PySide6.QtWidgets import (
     QWidget,
     QWidgetAction,
 )
+from qasync import asyncSlot
 
-from plutus_terminal.core.exchange.types import PerpsTradeType
+from plutus_terminal.core.exchange.types import OrderData, PerpsTradeType, PriceData
 from plutus_terminal.core.types_ import PerpsPosition, PerpsTradeDirection
+from plutus_terminal.ui.widgets.manage_order import ManageOrder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -146,25 +147,21 @@ class PositionsTableModel(QAbstractTableModel):
 class PositionsTableView(QTableView):
     """Table view to display open positions."""
 
-    close_trade = Signal(PerpsPosition)
-    reduce_trade = Signal(dict)
     row_clicked = Signal(str)
 
     def __init__(
         self,
-        get_position_fee: Callable[[Decimal], Decimal],
-        get_funding_fee: Callable[[PerpsPosition], Decimal],
+        exchange: ExchangeBase,
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._get_position_fee = get_position_fee
-        self._get_funding_fee = get_funding_fee
+        self._exchange = exchange
         self._close_index = list(HEADER_MAP).index("close")
         self._pnl_index = list(HEADER_MAP).index("pnl")
         self._pnl_widgets: dict[str, dict[bool, PnlBreakdown]] = {}
         self._position_manager_widgets: dict[str, dict[bool, PositionManager]] = {}
-        self._cached_prices: dict = {}
+        self._cached_prices: dict[str, PriceData] = {}
         self.clicked.connect(self.on_row_click)
         self._setup_style()
 
@@ -195,13 +192,12 @@ class PositionsTableView(QTableView):
             if position_manager is None:
                 position_manager = PositionManager(
                     position=data,
+                    exchange=self._exchange,
+                    parent=self,
                 )
                 self._position_manager_widgets[data["pair"]][data["trade_direction"].value] = (
                     position_manager
                 )
-                position_manager.close_clicked.connect(self.close_trade.emit)
-                position_manager.reduce_clicked.connect(self.reduce_trade.emit)
-                position_manager.set_price_clicked.connect(self._set_current_price)
             self.setIndexWidget(index, position_manager)
         self.horizontalHeader().setSectionResizeMode(
             self._close_index,
@@ -215,9 +211,13 @@ class PositionsTableView(QTableView):
                 int(widget.sizeHint().width() * 1.05),
             )
 
-    def update_pnl(self, cached_prices: dict) -> None:
-        """Update pries for open positions."""
+    def update_cached_prices(self, cached_prices: dict[str, PriceData]) -> None:
+        """Update cached prices."""
         self._cached_prices = cached_prices
+        self.update_pnl(cached_prices)
+
+    def update_pnl(self, cached_prices: dict[str, PriceData]) -> None:
+        """Update pries for open positions."""
         for row in range(self.model().rowCount()):
             data = self.model().index(row, 0).data(Qt.ItemDataRole.UserRole)
             try:
@@ -226,19 +226,12 @@ class PositionsTableView(QTableView):
                 return
 
             pnl_index = self.model().index(row, self._pnl_index)
-            open_price = data["open_price"]
-            trade_direction = data["trade_direction"]
             leverage = data["leverage"]
             trade_collateral = data["position_size_stable"] / leverage
-            trade_direction_multiplier = 1 if trade_direction == PerpsTradeDirection.LONG else -1
-            position_fee = self._get_position_fee(trade_collateral)
-            funding_fee = self._get_funding_fee(data)
-            pnl_percent = (
-                ((Decimal(current_price) / open_price) - 1)
-                * 100
-                * leverage
-                * trade_direction_multiplier
-            )
+            trade_direction = data["trade_direction"]
+            position_fee = self._exchange.get_position_fee(trade_collateral)
+            funding_fee = self._exchange.get_borrow_fee(data)
+            pnl_percent = self._exchange.get_pnl_percent(data, current_price)
             pnl_usd = (trade_collateral * pnl_percent) / 100
             pnl_usd_after_fee = pnl_usd - position_fee - funding_fee
             pnl_percent_after_fee = pnl_usd_after_fee * 100 / trade_collateral
@@ -270,13 +263,6 @@ class PositionsTableView(QTableView):
         if widget is not None:
             self.setColumnWidth(self._pnl_index, int(widget.sizeHint().width() * 1.2))
 
-    def _set_current_price(self) -> None:
-        """Set current price on Position Manager."""
-        sender = self.sender()
-        if not isinstance(sender, PositionManager):
-            return
-        sender.set_price_limit(self._cached_prices[sender._position["pair"]]["price"])  # noqa: SLF001
-
     def on_row_click(self, index: QModelIndex) -> None:
         """Handle click on row."""
         self.row_clicked.emit(index.data(Qt.ItemDataRole.UserRole)["pair"])
@@ -287,8 +273,7 @@ class PositionsTableView(QTableView):
         Args:
             new_exchange (ExchangeBase): New exchangeBase.
         """
-        self._get_funding_fee = new_exchange.get_funding_fee
-        self._get_position_fee = new_exchange.get_position_fee
+        self._exchange = new_exchange
         self._position_manager_widgets = {}
         self._pnl_widgets = {}
 
@@ -296,18 +281,16 @@ class PositionsTableView(QTableView):
 class PositionManager(QWidget):
     """Position manager widget."""
 
-    close_clicked = Signal(dict)
-    reduce_clicked = Signal(dict)
-    set_price_clicked = Signal()
-
     def __init__(
         self,
         position: PerpsPosition,
+        exchange: ExchangeBase,
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent)
         self._position = position
+        self._exchange = exchange
 
         self._main_layout = QHBoxLayout()
         self.close_button = QPushButton("Close")
@@ -322,20 +305,19 @@ class PositionManager(QWidget):
     def _setup_widgets(self) -> None:
         """Condifure widgets."""
         self._menu.setObjectName("floating")
-        self._close_action.reduce_clicked.connect(self.reduce_clicked.emit)
-        self._close_action.set_price_clicked.connect(self.set_price_clicked.emit)
+        self._close_action.reduce_clicked.connect(self.create_reduce_order)
+        self._close_action.set_price_clicked.connect(self.set_price_limit)
         self._menu.addAction(self._close_action)
 
         self.close_button.setProperty("class", "gray")
         self.close_button.setMinimumSize(50, 30)
         self.close_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.close_button.customContextMenuRequested.connect(self.show_close_context)
-        self.close_button.clicked.connect(
-            partial(self.close_clicked.emit, self._position),
-        )
+        self.close_button.clicked.connect(self.close_position)
 
         self.tp_sl_button.setProperty("class", "gray")
         self.tp_sl_button.setMinimumSize(50, 30)
+        self.tp_sl_button.clicked.connect(self.on_tp_sl_clicked)
 
     def _setup_layout(self) -> None:
         """Organize layouts."""
@@ -350,9 +332,39 @@ class PositionManager(QWidget):
             self.close_button.mapToGlobal(self.close_button.rect().center()),
         )
 
-    def set_price_limit(self, price: Decimal) -> None:
+    def set_price_limit(self) -> None:
         """Set price for limit trade."""
-        self._close_action.set_price_limit(price)
+        self._close_action.set_price_limit(
+            self._exchange.cached_prices[self._position["pair"]]["price"],
+        )
+
+    @asyncSlot()
+    async def close_position(self) -> None:
+        """Close position."""
+        await self._exchange.close_position(self._position)
+
+    @asyncSlot()
+    async def create_reduce_order(self, kwargs: dict) -> None:
+        """Create reduce order."""
+        await self._exchange.create_reduce_order(**kwargs)
+
+    def on_tp_sl_clicked(self) -> None:
+        """Handle click on TP/SL."""
+        order_dialog = ManageOrder(
+            OrderData(
+                {
+                    "pair": self._position["pair"],
+                    "order_type": PerpsTradeType.TRIGGER_TP,
+                    "size_stable": self._position["position_size_stable"],
+                    "trigger_price": self._position["open_price"],
+                    "id": "_",
+                    "reduce_only": True,
+                    "trade_direction": self._position["trade_direction"],
+                },
+            ),
+            parent=self,
+        )
+        order_dialog.show()
 
 
 class PositionCloseAction(QWidgetAction):

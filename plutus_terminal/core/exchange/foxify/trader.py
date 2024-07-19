@@ -159,7 +159,7 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._position_execution_fee,
                 },
             )
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
@@ -217,7 +217,7 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._order_execution_fee,
                 },
             )
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
@@ -312,7 +312,7 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._order_execution_fee + 1,
                 },
             )
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
@@ -364,7 +364,7 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._position_execution_fee,
                 },
             )
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
@@ -396,6 +396,8 @@ class FoxifyTrader(ExchangeTrader):
             "cancelDecreaseOrder" if trade_arguments["reduce_only"] else "cancelIncreaseOrder"
         )
         func = self._order_book_contract.get_function_by_name(function_name)
+        print(func)
+        print(type(trade_arguments["order_index"]))
         try:
             tx = await func(trade_arguments["order_index"]).build_transaction(
                 {
@@ -413,7 +415,7 @@ class FoxifyTrader(ExchangeTrader):
                 },
             )
             tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         signed_tx = self.web3_account.sign_transaction(tx)
@@ -483,7 +485,7 @@ class FoxifyTrader(ExchangeTrader):
                     "gas": Wei(1000000),
                 },
             )
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
@@ -533,7 +535,7 @@ class FoxifyTrader(ExchangeTrader):
                     "gas": Wei(1000000),
                 },
             )
-        except (ContractLogicError, ValueError) as error:
+        except (ContractLogicError, ValueError, TypeError) as error:
             LOGGER.exception("Transaction failed")
             raise TransactionFailedError from error
         tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})

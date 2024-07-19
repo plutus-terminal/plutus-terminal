@@ -81,7 +81,7 @@ QDoubleSpinBox::up-button, QDoubleSpinBox::down-button, QSpinBox::up-button, QSp
     height: 0px;
 }
 
-QDoubleSpinBox:disabled {
+QDoubleSpinBox:disabled, QRadioButton:disabled {
     background-color: gray;
 }
 

@@ -122,7 +122,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def get_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
 
         Args:
@@ -130,6 +130,33 @@ class ExchangeFetcher(Protocol):
 
         Returns:
             Decimal: Funding fee in USD Stable Format.
+        """
+        ...
+
+    def get_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
+        """Get liquidation price for a given position.
+
+        Args:
+            perps_position (PerpsPosition): Position to get liquidation price for.
+
+        Returns:
+            Decimal: Liquidation price in USD Stable Format.
+        """
+        ...
+
+    def get_pnl_percent(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[float],
+    ) -> Decimal:
+        """Get pnl percent for a given position.
+
+        Args:
+            perps_position (PerpsPosition): Position to get pnl for.
+            current_price (Optional[Decimal]): Current price of the pair.
+
+        Returns:
+            Decimal: PNL in USD Stable Format.
         """
         ...
 
@@ -584,7 +611,7 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.get_position_fee(position_size)
 
-    def get_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
 
         Args:
@@ -593,7 +620,34 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Funding fee in USD Stable Format.
         """
-        return self.fetcher.get_funding_fee(perps_position)
+        return self.fetcher.get_borrow_fee(perps_position)
+
+    def get_liquation_price(self, perps_position: PerpsPosition) -> Decimal:
+        """Get liquidation price for a given position.
+
+        Args:
+            perps_position (PerpsPosition): Position to get liquidation price for.
+
+        Returns:
+            Decimal: Liquidation price in USD Stable Format.
+        """
+        return self.fetcher.get_liquidation_price(perps_position)
+
+    def get_pnl_percent(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[float],
+    ) -> Decimal:
+        """Get pnl percent for a given position.
+
+        Args:
+            perps_position (PerpsPosition): Position to get pnl for.
+            current_price (Optional[Decimal]): Current price of the pair.
+
+        Returns:
+            Decimal: PNL in USD Stable Format.
+        """
+        return self.fetcher.get_pnl_percent(perps_position, current_price)
 
     async def buy_options_with_strategy(
         self,

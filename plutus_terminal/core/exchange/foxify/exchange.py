@@ -477,7 +477,7 @@ class FoxifyExchange(ExchangeBase):
 
         cancel_args = foxify_utils.CancelOrderArgs(
             {
-                "order_index": order_index,
+                "order_index": int(order_index),
                 "reduce_only": order_data["reduce_only"],
             },
         )

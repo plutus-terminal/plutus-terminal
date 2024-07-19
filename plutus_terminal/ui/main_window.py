@@ -103,11 +103,7 @@ class PlutusTerminal(QMainWindow):
         )
 
         # Init open trades widget
-        self._trade_table = TradeTable(
-            self._current_exchange.format_simple_pair_from_pair,
-            self._current_exchange.get_position_fee,
-            self._current_exchange.get_funding_fee,
-        )
+        self._trade_table = TradeTable(self._current_exchange)
 
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._current_exchange)
@@ -173,12 +169,7 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus.subscribed_prices_signal.connect(
             self._trade_table.update_prices,
         )
-        self._trade_table.close_trade.connect(self._current_exchange.close_position)
-        self._trade_table.reduce_trade.connect(
-            lambda kwargs: self._current_exchange.create_reduce_order(**kwargs),
-        )
         self._trade_table.pair_clicked.connect(self._change_current_pair)
-        self._trade_table.cancel_order.connect(self._current_exchange.cancel_order)
 
         self._news_list.pair_clicked.connect(self._change_current_pair)
         self._news_list.refresh_news.connect(self._fill_news_list)
