@@ -26,6 +26,7 @@ class DoubleSpinBoxWithButton(QtWidgets.QDoubleSpinBox):
         self.setMinimum(0)
         self.setMaximum(1_000_000_000)
         self.setDecimals(8)
+        self.setGroupSeparatorShown(True)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         """Adjust button position on resize.

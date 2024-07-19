@@ -11,7 +11,9 @@ from PySide6.QtCore import Signal
 from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.exchange.types import PerpsPosition
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
+from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.extra import DoubleSpinBoxWithButton
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
@@ -85,8 +87,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_info_value = QtWidgets.QLabel("--")
         self._fees_label = QtWidgets.QLabel("Fees:")
         self._fees_value = QtWidgets.QLabel("--")
-        self._liq_price_label = QtWidgets.QLabel("Est. Liq. Price:")
-        self._liq_price_value = QtWidgets.QLabel("--")
+        self._liq_price_long_label = QtWidgets.QLabel("Est. Liq. Price LONG:")
+        self._liq_price_long_value = QtWidgets.QLabel("--")
+        self._liq_price_short_label = QtWidgets.QLabel("Est. Liq. Price SHORT:")
+        self._liq_price_short_value = QtWidgets.QLabel("--")
 
         self._long_button = QtWidgets.QPushButton("Open Long")
         self._short_button = QtWidgets.QPushButton("Open Short")
@@ -182,7 +186,8 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_info_value.setText(f"{self._leverage_spin.value()}x")
         self._leverage_info_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         self._fees_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-        self._liq_price_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self._liq_price_long_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        self._liq_price_short_value.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
         self._long_button.setProperty("class", "LONG")
         self._long_button.setMinimumHeight(40)
@@ -224,8 +229,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._info_layout.addWidget(self._leverage_info_value, 0, 1)
         self._info_layout.addWidget(self._fees_label, 1, 0)
         self._info_layout.addWidget(self._fees_value, 1, 1)
-        self._info_layout.addWidget(self._liq_price_label, 2, 0)
-        self._info_layout.addWidget(self._liq_price_value, 2, 1)
+        self._info_layout.addWidget(self._liq_price_long_label, 2, 0)
+        self._info_layout.addWidget(self._liq_price_long_value, 2, 1)
+        self._info_layout.addWidget(self._liq_price_short_label, 3, 0)
+        self._info_layout.addWidget(self._liq_price_short_value, 3, 1)
         self._info_frame.setLayout(self._info_layout)
         self.main_layout.addWidget(self._info_frame, 5, 0, 1, 2)
 
@@ -309,7 +316,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         await self._exchange.set_leverage(coin, leverage_value)
 
     def _update_info(self) -> None:
-        """Update info."""
+        """Update frame info."""
         current_widget = self._trade_tab.currentWidget()
         if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
             return
@@ -321,6 +328,63 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         leverage_value = self._leverage_spin.value()
         self._leverage_info_value.setText(f"{leverage_value}x")
+        self.update_liquidation_info()
+
+    def update_liquidation_info(self) -> None:
+        """Update liquidation info."""
+        current_widget = self._trade_tab.currentWidget()
+        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
+            return
+
+        amount = current_widget.amount_box.value()
+        if not amount:
+            self._liq_price_long_value.setText("--")
+            self._liq_price_short_value.setText("--")
+            return
+
+        leverage_value = self._leverage_spin.value()
+        pair = self._pair_combo_box.currentData()
+        if isinstance(current_widget, LimitTradeWidget):
+            open_price = Decimal(current_widget.target_price_box.value())
+        else:
+            open_price = self._exchange.cached_prices[pair]["price"]
+
+        long_liq_price = self._exchange.get_liquation_price(
+            PerpsPosition(
+                {
+                    "pair": pair,
+                    "id": 0,
+                    "position_size_stable": Decimal(amount * leverage_value),
+                    "collateral_stable": Decimal(amount),
+                    "open_price": open_price,
+                    "trade_direction": PerpsTradeDirection.LONG,
+                    "leverage": Decimal(leverage_value),
+                },
+            ),
+        )
+
+        minimal_digits = ui_utils.get_minimal_digits(float(long_liq_price), 4)
+        self._liq_price_long_value.setText(
+            f"<span style='color:rgb(100, 200, 100)'>${long_liq_price:,.{minimal_digits}f}</span>",
+        )
+
+        short_liq_price = self._exchange.get_liquation_price(
+            PerpsPosition(
+                {
+                    "pair": pair,
+                    "id": 0,
+                    "position_size_stable": Decimal(amount * leverage_value),
+                    "collateral_stable": Decimal(amount),
+                    "open_price": open_price,
+                    "trade_direction": PerpsTradeDirection.SHORT,
+                    "leverage": Decimal(leverage_value),
+                },
+            ),
+        )
+        minimal_digits = ui_utils.get_minimal_digits(float(short_liq_price), 4)
+        self._liq_price_short_value.setText(
+            f"<span style='color:rgb(255, 100, 100)'>${short_liq_price:,.{minimal_digits}f}</span>",
+        )
 
     @asyncSlot()
     async def _handle_quick_trade_click(

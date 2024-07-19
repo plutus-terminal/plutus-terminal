@@ -44,7 +44,7 @@ class PerpsTradeDirection(Enum):
 class PriceData(TypedDict):
     """PriceData from exchange."""
 
-    price: float
+    price: Decimal
     date: Timestamp
     volume: float
 

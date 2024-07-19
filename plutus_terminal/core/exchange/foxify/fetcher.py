@@ -307,7 +307,7 @@ class FoxifyFetcher(ExchangeFetcher):
                         pair = self.pyth_id_pair[f'0x{data["price_feed"]["id"]}']
                         self._cached_prices[pair] = PriceData(
                             {
-                                "price": float(
+                                "price": Decimal(
                                     int(data["price_feed"]["price"]["price"])
                                     * 10 ** int(data["price_feed"]["price"]["expo"]),
                                 ),
@@ -363,7 +363,7 @@ class FoxifyFetcher(ExchangeFetcher):
         data = response.json()
         return PriceData(
             {
-                "price": float(
+                "price": Decimal(
                     int(data["parsed"][0]["price"]["price"])
                     * 10 ** int(data["parsed"][0]["price"]["expo"]),
                 ),
@@ -638,8 +638,8 @@ class FoxifyFetcher(ExchangeFetcher):
             Decimal: Funding fee in USD Stable Format.
         """
         position_extra = perps_position.get("extra", None)
+        # If no position extra data, consider no funding fee
         if position_extra is None:
-            LOGGER.error("Position extra data not found")
             return Decimal(0)
 
         cumulative_funding_rate = self._cached_funding_rates[perps_position["pair"]][
@@ -669,15 +669,18 @@ class FoxifyFetcher(ExchangeFetcher):
         borrow_fee = self.get_borrow_fee(perps_position)
         position_fee = self.get_position_fee(perps_position["position_size_stable"])
         size = perps_position["position_size_stable"]
+        trade_direction = perps_position["trade_direction"]
 
         open_price = perps_position["open_price"]
 
-        return open_price - (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
+        if trade_direction == PerpsTradeDirection.LONG:
+            return open_price - (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
+        return open_price + (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
 
     def get_pnl_percent(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[float],
+        current_price: Optional[Decimal],
     ) -> Decimal:
         """Get pnl percent for a given position.
 
@@ -694,12 +697,7 @@ class FoxifyFetcher(ExchangeFetcher):
         trade_direction_multiplier = 1 if trade_direction == PerpsTradeDirection.LONG else -1
         if current_price is None:
             current_price = self._cached_prices[perps_position["pair"]]["price"]
-        return (
-            ((Decimal(current_price) / open_price) - 1)
-            * 100
-            * leverage
-            * trade_direction_multiplier
-        )
+        return ((current_price / open_price) - 1) * 100 * leverage * trade_direction_multiplier
 
     async def stop(self) -> None:
         """Stop infinite loops and close connections."""

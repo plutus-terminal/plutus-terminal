@@ -160,6 +160,9 @@ class PlutusTerminal(QMainWindow):
 
         # Configure Perps Trade
         self._perps_trade.pair_changed.connect(self._change_current_pair)
+        self._fetcher_message_bus.subscribed_prices_signal.connect(
+            self._perps_trade.update_liquidation_info,
+        )
 
         # Connect signals for open traders
         self._fetcher_message_bus.positions_signal.connect(

@@ -168,6 +168,8 @@ class TradingChart(QWidget):
             )
             return
         tick = pandas.Series(price)
+        # Convert decimal to float
+        tick["price"] = float(tick["price"])
         self._main_chart.update_from_tick(tick)
 
     def on_timeframe_selection(self, chart: Chart) -> None:

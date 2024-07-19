@@ -142,7 +142,7 @@ class CCXTFetcher(ExchangeFetcher):
                     pair = ticker["symbol"]
                     self._cached_prices[pair] = PriceData(
                         {
-                            "price": ticker["last"],
+                            "price": Decimal(ticker["last"]),
                             "date": pandas.Timestamp(ticker["timestamp"], unit="ms"),
                             "volume": ticker["quoteVolume"],
                         },
@@ -182,7 +182,7 @@ class CCXTFetcher(ExchangeFetcher):
         )
         return PriceData(
             {
-                "price": ticker[0][4],
+                "price": Decimal(ticker[0][4]),
                 "date": pandas.Timestamp(ticker[0][0], unit="ms"),
                 "volume": ticker[0][6],
             },
@@ -240,7 +240,7 @@ class CCXTFetcher(ExchangeFetcher):
         ticker = await self._cctx.fetch_ticker(symbol=pair)
         return PriceData(
             {
-                "price": ticker["last"],
+                "price": Decimal(ticker["last"]),
                 "date": pandas.Timestamp(ticker["timestamp"], unit="ms"),
                 "volume": ticker["quoteVolume"],
             },

@@ -333,7 +333,7 @@ class NewsWidget(QtWidgets.QGroupBox):
                 self._initial_prices[pair] = current_price
                 minimal_digits = ui_utils.get_minimal_digits(current_price, 4)
                 initial_price_label = QtWidgets.QLabel(
-                    f"Price at news: {current_price:.{minimal_digits}f}",
+                    f"Price at news: {current_price:,.{minimal_digits}f}",
                 )
                 percent_layout = self.group_box_layout[coin].itemAt(0).layout()
                 percent_layout.insertWidget(1, initial_price_label)  # type: ignore
@@ -561,7 +561,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             percentage = ((current_price / initial_price) - 1) * 100
             minimal_digits = ui_utils.get_minimal_digits(current_price, 4)
             self._price_change[pair] = (
-                f"{current_price:.{minimal_digits}f} ({round(percentage, 3):.3f}%)"
+                f"{current_price:,.{minimal_digits}f} ({round(percentage, 3):.3f}%)"
             )
 
     def set_selected_style(self) -> None:
