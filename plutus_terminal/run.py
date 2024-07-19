@@ -1,11 +1,10 @@
 """Run plutus terminal."""
 
+import platform
 import asyncio
 import gc
-import logging
 from pathlib import Path
 import sys
-from timeit import default_timer
 
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -79,6 +78,16 @@ def run() -> None:
     """Run plutus terminal."""
     # Override gc threshold
     gc.set_threshold(100_000, 50, 100)
+
+    # Set process name
+    if platform.system() == "Windows":
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleTitleW("Plutus Terminal")  # type: ignore
+    else:
+        import setproctitle
+
+        setproctitle.setproctitle("Plutues Terminal")
 
     setup_logging()
     app = PlutusSystemTrayApp([])
