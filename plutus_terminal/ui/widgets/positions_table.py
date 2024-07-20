@@ -13,7 +13,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QMouseEvent
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -26,16 +26,17 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QTableView,
-    QToolTip,
-    QVBoxLayout,
     QWidget,
     QWidgetAction,
 )
+from ens.async_ens import deepcopy
 from qasync import asyncSlot
 
 from plutus_terminal.core.exchange.types import OrderData, PerpsTradeType, PriceData
 from plutus_terminal.core.types_ import PerpsPosition, PerpsTradeDirection
+from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.manage_order import ManageOrder
+from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -90,7 +91,8 @@ class PositionsTableModel(QAbstractTableModel):
                 # Removing the Pair prefix if any
                 return self.format_simple_pair(value)
             if isinstance(value, Decimal):
-                return float(round(value, 3))
+                minimal_digits = ui_utils.get_minimal_digits(float(value), 4)
+                return f"{value:,.{minimal_digits}f}"
             return value
 
         if role == Qt.ItemDataRole.ForegroundRole and current_header == "trade_direction":
@@ -230,10 +232,10 @@ class PositionsTableView(QTableView):
             trade_collateral = data["position_size_stable"] / leverage
             trade_direction = data["trade_direction"]
             position_fee = self._exchange.get_position_fee(trade_collateral)
-            funding_fee = self._exchange.get_borrow_fee(data)
+            borrow_fee = self._exchange.get_borrow_fee(data)
             pnl_percent = self._exchange.get_pnl_percent(data, current_price)
             pnl_usd = (trade_collateral * pnl_percent) / 100
-            pnl_usd_after_fee = pnl_usd - position_fee - funding_fee
+            pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
             pnl_percent_after_fee = pnl_usd_after_fee * 100 / trade_collateral
 
             self._pnl_widgets.setdefault(data["pair"], {})
@@ -247,7 +249,7 @@ class PositionsTableView(QTableView):
             pnl_widget.set_pnl(pnl_usd_after_fee, pnl_percent_after_fee)
             pnl_widget.set_tooltip_content(
                 pnl_usd,
-                funding_fee,
+                borrow_fee,
                 position_fee,
                 pnl_usd_after_fee,
             )
@@ -362,6 +364,8 @@ class PositionManager(QWidget):
                     "trade_direction": self._position["trade_direction"],
                 },
             ),
+            exchange=self._exchange,
+            associated_position=deepcopy(self._position),
             parent=self,
         )
         order_dialog.show()
@@ -506,64 +510,3 @@ class PositionCloseAction(QWidgetAction):
     def set_price_limit(self, price: Decimal) -> None:
         """Set price for limit trade."""
         self._price_box.setValue(float(price))
-
-
-class PnlBreakdown(QWidget):
-    """Pnl breakdown widget."""
-
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
-        """Initialize widget."""
-        super().__init__(parent)
-        self._tooltip_content = ""
-        self._main_layout = QVBoxLayout()
-        self._main_layout.setContentsMargins(0, 0, 0, 0)
-        self.pnl_label = QLabel()
-        self.pnl_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pnl_label.setObjectName("pnl")
-        self._main_layout.addWidget(self.pnl_label)
-        self.setLayout(self._main_layout)
-
-        self._show_tooltip = False
-
-    def set_pnl(self, usd: Decimal, percent: Decimal) -> None:
-        """Set pnl."""
-        color = "green" if percent > 0 else "red"
-        text_format = (
-            f"<span style='color:{color}'>{round(usd, 3)} USD<br>{round(percent, 3)}%</span>"
-        )
-        self.pnl_label.setText(text_format)
-
-    def set_tooltip_content(
-        self,
-        pnl: Decimal,
-        borrow_fee: Decimal,
-        closing_fee: Decimal,
-        pnl_after_fee: Decimal,
-    ) -> None:
-        """Set tooltip content."""
-        self._tooltip_content = (
-            f"PnL: {round(pnl, 3)}<br>"
-            f"Borrow Fee: -{round(borrow_fee, 3)}<br>"
-            f"Closing Fee: -{round(closing_fee, 3)}<br><br>"
-            f"PnL After Fees: {round(pnl_after_fee, 3)}"
-        )
-        if self._show_tooltip:
-            QToolTip.showText(
-                self.mapToGlobal(self.rect().center()),
-                self._tooltip_content,
-            )
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Override event to show tooltip."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._show_tooltip = True
-            return None
-        return super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Override event to hide tooltip."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._show_tooltip = False
-            QToolTip.hideText()
-            return None
-        return super().mouseReleaseEvent(event)

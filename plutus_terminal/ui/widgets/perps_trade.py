@@ -175,7 +175,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._trade_type_limit.price_refresh_btn.clicked.connect(
             self._refresh_limit_price,
         )
-        self._trade_type_limit.target_price_box.button.clicked.connect(
+        self._trade_type_limit.target_price_box.buttonClicked.connect(
             self._refresh_limit_price,
         )
         self._trade_type_limit.amount_changed.connect(
@@ -347,9 +347,12 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         if isinstance(current_widget, LimitTradeWidget):
             open_price = Decimal(current_widget.target_price_box.value())
         else:
-            open_price = self._exchange.cached_prices[pair]["price"]
+            pair_cached = self._exchange.cached_prices.get(pair, None)
+            if pair_cached is None:
+                return
+            open_price = pair_cached["price"]
 
-        long_liq_price = self._exchange.get_liquation_price(
+        long_liq_price = self._exchange.get_liquidation_price(
             PerpsPosition(
                 {
                     "pair": pair,
@@ -368,7 +371,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             f"<span style='color:rgb(100, 200, 100)'>${long_liq_price:,.{minimal_digits}f}</span>",
         )
 
-        short_liq_price = self._exchange.get_liquation_price(
+        short_liq_price = self._exchange.get_liquidation_price(
             PerpsPosition(
                 {
                     "pair": pair,

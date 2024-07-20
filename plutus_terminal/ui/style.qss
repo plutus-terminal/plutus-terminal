@@ -311,6 +311,17 @@ QPushButton#spinButton {
 
 }
 
+QPushButton#actionButton {
+    background-color: rgba(220, 180, 100, 80);
+    border-color: #D68347;
+    font-weight: bold;
+}
+
+QPushButton#actionButton:hover {
+    background-color: rgba(255, 200, 100, 180);
+    font-weight: bold;
+}
+
 QToolButton{
     background-color: transparent;
 }

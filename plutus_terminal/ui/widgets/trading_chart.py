@@ -20,11 +20,13 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QCompleter,
+    QLabel,
     QLineEdit,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
+from plutus_terminal.ui import ui_utils
 
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
@@ -58,6 +60,7 @@ class TradingChart(QWidget):
         self._main_layout = QVBoxLayout()
 
         self.top_bar = TopBar("Chart")
+        self._price_label = QLabel("")
 
         self._main_chart = QtChart(toolbox=True)
         self._current_pair = ""
@@ -75,6 +78,9 @@ class TradingChart(QWidget):
         """Configure widgets."""
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.top_bar.icon.setPixmap(QPixmap(":/icons/chart_icon"))
+        self.top_bar.add_widget(self._price_label)
+        self._price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._price_label.setObjectName("title")
 
     def _config_chart(self) -> None:
         """Configure chart."""
@@ -171,6 +177,9 @@ class TradingChart(QWidget):
         # Convert decimal to float
         tick["price"] = float(tick["price"])
         self._main_chart.update_from_tick(tick)
+
+        minimal_digits = ui_utils.get_minimal_digits(tick["price"], 4)
+        self._price_label.setText(f"${tick['price']:,.{minimal_digits}f}")
 
     def on_timeframe_selection(self, chart: Chart) -> None:
         """Emit signal to change timeframe."""

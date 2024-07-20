@@ -115,6 +115,12 @@ class FoxifyFetcher(ExchangeFetcher):
         await fetcher.init_async()
         return fetcher
 
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
+        retry_error_callback=log_retry(LOGGER),
+    )
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
         await self._populate_funding_rates()
@@ -561,6 +567,23 @@ class FoxifyFetcher(ExchangeFetcher):
             )
         return all_orders
 
+    def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
+        """Get position associated with given order.
+
+        Args:
+            order (OrderData): Order to get position for.
+
+        Returns:
+            Optional[PerpsPosition]: Position associated with given order.
+        """
+        for position in self._cached_positions:
+            if (
+                order["pair"] == position["pair"]
+                and order["trade_direction"] == position["trade_direction"]
+            ):
+                return position
+        return None
+
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),
@@ -571,18 +594,18 @@ class FoxifyFetcher(ExchangeFetcher):
         """Fetch current price of given pair."""
         return await self.fetch_price_at_time(pair=pair, timestamp=int(time.time()))
 
-    def get_position_fee(self, position_size: Decimal) -> Decimal:
+    def get_position_fee(self, position_collateral: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
-            position_size (Decimal): Position size to get fee for.
+            position_collateral (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Fee amount in USD Stable Format.
         """
-        return (position_size * (self._basis_points_divisor - self._margin_fee_basis_points)) / (
-            self._basis_points_divisor * 10**3
-        )
+        return (
+            position_collateral * (self._basis_points_divisor - self._margin_fee_basis_points)
+        ) / (self._basis_points_divisor * 10**3)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.15, max=5),

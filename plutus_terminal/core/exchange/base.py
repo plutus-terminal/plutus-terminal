@@ -111,11 +111,22 @@ class ExchangeFetcher(Protocol):
         """Fetch current price of given pair."""
         ...
 
-    def get_position_fee(self, position_size: Decimal) -> Decimal:
+    def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
+        """Get position associated with given order.
+
+        Args:
+            order (OrderData): Order to get position for.
+
+        Returns:
+            Optional[PerpsPosition]: Position associated with given order.
+        """
+        ...
+
+    def get_position_fee(self, position_collateral: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
-            position_size (Decimal): Position size to get fee for.
+            position_collateral (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Fee amount in USD Stable Format.
@@ -147,7 +158,7 @@ class ExchangeFetcher(Protocol):
     def get_pnl_percent(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[float],
+        current_price: Optional[Decimal],
     ) -> Decimal:
         """Get pnl percent for a given position.
 
@@ -600,16 +611,27 @@ class ExchangeBase(ABC):
         self.fetcher_bus.positions_signal.emit(all_positions)
         Toast.update_message(toast_id, "Position closed", type_=ToastType.SUCCESS)
 
-    def get_position_fee(self, position_size: Decimal) -> Decimal:
+    def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
+        """Get position associated with given order.
+
+        Args:
+            order (OrderData): Order to get position for.
+
+        Returns:
+            Optional[PerpsPosition]: Position associated with given order.
+        """
+        return self.fetcher.get_position_associated_with_order(order)
+
+    def get_position_fee(self, position_collateral: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
-            position_size (Decimal): Position size to get fee for.
+            position_collateral (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Position fee.
         """
-        return self.fetcher.get_position_fee(position_size)
+        return self.fetcher.get_position_fee(position_collateral)
 
     def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
@@ -622,7 +644,7 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.get_borrow_fee(perps_position)
 
-    def get_liquation_price(self, perps_position: PerpsPosition) -> Decimal:
+    def get_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
         """Get liquidation price for a given position.
 
         Args:
@@ -636,7 +658,7 @@ class ExchangeBase(ABC):
     def get_pnl_percent(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[float],
+        current_price: Optional[Decimal],
     ) -> Decimal:
         """Get pnl percent for a given position.
 
