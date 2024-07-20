@@ -26,16 +26,19 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from plutus_terminal.ui import ui_utils
 
+from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from decimal import Decimal
 
-    from lightweight_charts import Chart  # type: ignore
+    from lightweight_charts import Chart
+    from lightweight_charts.abstract import HorizontalLine
 
     from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.core.exchange.types import OrderData, PerpsPosition
 
 LOGGER = logging.getLogger(__name__)
 
@@ -50,12 +53,14 @@ class TradingChart(QWidget):
         self,
         available_pairs: set[str],
         format_simple_pair: Callable[[str], str],
+        get_liquidation_price: Callable[[PerpsPosition], Decimal],
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._available_pairs = available_pairs
         self._format_simple_pair = format_simple_pair
+        self._get_liquidation_price = get_liquidation_price
 
         self._main_layout = QVBoxLayout()
 
@@ -64,6 +69,8 @@ class TradingChart(QWidget):
 
         self._main_chart = QtChart(toolbox=True)
         self._current_pair = ""
+        self._position_lines: list[HorizontalLine] = []
+        self._order_lines: list[HorizontalLine] = []
 
         self._config_widgets()
         self._config_chart()
@@ -180,6 +187,64 @@ class TradingChart(QWidget):
 
         minimal_digits = ui_utils.get_minimal_digits(tick["price"], 4)
         self._price_label.setText(f"${tick['price']:,.{minimal_digits}f}")
+
+    def draw_positions(self, all_positions: list[PerpsPosition]) -> None:
+        """Draw positions lines on the chart.
+
+        Args:
+            all_positions (list[PerpsPosition]): List of current positions.
+        """
+        for horizontal_line in self._position_lines:
+            horizontal_line.delete()
+        self._position_lines.clear()
+
+        for position in all_positions:
+            if position["pair"] == self._current_pair:
+                self._position_lines.append(
+                    self._main_chart.horizontal_line(
+                        float(position["open_price"]),
+                        width=1,
+                        color="rgb(255, 80, 80)",
+                        style="dotted",
+                        text=f"Open {position['trade_direction'].name.capitalize()}",
+                        axis_label_visible=False,
+                    ),
+                )
+
+                liquidation_price = self._get_liquidation_price(position)
+                self._position_lines.append(
+                    self._main_chart.horizontal_line(
+                        float(liquidation_price),
+                        width=1,
+                        color="rgb(255, 80, 80)",
+                        style="solid",
+                        text=f"Liq. {position['trade_direction'].name.capitalize()}",
+                        axis_label_visible=False,
+                    ),
+                )
+
+    def draw_orders(self, all_orders: list[OrderData]) -> None:
+        """Draw orders lines on the chart.
+
+        Args:
+            all_orders (list[OrderData]): List of current orders.
+        """
+        for horizontal_line in self._order_lines:
+            horizontal_line.delete()
+        self._order_lines.clear()
+
+        for order in all_orders:
+            if order["pair"] == self._current_pair:
+                self._order_lines.append(
+                    self._main_chart.horizontal_line(
+                        float(order["trigger_price"]),
+                        width=1,
+                        color="rgb(255, 80, 80)",
+                        style="dashed",
+                        text=f"{order['order_type'].name.replace('_', ' ').capitalize()}",
+                        axis_label_visible=False,
+                    ),
+                )
 
     def on_timeframe_selection(self, chart: Chart) -> None:
         """Emit signal to change timeframe."""

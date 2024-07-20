@@ -100,6 +100,7 @@ class PlutusTerminal(QMainWindow):
         self._chart = TradingChart(
             self._current_exchange.available_pairs,
             self._current_exchange.format_simple_pair_from_pair,
+            self._current_exchange.get_liquidation_price,
         )
 
         # Init open trades widget
@@ -149,6 +150,10 @@ class PlutusTerminal(QMainWindow):
             self._chart.update_chart_tick,
         )
         self._chart.pair_changed.connect(self._change_current_pair)
+        self._fetcher_message_bus.positions_signal.connect(
+            self._chart.draw_positions,
+        )
+        self._fetcher_message_bus.orders_signal.connect(self._chart.draw_orders)
 
         # Configure config dialog
         self._config_dialog.updated_trade_values.connect(
@@ -239,6 +244,10 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus.subscribed_prices_signal.disconnect(
             self._chart.update_chart_tick,
         )
+        self._fetcher_message_bus.positions_signal.disconnect(
+            self._chart.draw_positions,
+        )
+        self._fetcher_message_bus.orders_signal.disconnect(self._chart.draw_orders)
 
         await self._current_exchange.fetcher.unsubscribe_to_price(self._current_pair)
         await self._current_exchange.fetcher.subscribe_to_price(pair)
@@ -261,6 +270,10 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus.subscribed_prices_signal.connect(
             self._chart.update_chart_tick,
         )
+        self._fetcher_message_bus.positions_signal.connect(
+            self._chart.draw_positions,
+        )
+        self._fetcher_message_bus.orders_signal.connect(self._chart.draw_orders)
 
     @asyncSlot()
     async def _set_chart_timeframe(self, resolution: str) -> None:
