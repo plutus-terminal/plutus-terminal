@@ -5,7 +5,7 @@ from functools import partial
 from typing import Optional
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 
 from plutus_terminal.core.exchange.base import ExchangeBase
@@ -23,6 +23,8 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 class ManageOrder(QtWidgets.QDialog):
     """Dialog to manage orders."""
+
+    execute_order = Signal(OrderData)
 
     def __init__(
         self,
@@ -137,6 +139,7 @@ class ManageOrder(QtWidgets.QDialog):
 
         self.execute_order_button.setProperty("class", "LONG")
         self.execute_order_button.setMinimumHeight(30)
+        self.execute_order_button.clicked.connect(self.on_execute_order)
 
         self.update_liquidation_price()
 
@@ -236,13 +239,27 @@ class ManageOrder(QtWidgets.QDialog):
         Args:
             new_quantity (float): New quantity.
         """
-        # Update order data to reflect quantity change
-        self._order_data["size_stable"] = Decimal(new_quantity)
-
         # If order is associated with a position, update position size
         if self._associated_position is not None:
-            self._associated_position["position_size_stable"] = self._order_data["size_stable"]
+            self._associated_position["position_size_stable"] = Decimal(new_quantity)
         self.update_pnl(self.trigger_box.value())
+
+    def on_execute_order(self) -> None:
+        """Handle execute order button click."""
+        # Create order to execture based on current state
+        type_button_id = self._type_group.id(self._type_group.checkedButton())
+        order_type = PerpsTradeType(type_button_id)
+        order = OrderData(
+            id=self._order_data["id"],
+            pair=self._order_data["pair"],
+            trade_direction=self._order_data["trade_direction"],
+            order_type=order_type,
+            trigger_price=Decimal(self.trigger_box.value()),
+            size_stable=Decimal(self.amount_box.value()),
+            reduce_only=self._order_data["reduce_only"],
+        )
+        self.execute_order.emit(order)
+        self.close()
 
     def show(self) -> None:
         """Override show method to update button position."""

@@ -370,7 +370,23 @@ class PositionManager(QWidget):
             associated_position=deepcopy(self._position),
             parent=self,
         )
+        order_dialog.execute_order.connect(self.execute_order)
         order_dialog.show()
+
+    @asyncSlot()
+    async def execute_order(self, order_data: OrderData) -> None:
+        """Execute order on exchange.
+
+        Args:
+            order_data (OrderData): Order to execute.
+        """
+        await self._exchange.create_reduce_order(
+            pair=order_data["pair"],
+            size=order_data["size_stable"],
+            trade_direction=order_data["trade_direction"],
+            trade_type=order_data["order_type"],
+            execution_price=order_data["trigger_price"],
+        )
 
 
 class PositionCloseAction(QWidgetAction):
