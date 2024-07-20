@@ -46,7 +46,7 @@ class PriceData(TypedDict):
 
     price: Decimal
     date: Timestamp
-    volume: float
+    volume: NotRequired[float]
 
 
 class PriceHistory(TypedDict):

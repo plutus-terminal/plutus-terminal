@@ -190,7 +190,6 @@ class FoxifyFetcher(ExchangeFetcher):
             "high": data["h"],
             "low": data["l"],
             "close": data["c"],
-            "volume": data["v"],
         }
         LOGGER.debug(
             "Fetched price history for %s from %s",
@@ -321,7 +320,6 @@ class FoxifyFetcher(ExchangeFetcher):
                                     data["price_feed"]["price"]["publish_time"],
                                     unit="s",
                                 ),
-                                "volume": 0,
                             },
                         )
                         self._message_bus.subscribed_prices_signal.emit(
@@ -374,7 +372,6 @@ class FoxifyFetcher(ExchangeFetcher):
                     * 10 ** int(data["parsed"][0]["price"]["expo"]),
                 ),
                 "date": data["parsed"][0]["price"]["publish_time"],
-                "volume": 0,
             },
         )
 
