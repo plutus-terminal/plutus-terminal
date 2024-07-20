@@ -253,7 +253,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         """Set data from exchange."""
         # Fill combo box with available pairs
         self._pair_combo_box.clear()
-        for pair in self._exchange.available_pairs:
+        for pair in sorted(self._exchange.available_pairs):
             self._pair_combo_box.addItem(
                 self._exchange.format_simple_pair_from_pair(pair),
                 userData=pair,
