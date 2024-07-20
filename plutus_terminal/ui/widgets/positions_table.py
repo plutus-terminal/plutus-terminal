@@ -312,12 +312,14 @@ class PositionManager(QWidget):
         self._menu.addAction(self._close_action)
 
         self.close_button.setProperty("class", "gray")
+        self.close_button.setToolTip("Close Position. Right click for more options.")
         self.close_button.setMinimumSize(50, 30)
         self.close_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.close_button.customContextMenuRequested.connect(self.show_close_context)
         self.close_button.clicked.connect(self.close_position)
 
         self.tp_sl_button.setProperty("class", "gray")
+        self.tp_sl_button.setToolTip("Open dialog to set TP/SL.")
         self.tp_sl_button.setMinimumSize(50, 30)
         self.tp_sl_button.clicked.connect(self.on_tp_sl_clicked)
 
