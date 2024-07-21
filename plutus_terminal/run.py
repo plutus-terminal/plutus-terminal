@@ -1,9 +1,9 @@
 """Run plutus terminal."""
 
-import platform
 import asyncio
 import gc
 from pathlib import Path
+import platform
 import sys
 
 from PySide6.QtGui import QPixmap

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -17,7 +18,6 @@ from PySide6.QtGui import QBrush, QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
-    QDoubleSpinBox,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -29,12 +29,14 @@ from PySide6.QtWidgets import (
     QWidget,
     QWidgetAction,
 )
-from ens.async_ens import deepcopy
 from qasync import asyncSlot
 
 from plutus_terminal.core.exchange.types import OrderData, PerpsTradeType, PriceData
 from plutus_terminal.core.types_ import PerpsPosition, PerpsTradeDirection
 from plutus_terminal.ui import ui_utils
+from plutus_terminal.ui.widgets.decimal_spin_box import (
+    DecimalSpinBox,
+)
 from plutus_terminal.ui.widgets.manage_order import ManageOrder
 from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
 
@@ -408,7 +410,7 @@ class PositionCloseAction(QWidgetAction):
         self.type_group_layout = QHBoxLayout()
 
         self._amount_label = QLabel("Amount:")
-        self._amount_box = QDoubleSpinBox()
+        self._amount_box = DecimalSpinBox()
         self._amount_group = QButtonGroup()
         self._amount_group_layout = QHBoxLayout()
         for value in ("25%", "50%", "75%", "100%"):
@@ -419,7 +421,7 @@ class PositionCloseAction(QWidgetAction):
         self._amount_group.buttonClicked.connect(self._set_amount_from_button)
 
         self._price_label = QLabel("Price:")
-        self._price_box = QDoubleSpinBox()
+        self._price_box = DecimalSpinBox()
         self._price_box.setDecimals(8)
         self._price_refresh_btn = QPushButton()
         self._close_btn = QPushButton("Close Trade")
@@ -439,12 +441,12 @@ class PositionCloseAction(QWidgetAction):
         self.market_button.click()
 
         self._amount_box.setDecimals(8)
-        self._amount_box.setRange(1, float(self._position["position_size_stable"]))
-        self._amount_box.valueChanged.connect(self._update_amount_buttons)
+        self._amount_box.setRange(Decimal(1), self._position["position_size_stable"])
+        self._amount_box.decimalValueChanged.connect(self._update_amount_buttons)
         self._amount_box.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._amount_group.button(100).setChecked(True)
-        self._amount_box.setValue(float(self._position["position_size_stable"]))
-        self._price_box.setRange(0.0, 100_000_000)
+        self._amount_box.setValue(self._position["position_size_stable"])
+        self._price_box.setRange(Decimal(0), Decimal(100_000_000))
         self._price_box.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         self._price_refresh_btn.setProperty("class", "borderless")
@@ -479,23 +481,23 @@ class PositionCloseAction(QWidgetAction):
         else:
             self._price_box.setEnabled(False)
             self._price_refresh_btn.setEnabled(False)
-            self._price_box.setValue(0.0)
+            self._price_box.setValue(Decimal(0))
 
-    def _set_amount_spinbox(self, amount: float) -> None:
+    def _set_amount_spinbox(self, amount: Decimal) -> None:
         """Set amount on spinbox."""
         self._amount_box.blockSignals(True)
         self._amount_box.setValue(amount)
         self._amount_box.blockSignals(False)
 
-    def _update_amount_buttons(self, amount: float) -> None:
+    def _update_amount_buttons(self, amount: Decimal) -> None:
         """Update amount buttons if value on spinbox matches."""
-        if amount == float(self._position["position_size_stable"]) * 0.25:
+        if amount == self._position["position_size_stable"] * Decimal(0.25):
             self._amount_group.button(25).setChecked(True)
-        elif amount == float(self._position["position_size_stable"]) * 0.5:
+        elif amount == self._position["position_size_stable"] * Decimal(0.5):
             self._amount_group.button(50).setChecked(True)
-        elif amount == float(self._position["position_size_stable"]) * 0.75:
+        elif amount == self._position["position_size_stable"] * Decimal(0.75):
             self._amount_group.button(75).setChecked(True)
-        elif amount == float(self._position["position_size_stable"]):
+        elif amount == self._position["position_size_stable"]:
             self._amount_group.button(100).setChecked(True)
         else:
             button = self._amount_group.checkedButton()
@@ -507,7 +509,7 @@ class PositionCloseAction(QWidgetAction):
     def _set_amount_from_button(self, button: QRadioButton) -> None:
         """Set amount from button."""
         self._set_amount_spinbox(
-            (self._amount_group.id(button) / 100) * float(self._position["position_size_stable"]),
+            Decimal(self._amount_group.id(button) / 100) * self._position["position_size_stable"],
         )
 
     def _reduce_position(self) -> None:
@@ -527,4 +529,4 @@ class PositionCloseAction(QWidgetAction):
 
     def set_price_limit(self, price: Decimal) -> None:
         """Set price for limit trade."""
-        self._price_box.setValue(float(price))
+        self._price_box.setValue(price)

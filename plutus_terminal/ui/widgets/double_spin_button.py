@@ -1,4 +1,4 @@
-"""Extra widgets."""
+"""Spin BDecimal values."""
 
 from typing import Optional
 

@@ -14,7 +14,8 @@ from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.types import PerpsPosition
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui import ui_utils
-from plutus_terminal.ui.widgets.extra import DoubleSpinBoxWithButton
+from plutus_terminal.ui.widgets.decimal_spin_box import DecimalSpinBoxWithButton
+from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButton
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
@@ -523,10 +524,10 @@ class MarketTradeWidget(QtWidgets.QWidget):
 
         self.amount_label = QtWidgets.QLabel("Amount:")
         self.amount_label.setFixedWidth(70)
-        self.amount_box = DoubleSpinBoxWithButton(
+        self.amount_box = DecimalSpinBoxWithButton(
             button_text=quote_symbol,
         )
-        self.amount_box.valueChanged.connect(lambda _: self.amount_changed.emit())
+        self.amount_box.decimalValueChanged.connect(lambda _: self.amount_changed.emit())
         self.percent_group = QtWidgets.QButtonGroup(self)
         self.percent_group_layout = QtWidgets.QHBoxLayout()
         for value in ("25%", "50%", "75%", "100%"):
@@ -576,7 +577,7 @@ class MarketTradeWidget(QtWidgets.QWidget):
         self.take_profit_box.update_button_position()
         self.stop_loss_box.update_button_position()
 
-    def get_amount(self) -> float:
+    def get_amount(self) -> Decimal:
         """Get amount."""
         return self.amount_box.value()
 
@@ -607,10 +608,10 @@ class LimitTradeWidget(QtWidgets.QWidget):
 
         self.amount_label = QtWidgets.QLabel("Amount:")
         self.amount_label.setFixedWidth(70)
-        self.amount_box = DoubleSpinBoxWithButton(
+        self.amount_box = DecimalSpinBoxWithButton(
             button_text=quote_symbol,
         )
-        self.amount_box.valueChanged.connect(lambda _: self.amount_changed.emit())
+        self.amount_box.decimalValueChanged.connect(lambda _: self.amount_changed.emit())
         self.percent_group = QtWidgets.QButtonGroup(self)
         self.percent_group_layout = QtWidgets.QHBoxLayout()
         for value in ("25%", "50%", "75%", "100%"):
@@ -622,7 +623,7 @@ class LimitTradeWidget(QtWidgets.QWidget):
         self.target_price_label = QtWidgets.QLabel("Price:")
         self.target_price_label.setFixedWidth(70)
 
-        self.target_price_box = DoubleSpinBoxWithButton(
+        self.target_price_box = DecimalSpinBoxWithButton(
             button_text=quote_symbol,
         )
         self.price_refresh_btn = QtWidgets.QPushButton()
@@ -673,11 +674,11 @@ class LimitTradeWidget(QtWidgets.QWidget):
         self.take_profit_box.update_button_position()
         self.stop_loss_box.update_button_position()
 
-    def get_amount(self) -> float:
+    def get_amount(self) -> Decimal:
         """Get amount."""
         return self.amount_box.value()
 
-    def get_target_price(self) -> float:
+    def get_target_price(self) -> Decimal:
         """Get price."""
         return self.target_price_box.value()
 

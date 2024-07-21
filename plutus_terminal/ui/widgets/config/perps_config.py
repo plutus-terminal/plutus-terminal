@@ -10,7 +10,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QPixmap
 
 from plutus_terminal.core.config import CONFIG
-from plutus_terminal.ui.widgets.extra import DoubleSpinBoxWithButton
+from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButton
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 

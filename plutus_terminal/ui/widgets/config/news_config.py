@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from functools import partial
 from typing import Optional
-from PySide6.QtMultimedia import QSoundEffect
 
 import keyring
 import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtMultimedia import QSoundEffect
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.db.models import UserFilter

@@ -16,7 +16,7 @@ from plutus_terminal.core.exchange.types import (
     PerpsTradeType,
 )
 from plutus_terminal.ui import ui_utils
-from plutus_terminal.ui.widgets.extra import DoubleSpinBoxWithButton
+from plutus_terminal.ui.widgets.decimal_spin_box import DecimalSpinBoxWithButton
 from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
@@ -59,11 +59,11 @@ class ManageOrder(QtWidgets.QDialog):
         self._pnl_value = PnlBreakdown()
 
         self._trigger_label = QtWidgets.QLabel("Trigger Price:")
-        self.trigger_box = DoubleSpinBoxWithButton(button_text="USD")
+        self.trigger_box = DecimalSpinBoxWithButton(button_text="USD")
         self.trigger_max_button = QtWidgets.QPushButton("MAX")
 
         self._amount_label = QtWidgets.QLabel("Amount:")
-        self.amount_box = DoubleSpinBoxWithButton(button_text="USD")
+        self.amount_box = DecimalSpinBoxWithButton(button_text="USD")
         self.amount_max_button = QtWidgets.QPushButton("MAX")
 
         self.execute_order_button = QtWidgets.QPushButton("Execute Order")
@@ -110,20 +110,20 @@ class ManageOrder(QtWidgets.QDialog):
             4,
         )
         self.trigger_box.setDecimals(trigger_minimum_digits)
-        self.trigger_box.valueChanged.connect(self.update_pnl)
-        self.trigger_box.setValue(float(self._order_data["trigger_price"]))
+        self.trigger_box.decimalValueChanged.connect(self.update_pnl)
+        self.trigger_box.setValue(self._order_data["trigger_price"])
 
         self.trigger_max_button.setObjectName("actionButton")
         self.trigger_max_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.trigger_max_button.setFixedWidth(50)
         self.trigger_max_button.clicked.connect(
-            partial(self.trigger_box.setValue, float(self._order_data["trigger_price"])),
+            partial(self.trigger_box.setValue, self._order_data["trigger_price"]),
         )
 
         self.amount_box.setDecimals(4)
-        self.amount_box.setValue(float(self._order_data["size_stable"]))
-        self.amount_box.setMaximum(float(self._order_data["size_stable"]))
-        self.amount_box.valueChanged.connect(self.on_quantity_change)
+        self.amount_box.setValue(self._order_data["size_stable"])
+        self.amount_box.setMaximum(self._order_data["size_stable"])
+        self.amount_box.decimalValueChanged.connect(self.on_quantity_change)
 
         self.amount_max_button.setObjectName("actionButton")
         self.amount_max_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -183,19 +183,19 @@ class ManageOrder(QtWidgets.QDialog):
         match button_id:
             case PerpsTradeType.TRIGGER_TP.value:
                 if trade_direction == PerpsTradeDirection.SHORT:
-                    self.trigger_box.setMinimum(0)
-                    self.trigger_box.setMaximum(float(self._order_data["trigger_price"]))
+                    self.trigger_box.setMinimum(Decimal(0))
+                    self.trigger_box.setMaximum(self._order_data["trigger_price"])
                 else:
-                    self.trigger_box.setMaximum(100_000_000_000)
-                    self.trigger_box.setMinimum(float(self._order_data["trigger_price"]))
+                    self.trigger_box.setMaximum(Decimal(100_000_000_000))
+                    self.trigger_box.setMinimum(self._order_data["trigger_price"])
 
             case PerpsTradeType.TRIGGER_SL.value:
                 if trade_direction == PerpsTradeDirection.SHORT:
-                    self.trigger_box.setMaximum(100_000_000_000)
-                    self.trigger_box.setMinimum(float(self._order_data["trigger_price"]))
+                    self.trigger_box.setMaximum(Decimal(100_000_000_000))
+                    self.trigger_box.setMinimum(self._order_data["trigger_price"])
                 else:
-                    self.trigger_box.setMinimum(0)
-                    self.trigger_box.setMaximum(float(self._order_data["trigger_price"]))
+                    self.trigger_box.setMinimum(Decimal(0))
+                    self.trigger_box.setMaximum(self._order_data["trigger_price"])
 
     def update_liquidation_price(self) -> None:
         """Update liquidation price."""
@@ -209,7 +209,7 @@ class ManageOrder(QtWidgets.QDialog):
             f"${liquidation_price:,.{minimal_digits}f}",
         )
 
-    def update_pnl(self, price: float) -> None:
+    def update_pnl(self, price: Decimal) -> None:
         """Update pnl."""
         if self._associated_position is None:
             self._pnl_value.pnl_label.setText("--")
@@ -219,7 +219,7 @@ class ManageOrder(QtWidgets.QDialog):
         trade_collateral = self._associated_position["position_size_stable"] / leverage
         position_fee = self._exchange.get_position_fee(trade_collateral)
         borrow_fee = self._exchange.get_borrow_fee(self._associated_position)
-        pnl_percentage = self._exchange.get_pnl_percent(self._associated_position, Decimal(price))
+        pnl_percentage = self._exchange.get_pnl_percent(self._associated_position, price)
         pnl_usd = (trade_collateral * pnl_percentage) / 100
         pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
         pnl_percentage_after_fee = pnl_usd_after_fee * 100 / trade_collateral
@@ -233,7 +233,7 @@ class ManageOrder(QtWidgets.QDialog):
             push_tool_tip=False,
         )
 
-    def on_quantity_change(self, new_quantity: float) -> None:
+    def on_quantity_change(self, new_quantity: Decimal) -> None:
         """Handle quantity change.
 
         Args:
@@ -241,7 +241,7 @@ class ManageOrder(QtWidgets.QDialog):
         """
         # If order is associated with a position, update position size
         if self._associated_position is not None:
-            self._associated_position["position_size_stable"] = Decimal(new_quantity)
+            self._associated_position["position_size_stable"] = new_quantity
         self.update_pnl(self.trigger_box.value())
 
     def on_execute_order(self) -> None:
