@@ -27,9 +27,9 @@ class PnlBreakdown(QWidget):
         """Initialize widget."""
         super().__init__(parent)
         self._tooltip_content = ""
-        self._main_layout = QVBoxLayout()
+        self._main_layout = QVBoxLayout(self)
         self._main_layout.setContentsMargins(0, 0, 0, 0)
-        self.pnl_label = QLabel()
+        self.pnl_label = QLabel(self)
         self.pnl_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pnl_label.setObjectName("pnl")
         self._main_layout.addWidget(self.pnl_label)
@@ -65,7 +65,7 @@ class PnlBreakdown(QWidget):
                 self.mapToGlobal(self.rect().center()),
                 self._tooltip_content,
             )
-        else:
+        elif not push_tool_tip:
             self.setToolTip(self._tooltip_content)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:

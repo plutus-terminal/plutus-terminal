@@ -1,8 +1,15 @@
 """Utilities for UI."""
 
+from functools import partial
 import math
+from typing import Any, Optional, TypeVar
 
-from PySide6.QtCore import QDir, QResource
+from PySide6.QtCore import QDir
+from PySide6.QtWidgets import QWidget
+
+from plutus_terminal.core.exchange.types import PerpsTradeDirection
+
+T = TypeVar("T")
 
 
 def get_minimal_digits(number: float, figures: int) -> int:
@@ -26,5 +33,54 @@ def list_resources_from_prefix(prefix: str) -> list[str]:
     qdir = QDir(":/")
     qdir.setFilter(QDir.Filter.Files | QDir.Filter.Dirs | QDir.Filter.NoDotAndDotDot)
     qdir.setPath(qdir.filePath(prefix))
-    entries = qdir.entryList()
-    return entries
+    return qdir.entryList()
+
+
+def create_stored_widget(
+    widget: type[T],
+    storage: dict,
+    pair: str,
+    trade_direction: PerpsTradeDirection,
+    **kwargs: Any,  # noqa: ANN401
+) -> T:
+    """Create stored widget.
+
+    Args:
+        widget (QtWidget): Widget to store.
+        storage (dict): Dict to store created widget.
+        pair (str): Pair.
+        trade_direction (PerpsTradeDirection): Trade direction.
+        **kwargs (Any): Additional kwargs.
+
+    Returns:
+        QWidget: Stored widget.
+    """
+    new_widget = widget(**kwargs)
+    storage.setdefault(pair, {})
+    old_widget = get_stored_widget(storage, pair, trade_direction)
+    if old_widget is not None:
+        old_widget.deleteLater()
+    storage[pair][trade_direction.value] = new_widget
+    return new_widget
+
+
+def get_stored_widget(
+    storage: dict,
+    pair: str,
+    trade_direction: PerpsTradeDirection,
+) -> Optional[QWidget]:
+    """Get stored widget.
+
+    Args:
+        storage (dict): Dict to store created widget.
+        pair (str): Pair.
+        trade_direction (PerpsTradeDirection): Trade direction.
+
+    Returns:
+        QWidget: Stored widget.
+    """
+    storage.setdefault(pair, {})
+    return storage[pair].get(
+        trade_direction.value,
+        None,
+    )

@@ -182,26 +182,25 @@ class PositionsTableView(QTableView):
         """Override setModel to add close buttons."""
         super().setModel(model)
         model.modelReset.connect(self.add_position_manager)
+        model.modelReset.connect(self.create_pnl_breakdowns)
 
     def add_position_manager(self) -> None:
         """Add position manager for each row."""
+        self.blockSignals(True)
         for row in range(self.model().rowCount()):
             index = self.model().index(row, self._close_index)
             data = index.data(Qt.ItemDataRole.UserRole)
-            self._position_manager_widgets.setdefault(data["pair"], {})
-            position_manager = self._position_manager_widgets[data["pair"]].get(
-                data["trade_direction"].value,
-                None,
+
+            position_manager = ui_utils.create_stored_widget(
+                PositionManager,
+                self._position_manager_widgets,
+                data["pair"],
+                data["trade_direction"],
+                position=data,
+                exchange=self._exchange,
+                parent=self,
             )
-            if position_manager is None:
-                position_manager = PositionManager(
-                    position=data,
-                    exchange=self._exchange,
-                    parent=self,
-                )
-                self._position_manager_widgets[data["pair"]][data["trade_direction"].value] = (
-                    position_manager
-                )
+
             self.setIndexWidget(index, position_manager)
         self.horizontalHeader().setSectionResizeMode(
             self._close_index,
@@ -214,11 +213,26 @@ class PositionsTableView(QTableView):
                 self._close_index,
                 int(widget.sizeHint().width() * 1.05),
             )
+        self.blockSignals(False)
 
     def update_cached_prices(self, cached_prices: dict[str, PriceData]) -> None:
         """Update cached prices."""
         self._cached_prices = cached_prices
         self.update_pnl(cached_prices)
+
+    def create_pnl_breakdowns(self) -> None:
+        """Create pnl breakdowns for each row."""
+        self.blockSignals(True)
+        for row in range(self.model().rowCount()):
+            data = self.model().index(row, 0).data(Qt.ItemDataRole.UserRole)
+            ui_utils.create_stored_widget(
+                PnlBreakdown,
+                self._pnl_widgets,
+                data["pair"],
+                data["trade_direction"],
+            )
+
+        self.blockSignals(False)
 
     def update_pnl(self, cached_prices: dict[str, PriceData]) -> None:
         """Update pries for open positions."""
@@ -240,14 +254,14 @@ class PositionsTableView(QTableView):
             pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
             pnl_percent_after_fee = pnl_usd_after_fee * 100 / trade_collateral
 
-            self._pnl_widgets.setdefault(data["pair"], {})
-            pnl_widget = self._pnl_widgets[data["pair"]].get(
-                trade_direction.value,
-                None,
+            pnl_widget = ui_utils.get_stored_widget(
+                self._pnl_widgets,
+                data["pair"],
+                trade_direction,
             )
-            if pnl_widget is None:
-                pnl_widget = PnlBreakdown()
-                self._pnl_widgets[data["pair"]][trade_direction.value] = pnl_widget
+            if pnl_widget is None or not isinstance(pnl_widget, PnlBreakdown):
+                return
+
             pnl_widget.set_pnl(pnl_usd_after_fee, pnl_percent_after_fee)
             pnl_widget.set_tooltip_content(
                 pnl_usd,
