@@ -1,6 +1,7 @@
 """Foxify Exchange trader."""
 
 from __future__ import annotations
+from decimal import Decimal
 
 import logging
 from typing import TYPE_CHECKING, Self
@@ -138,19 +139,45 @@ class FoxifyTrader(ExchangeTrader):
         nonce: Nonce = await self.web3_provider.eth.get_transaction_count(
             self.web3_account.address,
         )
+
+        amount_in = int(trade_arguments["amount_in"] * 10**foxify_utils.USDC_DECIMAL_PLACES)
+        size_delta = int(trade_arguments["size_delta"] * self._price_precision)
+
+        order_execution_data = self.web3_provider.codec.encode(
+            types=[
+                "address",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint256",
+                "bool",
+            ],
+            args=[
+                self.web3_provider.to_checksum_address(trade_arguments["index_token"]),
+                size_delta if trade_arguments["stop_loss"] != Decimal(0) else 0,
+                size_delta if trade_arguments["take_profit"] != Decimal(0) else 0,
+                amount_in,
+                amount_in,
+                int(trade_arguments["stop_loss"] * self._price_precision),
+                int(trade_arguments["take_profit"] * self._price_precision),
+                trade_arguments["trade_direction"].value,
+            ],
+        )
+
         try:
             tx = await self._position_router_contract.functions.createIncreasePosition(
                 self.web3_provider.to_checksum_address(trade_arguments["index_token"]),
-                int(
-                    trade_arguments["amount_in"] * 10**foxify_utils.USDC_DECIMAL_PLACES,
-                ),
+                amount_in,
                 0,  # minOut
-                int(trade_arguments["size_delta"] * self._price_precision),
+                size_delta,
                 trade_arguments["trade_direction"].value,
                 int(trade_arguments["acceptable_price"] * self._price_precision),
                 self._position_execution_fee,
                 foxify_utils.REFERRAL_CODE,
-                "0x0000000000000000000000000000000000000000",
+                order_execution_data,
+                foxify_utils.FOXIFY_ROUTER_CALLBACK,
             ).build_transaction(
                 {
                     "nonce": nonce,

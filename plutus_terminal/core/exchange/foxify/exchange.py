@@ -253,6 +253,8 @@ class FoxifyExchange(ExchangeBase):
                 "trade_direction": trade_direction,
                 "acceptable_price": acceptable_price,
                 "trade_type": trade_type,
+                "stop_loss": stop_loss_execution,
+                "take_profit": take_profit_execution,
             },
         )
         try:
@@ -277,25 +279,6 @@ class FoxifyExchange(ExchangeBase):
             LOGGER,
             toast_id,
         )
-
-        # Create take profit and stop loss orders if bigger than 0
-        if take_profit_execution > 0:
-            await self.create_reduce_order(
-                pair,
-                size_delta,
-                trade_direction,
-                PerpsTradeType.TRIGGER_TP,
-                take_profit_execution,
-            )
-
-        if stop_loss_execution > 0:
-            await self.create_reduce_order(
-                pair,
-                size_delta,
-                trade_direction,
-                PerpsTradeType.TRIGGER_SL,
-                stop_loss_execution,
-            )
 
     @asyncSlot
     async def edit_order(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from web3 import AsyncWeb3
 from web3.types import Gwei, Nonce, TxParams, Wei
@@ -51,6 +51,10 @@ FOXIFY_ORDER_BOOK = AsyncWeb3.to_checksum_address(
     "0x72f399b84dBC018AC35af8064501594704a765B9",
 )
 
+FOXIFY_ROUTER_CALLBACK = AsyncWeb3.to_checksum_address(
+    "0xabDBacB016705D5647C0d9eea6990765DC045120",
+)
+
 USDC_DECIMAL_PLACES = 6
 MAX_SLIPPAGE = 0.005
 
@@ -64,6 +68,8 @@ class OpenTradingArgs(TypedDict):
     trade_direction: PerpsTradeDirection
     acceptable_price: Decimal
     trade_type: PerpsTradeType
+    take_profit: Decimal
+    stop_loss: Decimal
 
 
 class CloseTradingArgs(TypedDict):

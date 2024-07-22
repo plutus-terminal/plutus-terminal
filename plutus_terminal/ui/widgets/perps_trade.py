@@ -325,7 +325,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         position_fee = self._exchange.get_position_fee(
             Decimal(amount) * self._leverage_spin.value(),
         )
-        self._fees_value.setText(f"${position_fee}")
+        self._fees_value.setText(f"${position_fee:.3f}")
 
         leverage_value = self._leverage_spin.value()
         self._leverage_info_value.setText(f"{leverage_value}x")
