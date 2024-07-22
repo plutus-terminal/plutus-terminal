@@ -34,14 +34,14 @@ class NewsManager:
         self._filter_manager = FilterManager()
         self._seen_links: set[str] = set()
         self._news_task: list[asyncio.Task] = []
-        self._async_task: list[asyncio.Task] = []
 
         self.news_bus.raw_news_signal.connect(self.process_news)
 
-    def fetch_news(self) -> None:
+    async def fetch_news(self) -> None:
         """Fetch news from news sources."""
+        login_tasks = [news_fetcher.login() for news_fetcher in self.news_sources]
+        await asyncio.gather(*login_tasks)
         for news_fetcher in self.news_sources:
-            self._async_task.append(asyncio.create_task(news_fetcher.login()))
             self._news_task.append(
                 asyncio.create_task(news_fetcher.subscribe_to_wss(self.news_bus)),
             )

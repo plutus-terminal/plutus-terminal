@@ -111,7 +111,7 @@ class PlutusTerminal(QMainWindow):
 
         # Init news manager
         self._news_manager = NewsManager(self._news_message_bus)
-        self._news_manager.fetch_news()
+        asyncio.create_task(self._news_manager.fetch_news())
         self._news_list = NewsList(self._current_exchange)
 
         # Init options Widget

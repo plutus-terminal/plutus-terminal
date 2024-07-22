@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import (
+    QEvent,
     Qt,
 )
+from PySide6.QtGui import QEnterEvent
 from PySide6.QtWidgets import (
     QLabel,
     QToolTip,
@@ -82,3 +84,13 @@ class PnlBreakdown(QWidget):
             QToolTip.hideText()
             return None
         return super().mouseReleaseEvent(event)
+
+    def enterEvent(self, event: QEnterEvent) -> None:
+        """Override event to change cursor on hover."""
+        self.setCursor(Qt.CursorShape.WhatsThisCursor)
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        """Override event to reset cursor on leave."""
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        return super().leaveEvent(event)
