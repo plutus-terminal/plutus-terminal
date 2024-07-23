@@ -37,12 +37,11 @@ class AccountInfo(QtWidgets.QWidget):
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self._frame.setObjectName("newsFrameQuote")
-        self._balance_label.setObjectName("subTitle")
         self._balance_value.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._balance_value.setObjectName("subTitle")
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.top_bar.icon.setPixmap(
-            QPixmap(":/icons/account_icon"),
+            QPixmap(":/icons/account_info"),
         )
 
     def _setup_layout(self) -> None:
