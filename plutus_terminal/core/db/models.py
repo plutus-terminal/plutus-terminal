@@ -37,8 +37,8 @@ class TradeConfig(BaseModel):
 
     account = ForeignKeyField(KeyringAccount, backref="trade_config")
     leverage = IntegerField(default=10)
-    stop_loss = FloatField(default=5)
-    take_profit = FloatField(default=25)
+    stop_loss = FloatField(default=0)
+    take_profit = FloatField(default=0)
     trade_value_lowest = IntegerField(default=100)
     trade_value_low = IntegerField(default=250)
     trade_value_medium = IntegerField(default=500)
