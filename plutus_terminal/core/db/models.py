@@ -90,9 +90,8 @@ class Web3RPC(BaseModel):
         rpc_url
     """
 
-    chain_id = IntegerField(unique=True)
     chain_name = CharField(unique=True)
-    rpc_url = TextField()
+    rpc_urls = TextField()
 
 
 def create_database() -> None:
@@ -118,3 +117,5 @@ def create_database() -> None:
         GUISettings.create(key="news_desktop_notifications", value=orjson.dumps(True))
 
         GUISettings.create(key="options_show_preview", value=orjson.dumps(False))
+
+        GUISettings.create(key="minimize_to_tray", value=orjson.dumps(True))

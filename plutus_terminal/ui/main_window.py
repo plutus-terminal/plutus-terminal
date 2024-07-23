@@ -224,8 +224,11 @@ class PlutusTerminal(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Hide window on close."""
-        # event.ignore()
-        # self.hide()
+        if CONFIG.get_gui_settings("minimize_to_tray"):
+            event.ignore()
+            self.hide()
+        else:
+            super().closeEvent(event)
 
     @asyncSlot()
     async def _change_current_pair(self, pair: str) -> None:
