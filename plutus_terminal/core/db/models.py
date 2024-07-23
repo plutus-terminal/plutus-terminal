@@ -119,3 +119,4 @@ def create_database() -> None:
         GUISettings.create(key="options_show_preview", value=orjson.dumps(False))
 
         GUISettings.create(key="minimize_to_tray", value=orjson.dumps(True))
+        GUISettings.create(key="window_geometry", value=orjson.dumps({}))

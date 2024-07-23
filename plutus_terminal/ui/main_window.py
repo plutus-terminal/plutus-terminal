@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from lightweight_charts import widgets
 
 import pandas
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -218,11 +219,23 @@ class PlutusTerminal(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Hide window on close."""
+        CONFIG.set_gui_settings("window_geometry", self.saveGeometry().data().hex())
         if CONFIG.get_gui_settings("minimize_to_tray"):
             event.ignore()
             self.hide()
         else:
             super().closeEvent(event)
+
+    def show(self) -> None:
+        """Override show."""
+        self._load_geometry()
+        return super().show()
+
+    def _load_geometry(self) -> None:
+        """Load window geometry."""
+        geometry = CONFIG.get_gui_settings("window_geometry")
+        if geometry:
+            self.restoreGeometry(bytes.fromhex(geometry))
 
     @asyncSlot()
     async def _change_current_pair(self, pair: str) -> None:
