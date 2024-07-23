@@ -322,7 +322,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
             return
         amount = current_widget.amount_box.value()
-        position_fee = self._exchange.get_position_fee(
+        position_fee = self._exchange.calculate_position_fee(
             Decimal(amount) * self._leverage_spin.value(),
         )
         self._fees_value.setText(f"${position_fee:.3f}")
@@ -353,7 +353,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 return
             open_price = pair_cached["price"]
 
-        long_liq_price = self._exchange.get_liquidation_price(
+        long_liq_price = self._exchange.calculate_liquidation_price(
             PerpsPosition(
                 {
                     "pair": pair,
@@ -372,7 +372,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             f"<span style='color:rgb(100, 200, 100)'>${long_liq_price:,.{minimal_digits}f}</span>",
         )
 
-        short_liq_price = self._exchange.get_liquidation_price(
+        short_liq_price = self._exchange.calculate_liquidation_price(
             PerpsPosition(
                 {
                     "pair": pair,

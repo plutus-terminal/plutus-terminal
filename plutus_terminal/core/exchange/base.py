@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from decimal import Decimal
 import logging
 import time
 from typing import TYPE_CHECKING, Optional, Protocol, Self
@@ -28,8 +29,6 @@ from plutus_terminal.core.types_ import (
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
-    from decimal import Decimal
-
     import pandas
 
     from plutus_terminal.core.exchange.types import OrderData, TradeResults
@@ -45,6 +44,7 @@ class ExchangeFetcherMessageBus(QObject):
 
     price_history_signal = Signal(PriceHistory)
     subscribed_prices_signal = Signal(dict)
+    balance_signal = Signal(Decimal)
     positions_signal = Signal(list)  # list[PerpsPosition]
     orders_signal = Signal(list)  # list[OrderData]
     price_synced = Signal(bool)
@@ -111,6 +111,14 @@ class ExchangeFetcher(Protocol):
         """Fetch current price of given pair."""
         ...
 
+    async def watch_stable_balance(self) -> None:
+        """Watch stable balance."""
+        ...
+
+    async def fetch_stable_balance(self) -> Decimal:
+        """Fetch stable balance."""
+        ...
+
     def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
         """Get position associated with given order.
 
@@ -122,7 +130,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def get_position_fee(self, position_collateral: Decimal) -> Decimal:
+    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
@@ -133,8 +141,8 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
-        """Get funding fee for a given position.
+    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+        """Fetch funding fee for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get funding fee for.
@@ -144,8 +152,8 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def get_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
-        """Get liquidation price for a given position.
+    def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
+        """Calculate liquidation price for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get liquidation price for.
@@ -155,12 +163,12 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def get_pnl_percent(
+    def calculate_pnl_percent(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
     ) -> Decimal:
-        """Get pnl percent for a given position.
+        """Calculate pnl percent for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get pnl for.
@@ -366,6 +374,11 @@ class ExchangeBase(ABC):
     def cached_prices(self) -> dict:
         """Return all prices cache."""
 
+    @property
+    @abstractmethod
+    def stable_balance(self) -> Decimal:
+        """Return stable balance."""
+
     @classmethod
     @abstractmethod
     async def create(cls, fetcher_bus: ExchangeFetcherMessageBus) -> Self:
@@ -417,6 +430,7 @@ class ExchangeBase(ABC):
             asyncio.create_task(self.fetcher.watch_all_positions()),
         )
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_all_orders()))
+        self._async_tasks.append(asyncio.create_task(self.fetcher.watch_stable_balance()))
         self.fetcher_bus.positions_signal.connect(self._update_watched_positions)
 
     @asyncSlot()
@@ -622,7 +636,7 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.get_position_associated_with_order(order)
 
-    def get_position_fee(self, position_collateral: Decimal) -> Decimal:
+    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
@@ -631,10 +645,10 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Position fee.
         """
-        return self.fetcher.get_position_fee(position_collateral)
+        return self.fetcher.calculate_position_fee(position_collateral)
 
-    def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
-        """Get funding fee for a given position.
+    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+        """Fetch funding fee for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get funding fee for.
@@ -642,10 +656,10 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Funding fee in USD Stable Format.
         """
-        return self.fetcher.get_borrow_fee(perps_position)
+        return self.fetcher.fetch_borrow_fee(perps_position)
 
-    def get_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
-        """Get liquidation price for a given position.
+    def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
+        """Calculate liquidation price for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get liquidation price for.
@@ -653,14 +667,14 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Liquidation price in USD Stable Format.
         """
-        return self.fetcher.get_liquidation_price(perps_position)
+        return self.fetcher.calculate_liquidation_price(perps_position)
 
-    def get_pnl_percent(
+    def calculate_pnl_percent(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
     ) -> Decimal:
-        """Get pnl percent for a given position.
+        """Calculate pnl percent for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get pnl for.
@@ -669,7 +683,7 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: PNL in USD Stable Format.
         """
-        return self.fetcher.get_pnl_percent(perps_position, current_price)
+        return self.fetcher.calculate_pnl_percent(perps_position, current_price)
 
     async def buy_options_with_strategy(
         self,

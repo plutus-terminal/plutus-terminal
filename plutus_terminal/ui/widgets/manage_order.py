@@ -198,7 +198,7 @@ class ManageOrder(QtWidgets.QDialog):
             self._liq_price_value.setText("--")
             return
 
-        liquidation_price = self._exchange.get_liquidation_price(self._associated_position)
+        liquidation_price = self._exchange.calculate_liquidation_price(self._associated_position)
         minimal_digits = ui_utils.get_minimal_digits(float(liquidation_price), 4)
         self._liq_price_value.setText(
             f"${liquidation_price:,.{minimal_digits}f}",
@@ -212,9 +212,9 @@ class ManageOrder(QtWidgets.QDialog):
 
         leverage = self._associated_position["leverage"]
         trade_collateral = self._associated_position["position_size_stable"] / leverage
-        position_fee = self._exchange.get_position_fee(trade_collateral)
-        borrow_fee = self._exchange.get_borrow_fee(self._associated_position)
-        pnl_percentage = self._exchange.get_pnl_percent(self._associated_position, price)
+        position_fee = self._exchange.calculate_position_fee(trade_collateral)
+        borrow_fee = self._exchange.fetch_borrow_fee(self._associated_position)
+        pnl_percentage = self._exchange.calculate_pnl_percent(self._associated_position, price)
         pnl_usd = (trade_collateral * pnl_percentage) / 100
         pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
         pnl_percentage_after_fee = pnl_usd_after_fee * 100 / trade_collateral

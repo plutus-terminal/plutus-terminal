@@ -1,17 +1,15 @@
 """Foxify Exchange trader."""
 
 from __future__ import annotations
-from decimal import Decimal
 
+from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING, Self
-from tenacity import before_sleep_log, retry, stop_after_attempt
 
-from web3 import AsyncHTTPProvider, AsyncWeb3
+from tenacity import before_sleep_log, retry, stop_after_attempt
 from web3.exceptions import ContractLogicError
 from web3.types import Gwei, Nonce, Wei
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import TransactionFailedError
 from plutus_terminal.core.exchange.base import ExchangeTrader
 from plutus_terminal.core.exchange.foxify import utils as foxify_utils

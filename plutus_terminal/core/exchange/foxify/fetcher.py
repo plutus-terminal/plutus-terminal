@@ -76,6 +76,7 @@ class FoxifyFetcher(ExchangeFetcher):
         self.order_book_contract = foxify_utils.build_order_book_contract(
             self.web3_provider,
         )
+        self.stable_contract = foxify_utils.build_stable_contract(self.web3_provider)
 
         with Path.open(Path(__file__).parent.parent.joinpath("web3/pyth_feed_id.json")) as f:
             self.pyth_pair_id: dict = json.load(f)
@@ -84,6 +85,7 @@ class FoxifyFetcher(ExchangeFetcher):
         self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
         self.connection_count: dict = defaultdict(int)
         self._cached_prices: dict[str, PriceData] = {}
+        self._cached_stable_balance: Decimal = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_funding_rates: dict[str, dict[bool, int]] = {}
         self._synced = True
@@ -588,8 +590,31 @@ class FoxifyFetcher(ExchangeFetcher):
         """Fetch current price of given pair."""
         return await self.fetch_price_at_time(pair=pair, timestamp=int(time.time()))
 
-    def get_position_fee(self, position_collateral: Decimal) -> Decimal:
-        """Get fee for a given position.
+    async def watch_stable_balance(self) -> None:
+        """Watch stable balance."""
+        while not self.async_stop_event.is_set():
+            try:
+                self._cached_stable_balance = await self.fetch_stable_balance()
+                self._message_bus.balance_signal.emit(self._cached_stable_balance)
+            except (HTTPStatusError, ReadTimeout, ConnectError):
+                LOGGER.exception("Unexpected error while fetching stable balance.")
+                continue
+            finally:
+                await asyncio.sleep(1)
+
+    async def fetch_stable_balance(self) -> Decimal:
+        """Fetch stable balance.
+
+        Returns:
+            Decimal: Balance in USD Stable Format.
+        """
+        balance = await self.stable_contract.functions.balanceOf(self.web3_account.address).call()
+        decimals = int(await self.stable_contract.functions.decimals().call())
+
+        return Decimal(balance) / 10**decimals
+
+    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
+        """Calulate fee for a given position.
 
         Args:
             position_collateral (Decimal): Position size to get fee for.
@@ -645,7 +670,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 )
                 await asyncio.sleep(0.1)
 
-    def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
 
         Args:
@@ -670,8 +695,8 @@ class FoxifyFetcher(ExchangeFetcher):
         size = perps_position["position_size_stable"]
         return (size * funding_fee) / self._funding_rate_precision
 
-    def get_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
-        """Get liquidation price for a given position.
+    def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
+        """Calculate liquidation price for a given position.
 
         This formula is not perfect and should be improved, values don't match
         the ones given on the front end, but are close.
@@ -683,8 +708,8 @@ class FoxifyFetcher(ExchangeFetcher):
             Decimal: Liquidation price in USD Stable Format.
         """
         collateral = perps_position["collateral_stable"]
-        borrow_fee = self.get_borrow_fee(perps_position)
-        position_fee = self.get_position_fee(perps_position["position_size_stable"])
+        borrow_fee = self.fetch_borrow_fee(perps_position)
+        position_fee = self.calculate_position_fee(perps_position["position_size_stable"])
         size = perps_position["position_size_stable"]
         trade_direction = perps_position["trade_direction"]
 
@@ -694,12 +719,12 @@ class FoxifyFetcher(ExchangeFetcher):
             return open_price - (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
         return open_price + (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
 
-    def get_pnl_percent(
+    def calculate_pnl_percent(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
     ) -> Decimal:
-        """Get pnl percent for a given position.
+        """Calculate pnl percent for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get pnl for.

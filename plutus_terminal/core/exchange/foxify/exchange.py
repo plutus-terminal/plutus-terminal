@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional, Self
 import keyring
 import orjson
 from qasync import asyncSlot
-from web3 import Account, AsyncHTTPProvider, AsyncWeb3
+from web3 import Account
 from web3.types import Gwei
 
 from plutus_terminal.core.config import CONFIG
@@ -155,6 +155,11 @@ class FoxifyExchange(ExchangeBase):
     def cached_prices(self) -> dict:
         """Return all prices from cache."""
         return self.fetcher._cached_prices  # noqa: SLF001
+
+    @property
+    def stable_balance(self) -> Decimal:
+        """Return stable balance."""
+        return self.fetcher._cached_stable_balance  # noqa: SLF001
 
     # @property
     # def options(self) -> ExchangeOptions:

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from lightweight_charts import widgets
 
 import pandas
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -101,7 +100,7 @@ class PlutusTerminal(QMainWindow):
         self._chart = TradingChart(
             self._current_exchange.available_pairs,
             self._current_exchange.format_simple_pair_from_pair,
-            self._current_exchange.get_liquidation_price,
+            self._current_exchange.calculate_liquidation_price,
         )
 
         # Init open trades widget
