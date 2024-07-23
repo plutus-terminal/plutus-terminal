@@ -245,6 +245,14 @@ class OrdersTableView(QTableView):
         """Handle click on row."""
         self.row_clicked.emit(index.data(Qt.ItemDataRole.UserRole)["pair"])
 
+    def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
+        """Update info based on new exchange.
+
+        Args:
+            new_exchange (ExchangeBase): New exchangeBase.
+        """
+        self._exchange = new_exchange
+
 
 class OrderButtons(QWidget):
     """Button to center."""

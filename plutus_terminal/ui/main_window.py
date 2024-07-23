@@ -124,16 +124,10 @@ class PlutusTerminal(QMainWindow):
         self._setup_layout()
 
         self._exchange_update_affected = [
-            self._chart,
-            self._trade_table,
-            self._perps_trade,
-            self._news_list,
-            self._options_widget,
+            widget for widget in self.findChildren(QWidget) if hasattr(widget, "on_new_exchange")
         ]
-
         self._account_update_affected = [
-            self._config_dialog,
-            self._options_widget,
+            widget for widget in self.findChildren(QWidget) if hasattr(widget, "on_new_account")
         ]
 
     async def _setup_widgets(self) -> None:

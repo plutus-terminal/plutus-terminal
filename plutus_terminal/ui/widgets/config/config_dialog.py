@@ -60,7 +60,3 @@ class ConfigDialog(QtWidgets.QDialog):
         """Config layout."""
         self._main_layout.addWidget(self._tab_widget)
         self.setLayout(self._main_layout)
-
-    def on_new_account(self) -> None:
-        """Update info based on new account."""
-        self.persp_config.on_new_account()

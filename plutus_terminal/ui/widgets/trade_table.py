@@ -84,5 +84,4 @@ class TradeTable(QtWidgets.QWidget):
             new_exchange (ExchangeBase): New exchangeBase.
         """
         self._positions_model.on_new_exchange(new_exchange)
-        self._positions_table.on_new_exchange(new_exchange)
         self._orders_model.on_new_exchange(new_exchange)
