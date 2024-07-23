@@ -600,7 +600,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 LOGGER.exception("Unexpected error while fetching stable balance.")
                 continue
             finally:
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
 
     async def fetch_stable_balance(self) -> Decimal:
         """Fetch stable balance.
