@@ -299,9 +299,11 @@ async def ensure_referral(
         web3_account (LocalAccount): Web3 account.
     """
     referral_contract = build_referral_storage_contract(web3_provider)
-    current_referral = await referral_contract.functions.traderReferralCodes(
-        web3_account.address,
-    ).call()
+    current_referral = web3_provider.to_hex(
+        await referral_contract.functions.traderReferralCodes(
+            web3_account.address,
+        ).call(),
+    )
     if current_referral == REFERRAL_CODE:
         return
 
