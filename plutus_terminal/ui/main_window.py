@@ -30,6 +30,7 @@ from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.base import NewsMessageBus
 from plutus_terminal.core.news.news_manager import NewsManager
 from plutus_terminal.ui import ui_utils
+from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
 from plutus_terminal.ui.widgets.options_widget import OptionsWidget
@@ -66,11 +67,12 @@ class PlutusTerminal(QMainWindow):
         self._right_layout = QVBoxLayout()
         self._right_scroll = QScrollArea()
 
-        # Declare async classes for visibility
+        # Declare classes for visibility
         self._current_exchange: ExchangeBase
         self._current_pair: str
         self._chart: TradingChart
         self._trade_table: TradeTable
+        self._account_info: AccountInfo
         self._perps_trade: PerpsTradeWidget
         self._config_dialog: ConfigDialog
         self._user_top_bar: UserTopBar
@@ -105,6 +107,9 @@ class PlutusTerminal(QMainWindow):
 
         # Init open trades widget
         self._trade_table = TradeTable(self._current_exchange)
+
+        # Init account info widget
+        self._account_info = AccountInfo()
 
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._current_exchange)
@@ -157,6 +162,9 @@ class PlutusTerminal(QMainWindow):
             self._current_exchange.set_all_leverage,
         )
 
+        # Configure account info
+        self._fetcher_message_bus.balance_signal.connect(self._account_info.update_balance)
+
         # Configure Perps Trade
         self._perps_trade.pair_changed.connect(self._change_current_pair)
         self._fetcher_message_bus.subscribed_prices_signal.connect(
@@ -202,6 +210,7 @@ class PlutusTerminal(QMainWindow):
         self._work_area_layout.addWidget(self._left_splitter)
         self._work_area_layout.addWidget(self._news_list)
 
+        self._right_layout.addWidget(self._account_info)
         self._right_layout.addWidget(self._perps_trade)
         self._right_layout.addWidget(self._options_widget)
         self._right_layout.addStretch()

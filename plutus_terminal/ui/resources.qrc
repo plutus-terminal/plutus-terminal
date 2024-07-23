@@ -38,6 +38,7 @@
         <file alias="focus_icon">images/focus_icon.svg</file>
         <file alias="disable">images/disable_icon.svg</file>
         <file alias="music">images/music.svg</file>
+        <file alias="account_info">images/account_info.svg</file>
     </qresource>
 
     <qresource prefix="general">

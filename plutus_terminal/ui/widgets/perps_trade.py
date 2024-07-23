@@ -99,7 +99,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._setup_widgets()
         self._setup_layout()
 
-    def _setup_widgets(self) -> None:
+    def _setup_widgets(self) -> None:  # noqa: PLR0915
         """Configure widgets."""
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.top_bar.icon.setPixmap(
@@ -173,6 +173,9 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._trade_type_market.amount_changed.connect(
             self._update_info,
         )
+        self._trade_type_market.percent_button_clicked.connect(
+            self._handle_percent_button_click,
+        )
         self._trade_type_limit.price_refresh_btn.clicked.connect(
             self._refresh_limit_price,
         )
@@ -181,6 +184,9 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         )
         self._trade_type_limit.amount_changed.connect(
             self._update_info,
+        )
+        self._trade_type_limit.percent_button_clicked.connect(
+            self._handle_percent_button_click,
         )
 
         self._info_frame.setObjectName("newsFrameQuote")
@@ -406,6 +412,19 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             PerpsTradeType.MARKET,
         )
 
+    def _handle_percent_button_click(self, button: QtWidgets.QAbstractButton) -> None:
+        """Handle percent button click.
+
+        Args:
+            button (QtWidgets.QAbstractButton): Percent button clicked.
+        """
+        current_widget = self._trade_tab.currentWidget()
+        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
+            return
+        balance = self._exchange.stable_balance
+        percentage = Decimal(current_widget.percent_group.id(button) / 100)
+        current_widget.amount_box.setValue(balance * percentage)
+
     @asyncSlot()
     async def _create_order(
         self,
@@ -510,6 +529,7 @@ class MarketTradeWidget(QtWidgets.QWidget):
     """Widget to fill a market trade."""
 
     amount_changed = Signal()
+    percent_button_clicked = Signal(QtWidgets.QAbstractButton)
 
     def __init__(
         self,
@@ -534,6 +554,7 @@ class MarketTradeWidget(QtWidgets.QWidget):
             button = QtWidgets.QRadioButton(value)
             self.percent_group.addButton(button)
             self.percent_group.setId(button, int(value[:-1]))
+            self.percent_group.buttonClicked.connect(self.percent_button_clicked)
             self.percent_group_layout.addWidget(button)
 
         amount_layout = QtWidgets.QHBoxLayout()
@@ -594,6 +615,7 @@ class LimitTradeWidget(QtWidgets.QWidget):
     """Widget to fill a limit trade."""
 
     amount_changed = Signal()
+    percent_button_clicked = Signal(QtWidgets.QAbstractButton)
 
     def __init__(
         self,
@@ -618,6 +640,7 @@ class LimitTradeWidget(QtWidgets.QWidget):
             button = QtWidgets.QRadioButton(value)
             self.percent_group.addButton(button)
             self.percent_group.setId(button, int(value[:-1]))
+            self.percent_group.buttonClicked.connect(self.percent_button_clicked)
             self.percent_group_layout.addWidget(button)
 
         self.target_price_label = QtWidgets.QLabel("Price:")
