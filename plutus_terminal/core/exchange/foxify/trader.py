@@ -498,9 +498,9 @@ class FoxifyTrader(ExchangeTrader):
         )
         try:
             tx = await self._order_book_contract.functions.updateIncreaseOrder(
-                trade_arguments["order_index"],
+                int(trade_arguments["order_index"]),
                 int(trade_arguments["size_delta"] * self._price_precision),
-                trade_arguments["acceptable_price"],
+                int(trade_arguments["acceptable_price"] * self._price_precision),
                 trade_arguments["trigger_above_threshold"],
             ).build_transaction(
                 {
@@ -547,10 +547,10 @@ class FoxifyTrader(ExchangeTrader):
         )
         try:
             tx = await self._order_book_contract.functions.updateDecreaseOrder(
-                trade_arguments["order_index"],
+                int(trade_arguments["order_index"]),
                 0,
                 int(trade_arguments["size_delta"] * self._price_precision),
-                trade_arguments["acceptable_price"],
+                int(trade_arguments["acceptable_price"] * self._price_precision),
                 trade_arguments["trigger_above_threshold"],
             ).build_transaction(
                 {

@@ -171,11 +171,6 @@ class ManageOrder(QtWidgets.QDialog):
 
         self.setLayout(self._main_layout)
 
-    def lock_order_type(self) -> None:
-        """Lock order type."""
-        for button in self._type_group.buttons():
-            button.setEnabled(False)
-
     def _on_type_change(self, button: QtWidgets.QAbstractButton) -> None:
         """Handle type change."""
         button_id = self._type_group.id(button)
@@ -243,6 +238,17 @@ class ManageOrder(QtWidgets.QDialog):
         if self._associated_position is not None:
             self._associated_position["position_size_stable"] = new_quantity
         self.update_pnl(self.trigger_box.value())
+
+    def set_edit_mode(self, edit_mode: bool) -> None:
+        """Set if the widget is editing or creating order.
+
+        Args:
+            edit_mode (bool): If true, the widget is in edit mode.
+        """
+        self.amount_box.setDisabled(edit_mode)
+        self.amount_max_button.setDisabled(edit_mode)
+        for button in self._type_group.buttons():
+            button.setDisabled(edit_mode)
 
     def on_execute_order(self) -> None:
         """Handle execute order button click."""

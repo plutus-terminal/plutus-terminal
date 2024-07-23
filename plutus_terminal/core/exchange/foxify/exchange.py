@@ -279,7 +279,7 @@ class FoxifyExchange(ExchangeBase):
             toast_id,
         )
 
-    @asyncSlot
+    @asyncSlot()
     async def edit_order(
         self,
         order_data: OrderData,
@@ -300,7 +300,7 @@ class FoxifyExchange(ExchangeBase):
         )
 
         if new_size_stable > order_data["size_stable"]:
-            msg = "New size must be smaller than current size."
+            msg = "New size must be smaller/equal than current size."
             raise ValueError(msg)
 
         order_extra = order_data.get("extra", None)

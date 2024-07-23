@@ -540,7 +540,7 @@ class ExchangeBase(ABC):
         self,
         order_data: OrderData,
         new_size_stable: Decimal,
-        execution_price: Optional[Decimal],
+        new_execution_price: Optional[Decimal],
     ) -> None:
         """Edit existent order.
 
@@ -548,7 +548,7 @@ class ExchangeBase(ABC):
             order_data (OrderData): Order to edit.
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
-            execution_price (Optional[Decimal], optional): Execution price.
+            new_execution_price (Optional[Decimal], optional): Execution price.
         """
         ...
 

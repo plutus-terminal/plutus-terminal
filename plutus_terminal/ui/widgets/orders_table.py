@@ -1,6 +1,7 @@
 """Widget to visualize open orders."""
 
 from __future__ import annotations
+from copy import deepcopy
 
 from decimal import Decimal
 from functools import partial
@@ -29,6 +30,7 @@ from plutus_terminal.core.exchange.types import (
     PerpsTradeDirection,
     PerpsTradeType,
 )
+from plutus_terminal.ui.widgets.manage_order import ManageOrder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -180,10 +182,8 @@ class OrdersTableView(QTableView):
             buttons = OrderButtons()
             buttons_index = self.model().index(row, list(HEADER_MAP).index("buttons"))
             order_data = buttons_index.data(Qt.ItemDataRole.UserRole)
-            # buttons.edit_button.clicked.connect(
-            #     partial(self.edit_order.emit, order_data),
-            # )
             buttons.cancel_button.clicked.connect(partial(self.cancel_order, order_data))
+            buttons.edit_button.clicked.connect(partial(self._on_edit_order, order_data))
             self.setIndexWidget(buttons_index, buttons)
             self.setRowHeight(row, int(self.sizeHintForRow(row) * 1.1))
 
@@ -201,10 +201,45 @@ class OrdersTableView(QTableView):
                 int(widget.sizeHint().width() * 1.1),
             )
 
-    @asyncSlot()
+    @asyncSlot(OrderData)
     async def cancel_order(self, order_data: OrderData) -> None:
         """Cancel order."""
         await self._exchange.cancel_order(order_data)
+
+    def _on_edit_order(self, order_data: OrderData) -> None:
+        """Handle edit button click.
+
+        Open manage order dialog to edit order.
+
+        Args:
+            order_data (OrderData): Order to edit.
+        """
+        associated_position = self._exchange.get_position_associated_with_order(order_data)
+        order_dialog = ManageOrder(
+            order_data=deepcopy(order_data),
+            exchange=self._exchange,
+            associated_position=associated_position,
+            parent=self,
+        )
+        order_dialog.set_edit_mode(True)
+        order_dialog.execute_order.connect(
+            lambda new_order: self.edit_order(old_order_data=order_data, new_order_data=new_order)
+        )
+        order_dialog.show()
+
+    @asyncSlot(OrderData, OrderData)
+    async def edit_order(self, old_order_data: OrderData, new_order_data: OrderData) -> None:
+        """Edit order on exchange.
+
+        Args:
+            old_order_data (OrderData): Old order data.
+            new_order_data (OrderData): New order data.
+        """
+        await self._exchange.edit_order(
+            order_data=old_order_data,
+            new_size_stable=new_order_data["size_stable"],
+            new_execution_price=new_order_data["trigger_price"],
+        )
 
     def on_row_click(self, index: QModelIndex) -> None:
         """Handle click on row."""
