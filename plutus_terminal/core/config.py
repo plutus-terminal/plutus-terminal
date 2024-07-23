@@ -476,9 +476,25 @@ class AppConfig:
         with DATABASE.atomic():
             # Arbitrum One
             Web3RPC.get_or_create(
-                chain_id=42161,
-                chain_name="Arbitrum One",
-                rpc_url="https://arbitrum-one-rpc.publicnode.com",
+                chain_name="Arbitrum One Fetcher",
+                rpc_urls=orjson.dumps(
+                    [
+                        "https://arbitrum-one-rpc.publicnode.com",
+                        "https://arbitrum.blockpi.network/v1/rpc/public",
+                        "https://rpc.ankr.com/arbitrum",
+                        "https://arbitrum-one.public.blastapi.io/",
+                        "https://arbitrum.llamarpc.com/",
+                    ],
+                ),
+            )
+
+            Web3RPC.get_or_create(
+                chain_name="Arbitrum One Trader",
+                rpc_urls=orjson.dumps(
+                    [
+                        "https://arb1.arbitrum.io/rpc",
+                    ],
+                ),
             )
 
     @staticmethod
@@ -486,12 +502,6 @@ class AppConfig:
         """Get Web3 RPC by name."""
         with DATABASE.atomic():
             return Web3RPC.get(Web3RPC.chain_name == chain_name)
-
-    @staticmethod
-    def get_web3_rpc_by_id(chain_id: int) -> Web3RPC:
-        """Get Web3 RPC by id."""
-        with DATABASE.atomic():
-            return Web3RPC.get(Web3RPC.chain_id == chain_id)
 
     @staticmethod
     def get_all_web3_rpc() -> list[Web3RPC]:

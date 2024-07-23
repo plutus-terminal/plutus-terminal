@@ -21,6 +21,7 @@ from plutus_terminal.core.exchange.types import (
     TradeResults,
 )
 from plutus_terminal.core.exchange.web3 import web3_utils
+from plutus_terminal.core.exchange.web3.cycle_provider import build_cycle_provider
 from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
@@ -46,9 +47,7 @@ class FoxifyTrader(ExchangeTrader):
         self.pair_map = pair_map
         self.web3_account = web3_account
         self.extra_gas = extra_gas
-        self.web3_provider = AsyncWeb3(
-            AsyncHTTPProvider(str(CONFIG.get_web3_rpc_by_name("Arbitrum One").rpc_url)),
-        )
+        self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         self._vault_contract = foxify_utils.build_vault_contract(self.web3_provider)
         self._position_router_contract = foxify_utils.build_position_router_contract(
             self.web3_provider,

@@ -25,6 +25,7 @@ from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.foxify.fetcher import FoxifyFetcher
 from plutus_terminal.core.exchange.foxify.trader import FoxifyTrader
 from plutus_terminal.core.exchange.web3 import web3_utils
+from plutus_terminal.core.exchange.web3.cycle_provider import build_cycle_provider
 from plutus_terminal.core.types_ import (
     ExchangeType,
     NewAccountInfo,
@@ -55,9 +56,7 @@ class FoxifyExchange(ExchangeBase):
             fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
         """
         super().__init__(fetcher_bus=fetcher_bus)
-        self.web3_provider = AsyncWeb3(
-            AsyncHTTPProvider(str(CONFIG.get_web3_rpc_by_name("Arbitrum One").rpc_url)),
-        )
+        self.web3_provider = build_cycle_provider("Arbitrum One Fetcher")
         # Get current account
         keyring_account = CONFIG.current_keyring_account
         keyring_password = keyring.get_password(

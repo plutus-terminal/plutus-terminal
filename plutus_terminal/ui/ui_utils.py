@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QWidget
 
 from plutus_terminal.core.exchange.types import PerpsTradeDirection
 
-T = TypeVar("T")
+T = TypeVar("T", bound=QWidget)
 
 
 def get_minimal_digits(number: float, figures: int) -> int:

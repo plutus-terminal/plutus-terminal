@@ -33,6 +33,7 @@ from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.base import ExchangeFetcher
 from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.types import OrderData, PerpsTradeType
+from plutus_terminal.core.exchange.web3.cycle_provider import build_cycle_provider
 from plutus_terminal.core.types_ import (
     PerpsPosition,
     PerpsTradeDirection,
@@ -72,9 +73,7 @@ class FoxifyFetcher(ExchangeFetcher):
         self.aclient = AsyncClient()
         self.pair_map = pair_map
         self.web3_account = web3_account
-        self.web3_provider = AsyncWeb3(
-            AsyncHTTPProvider(str(CONFIG.get_web3_rpc_by_name("Arbitrum One").rpc_url)),
-        )
+        self.web3_provider = build_cycle_provider("Arbitrum One Fetcher")
         self.vault_contract = foxify_utils.build_vault_contract(self.web3_provider)
         self.order_book_contract = foxify_utils.build_order_book_contract(
             self.web3_provider,
