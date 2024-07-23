@@ -139,6 +139,18 @@ class FoxifyTrader(ExchangeTrader):
 
         amount_in = int(trade_arguments["amount_in"] * 10**foxify_utils.USDC_DECIMAL_PLACES)
         size_delta = int(trade_arguments["size_delta"] * self._price_precision)
+        stop_loss = int(trade_arguments["stop_loss"] * self._price_precision)
+        take_profit = int(trade_arguments["take_profit"] * self._price_precision)
+        price_bellow = (
+            stop_loss
+            if trade_arguments["trade_direction"] == PerpsTradeDirection.LONG
+            else take_profit
+        )
+        price_above = (
+            take_profit
+            if trade_arguments["trade_direction"] == PerpsTradeDirection.LONG
+            else stop_loss
+        )
 
         order_execution_data = self.web3_provider.codec.encode(
             types=[
@@ -157,8 +169,8 @@ class FoxifyTrader(ExchangeTrader):
                 size_delta if trade_arguments["take_profit"] != Decimal(0) else 0,
                 amount_in,
                 amount_in,
-                int(trade_arguments["stop_loss"] * self._price_precision),
-                int(trade_arguments["take_profit"] * self._price_precision),
+                price_bellow,
+                price_above,
                 trade_arguments["trade_direction"].value,
             ],
         )
