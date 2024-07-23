@@ -1,8 +1,8 @@
 """Widget to visualize open orders."""
 
 from __future__ import annotations
-from copy import deepcopy
 
+from copy import deepcopy
 from decimal import Decimal
 from functools import partial
 from typing import TYPE_CHECKING, Optional
@@ -223,7 +223,7 @@ class OrdersTableView(QTableView):
         )
         order_dialog.set_edit_mode(True)
         order_dialog.execute_order.connect(
-            lambda new_order: self.edit_order(old_order_data=order_data, new_order_data=new_order)
+            lambda new_order: self.edit_order(old_order_data=order_data, new_order_data=new_order),
         )
         order_dialog.show()
 

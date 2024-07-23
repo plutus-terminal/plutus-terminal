@@ -8,7 +8,6 @@ from PySide6.QtCore import (
     QEvent,
     Qt,
 )
-from PySide6.QtGui import QEnterEvent
 from PySide6.QtWidgets import (
     QLabel,
     QToolTip,
@@ -19,7 +18,7 @@ from PySide6.QtWidgets import (
 if TYPE_CHECKING:
     from decimal import Decimal
 
-    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtGui import QEnterEvent, QMouseEvent
 
 
 class PnlBreakdown(QWidget):
