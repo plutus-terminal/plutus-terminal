@@ -21,7 +21,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-from web3 import AsyncHTTPProvider, AsyncWeb3
 from websockets.client import WebSocketClientProtocol, connect
 from websockets.exceptions import (
     ConnectionClosedError,
@@ -29,7 +28,6 @@ from websockets.exceptions import (
     InvalidStatusCode,
 )
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.base import ExchangeFetcher
 from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.types import OrderData, PerpsTradeType
@@ -612,7 +610,7 @@ class FoxifyFetcher(ExchangeFetcher):
         """Fetch funding rate of cached positions.."""
         while True:
             await self._fetch_positions_funding_rates()
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
 
     async def _fetch_positions_funding_rates(self) -> None:
         """Fetch funding rate of cached positions.."""
@@ -645,7 +643,7 @@ class FoxifyFetcher(ExchangeFetcher):
                         direction,
                     ).call(),
                 )
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
 
     def get_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
