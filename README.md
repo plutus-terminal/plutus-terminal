@@ -11,61 +11,58 @@
     <img src="./assets/plutus_splash.gif" alt="Plutus Terminal Splash Screen"/>
 </p>
 
-Plutus Terminal is a powerful **open-source** crypto news trading terminal with the
-focus on Perpetuals DEX.
+Plutus Terminal is a powerful **open-source** crypto news trading terminal
+focused on Perpetuals DEX. Designed to be user-friendly, it allows you to trade
+using real-time news updates, control positions, and manage multiple DEXs.
 
-Designed to be user-friendly and easy to use.
-It allows you to trade using real-time news updates, control positions and manage
-multiple DEX's.
-
-Plutus terminal embraces web3 mentality, your are awalys in contorl of your keys,
-it also handles everything locally and interact directly with the DEX contracts.
+Embracing the web3 mentality, Plutus Terminal ensures you are always in control
+of your keys, handles everything locally, and interacts directly with the DEX
+contracts.
 
 ## Features 🎯
 
-* 💻 Runs locally on your computer
-* 🌐 Cross-platform (Windows, Linux, MacOS)
-* 🔄 Intregates TreeOfAlpha and PhoenixNews
-* 🛠️  News filters highly customizable
-* 🔔 Never miss a news with desktop notifications
-* 💎 Open-source and free
-* 🌍 Use your own RPC nodes
+- 💻 Runs locally on your computer
+- 🌐 Cross-platform (Windows, Linux, MacOS)
+- 🔄 Integrates TreeOfAlpha and PhoenixNews
+- 🛠️ Highly customizable news filters
+- 🔔 Never miss news with desktop notifications
+- 💎 Open-source and free
+- 🌍 Use your own RPC nodes
 
 ## ⚠️  Disclaimer
 
-Plutus Terminal is an **alpha** version. It is not ready for production use.
+Plutus Terminal is in **alpha** version and not ready for production use. It
+trades on the Perpetuals DEX using real money. Do not risk money you cannot
+afford to lose.
 
-Plutus terminal will trade on the Perpetuals DEX using real money. Do not risk money
-which you are afraid to lose.
 
-**PLUTUS-TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK.** THE AUTHORS
-AND ALL AFFILIATES ASSUME NO RESPONSIBILITY FOR YOUR TRADING RESULTS. THE
-ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.
-SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY
-SERVICING, REPAIR OR CORRECTION.
+**PLUTUS TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK.** The
+authors and all affiliates assume no responsibility for your trading results.
+The entire risk as to the quality and performance of the program is with you.
+Should the program prove defective, you assume the cost of all necessary
+servicing, repair, or correction.
 
-Everyone is encouraged to read the source code and understand the code before using it.
-
-Positions open with Plutus Terminal will automatically use our referral
-codes when possible.
+Everyone is encouraged to read and understand the source code before using it.
+Positions opened with Plutus Terminal will automatically use our referral codes
+when possible.
 
 ## 🛠️  Installation
 
-Plutus terminal is a python package and depends on multiple modules.
-You can install it downloading the PyApp excutable, from pipx or build it using poetry.
+Plutus Terminal is a Python package with multiple dependencies. You can install
+it by downloading the PyApp executable, using pipx, or building it with Poetry.
 
 <details>
 <summary>
-<strong>Installation using <code>PyApp</code>:</strong>
+<strong>Installation using <code>PyApp executable</code>:</strong>
 </summary>
 
-### To install
+### PyApp
 
-Download the plutus-terminal executable from the [Releases page](https://github.com/plutus-terminal/plutus-terminal/releases)
+#### To install
 
-Excute the downloaded file and you will be ready to go.
+Download the plutus-terminal executable from the [Releases page](https://github.com/plutus-terminal/plutus-terminal/releases) and run it directly.
 
-### To update
+#### To update
 
 From the terminal run:
 
@@ -73,28 +70,29 @@ From the terminal run:
 <plutus_terminal_executable> self update
 ```
 
-### To uninstall:
+#### To uninstall
 
 ```bash
 <plutus_terminal_executable> self remove
 ```
 
+> [!NOTE]
 > To learn more about PyApp, check out the [PyApp documentation](https://ofek.dev/pyapp/latest/)
 
 <br>
-#TODO
-
 </details>
-
 <br>
 
 <details>
 <summary>
 <strong>Installation using <code>pipx</code>:</strong>
 </summary>
+
 <br>
 
-### To install
+### Pipx
+
+#### To install
 
 ```bash
 pipx install plutus-terminal
@@ -106,14 +104,13 @@ Run with:
 plutus-terminal
 ```
 
-### To update
+#### To update
 
 ```bash
 pipx upgrade plutus-terminal
 ```
 
 </details>
-
 <br>
 
 <details>
@@ -122,7 +119,9 @@ pipx upgrade plutus-terminal
 </summary>
 <br>
 
-### To install
+### Poetry
+
+#### To install
 
 First, clone the repository:
 
@@ -153,8 +152,7 @@ Run the tool with:
 ```bash
 poetry run plutus-terminal
 ```
-
-### To update
+#### To update
 
 ```bash
 git pull
