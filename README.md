@@ -58,6 +58,29 @@ You can install it downloading the PyApp excutable, from pipx or build it using 
 <summary>
 <strong>Installation using <code>PyApp</code>:</strong>
 </summary>
+
+### To install
+
+Download the plutus-terminal executable from the [Releases page](https://github.com/plutus-terminal/plutus-terminal/releases)
+
+Excute the downloaded file and you will be ready to go.
+
+### To update
+
+From the terminal run:
+
+```bash
+<plutus_terminal_executable> self update
+```
+
+### To uninstall:
+
+```bash
+<plutus_terminal_executable> self remove
+```
+
+> To learn more about PyApp, check out the [PyApp documentation](https://ofek.dev/pyapp/latest/)
+
 <br>
 #TODO
 
@@ -71,16 +94,22 @@ You can install it downloading the PyApp excutable, from pipx or build it using 
 </summary>
 <br>
 
-Install plutus-terminal with:
+### To install
 
 ```bash
-pipx install --pip-args='--pre' plutus-terminal
+pipx install plutus-terminal
 ```
 
-Run the tool with:
+Run with:
 
 ```bash
 plutus-terminal
+```
+
+### To update
+
+```bash
+pipx upgrade plutus-terminal
 ```
 
 </details>
@@ -92,6 +121,8 @@ plutus-terminal
 <strong>Installation using <code>Poetry</code>:</strong>
 </summary>
 <br>
+
+### To install
 
 First, clone the repository:
 
@@ -105,6 +136,12 @@ Navigate to the cloned repository:
 cd plutus-terminal
 ```
 
+Checkout the `main` branch:
+
+```bash
+git checkout main
+```
+
 Then, install the package:
 
 ```bash
@@ -115,6 +152,13 @@ Run the tool with:
 
 ```bash
 poetry run plutus-terminal
+```
+
+### To update
+
+```bash
+git pull
+poetry update
 ```
 
 </details>
