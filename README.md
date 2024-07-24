@@ -52,12 +52,40 @@ codes when possible.
 ## 🛠️  Installation
 
 Plutus terminal is a python package and depends on multiple modules.
-You can install it downloading the PyApp excutable, from pip or build it using poetry.
+You can install it downloading the PyApp excutable, from pipx or build it using poetry.
+
+> [!WARNING]
+> The following instructions will show how to install Plutus Terminal unstable version!
+> Unstable version is not yet ready for production use.
 
 <details>
 <summary>
 <strong>Installation using <code>PyApp</code>:</strong>
 </summary>
+
+### To install
+
+Download the plutus-terminal executable from the [Releases page](https://github.com/plutus-terminal/plutus-terminal/releases)
+
+Excute the downloaded file and you will be ready to go.
+
+### To update
+
+From the terminal run:
+
+```bash
+<plutus_terminal_executable> self update
+```
+
+### To uninstall:
+
+```bash
+<plutus_terminal_executable> self remove
+```
+
+> [!NOTE]
+> To learn more about PyApp, check out the [PyApp documentation](https://ofek.dev/pyapp/latest/)
+
 <br>
 #TODO
 
@@ -67,10 +95,27 @@ You can install it downloading the PyApp excutable, from pip or build it using p
 
 <details>
 <summary>
-<strong>Installation using <code>pip</code>:</strong>
+<strong>Installation using <code>pipx</code>:</strong>
 </summary>
 <br>
-#TODO
+
+### To install
+
+```bash
+pipx install git+https://github.com/plutus-terminal/plutus-terminal.git@unstable
+```
+
+Run with:
+
+```bash
+plutus-terminal
+```
+
+### To update
+
+```bash
+pipx upgrade plutus-terminal
+```
 
 </details>
 
@@ -81,6 +126,8 @@ You can install it downloading the PyApp excutable, from pip or build it using p
 <strong>Installation using <code>Poetry</code>:</strong>
 </summary>
 <br>
+
+### To install
 
 First, clone the repository:
 
@@ -94,6 +141,12 @@ Navigate to the cloned repository:
 cd plutus-terminal
 ```
 
+Checkout the `unstable` branch:
+
+```bash
+git checkout unstable
+```
+
 Then, install the package:
 
 ```bash
@@ -104,6 +157,13 @@ Run the tool with:
 
 ```bash
 poetry run plutus-terminal
+```
+
+### To update
+
+```bash
+git pull
+poetry update
 ```
 
 </details>
