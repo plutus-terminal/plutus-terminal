@@ -1,10 +1,14 @@
 [tool.poetry]
 name = "plutus-terminal"
-version = "0.1.1a0"
-description = ""
-authors = ["Thr3ee <thr3ee.crypto@protonmail.com>"]
+version = "0.1.0a0"
+description = "Plutus Terminal is a powerful open-source crypto news trading terminal with the focus on Perpetuals DEX."
+authors = ["Plutus <plutus-terminal@protonmail.com>"]
 readme = "README.md"
 packages = [{include = "plutus_terminal"}]
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/plutus-terminal/plutus-terminal"
+repository = "https://github.com/plutus-terminal/plutus-terminal"
+keywords = ["plutus", "terminal", "crypto", "trading", "trading-bot", "perpetuals", "dex"]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
