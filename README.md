@@ -52,7 +52,7 @@ codes when possible.
 ## 🛠️  Installation
 
 Plutus terminal is a python package and depends on multiple modules.
-You can install it downloading the PyApp excutable, from pip or build it using poetry.
+You can install it downloading the PyApp excutable, from pipx or build it using poetry.
 
 <details>
 <summary>
@@ -67,10 +67,21 @@ You can install it downloading the PyApp excutable, from pip or build it using p
 
 <details>
 <summary>
-<strong>Installation using <code>pip</code>:</strong>
+<strong>Installation using <code>pipx</code>:</strong>
 </summary>
 <br>
-#TODO
+
+Install plutus-terminal with:
+
+```bash
+pipx install https://github.com/plutus-terminal/plutus-terminal.git@unstable
+```
+
+Run the tool with:
+
+```bash
+plutus-terminal
+```
 
 </details>
 
