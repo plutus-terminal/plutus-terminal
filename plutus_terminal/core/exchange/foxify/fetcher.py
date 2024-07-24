@@ -602,6 +602,11 @@ class FoxifyFetcher(ExchangeFetcher):
             finally:
                 await asyncio.sleep(2)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=0.15, max=5),
+        before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
+        retry_error_callback=log_retry(LOGGER),
+    )
     async def fetch_stable_balance(self) -> Decimal:
         """Fetch stable balance.
 
@@ -609,9 +614,8 @@ class FoxifyFetcher(ExchangeFetcher):
             Decimal: Balance in USD Stable Format.
         """
         balance = await self.stable_contract.functions.balanceOf(self.web3_account.address).call()
-        decimals = int(await self.stable_contract.functions.decimals().call())
 
-        return Decimal(balance) / 10**decimals
+        return Decimal(balance) / 10**foxify_utils.USDC_DECIMAL_PLACES
 
     def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
         """Calulate fee for a given position.
