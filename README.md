@@ -74,7 +74,7 @@ You can install it downloading the PyApp excutable, from pipx or build it using 
 Install plutus-terminal with:
 
 ```bash
-pipx install https://github.com/plutus-terminal/plutus-terminal.git@unstable
+pipx install --pip-args='--pre' plutus-terminal
 ```
 
 Run the tool with:
