@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "plutus-terminal"
-version = "0.1.0"
+version = "0.1.1a0"
 description = ""
 authors = ["Thr3ee <thr3ee.crypto@protonmail.com>"]
 readme = "README.md"
