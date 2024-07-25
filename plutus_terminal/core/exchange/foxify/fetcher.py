@@ -122,19 +122,25 @@ class FoxifyFetcher(ExchangeFetcher):
     )
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
-        await self._populate_funding_rates()
-        self._vault_price_precision = int(
-            await self.vault_contract.functions.PRICE_PRECISION().call(),
+        (
+            _,
+            price_precision,
+            funding_rate_precision,
+            basis_points_divisor,
+            margin_fee_basis_points,
+        ) = await asyncio.gather(
+            self._populate_funding_rates(),
+            self.vault_contract.functions.PRICE_PRECISION().call(),
+            self.vault_contract.functions.FUNDING_RATE_PRECISION().call(),
+            self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
+            self.vault_contract.functions.marginFeeBasisPoints().call(),
         )
-        self._funding_rate_precision = int(
-            await self.vault_contract.functions.FUNDING_RATE_PRECISION().call(),
-        )
-        self._basis_points_divisor = int(
-            await self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
-        )
-        self._margin_fee_basis_points = int(
-            await self.vault_contract.functions.marginFeeBasisPoints().call(),
-        )
+
+        # Set the attributes
+        self._vault_price_precision = int(price_precision)
+        self._funding_rate_precision = int(funding_rate_precision)
+        self._basis_points_divisor = int(basis_points_divisor)
+        self._margin_fee_basis_points = int(margin_fee_basis_points)
 
     @retry(
         retry=(
@@ -659,20 +665,38 @@ class FoxifyFetcher(ExchangeFetcher):
             )
 
     async def _populate_funding_rates(self) -> None:
-        """Fetch funding rate of cached positions.."""
+        """Fetch funding rate of cached positions."""
+        tasks = []
         for direction in [
             PerpsTradeDirection.LONG.value,
             PerpsTradeDirection.SHORT.value,
         ]:
             for pair_address, pair in self.pair_map.items():
                 self._cached_funding_rates.setdefault(pair, {})
-                self._cached_funding_rates[pair][direction] = int(
-                    await self.vault_contract.functions.cumulativeFundingRates(
-                        self.web3_provider.to_checksum_address(pair_address),
-                        direction,
-                    ).call(),
-                )
-                await asyncio.sleep(0.1)
+                tasks.append(self._fetch_and_cache_funding_rate(pair, pair_address, direction))
+
+        await asyncio.gather(*tasks)
+
+    async def _fetch_and_cache_funding_rate(
+        self,
+        pair: str,
+        pair_address: str,
+        direction: bool,
+    ) -> None:
+        """Fetch and cache funding rate for a specific pair and direction.
+
+        Args:
+            pair (str): Pair name e.g Crypto.BTC/USD.
+            pair_address (str): Pair address.
+            direction (bool): Direction to fetch funding rate for.
+        """
+        rate = int(
+            await self.vault_contract.functions.cumulativeFundingRates(
+                self.web3_provider.to_checksum_address(pair_address),
+                direction,
+            ).call(),
+        )
+        self._cached_funding_rates[pair][direction] = rate
 
     def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.

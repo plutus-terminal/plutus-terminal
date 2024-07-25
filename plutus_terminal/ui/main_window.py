@@ -307,8 +307,10 @@ class PlutusTerminal(QMainWindow):
     @asyncSlot()
     async def _fill_news_list(self) -> None:
         """Fill news list with old news."""
+        self._news_list.setDisabled(True)
         old_news = await self._news_manager.fetch_old_news(self._news_list.max_news)
         self._news_list.fill_old_news(old_news)
+        self._news_list.setDisabled(False)
 
     @asyncSlot()
     async def change_account(self, account: KeyringAccount) -> None:

@@ -57,6 +57,8 @@ class NewsManager:
         Returns:
             list[NewsData]: List of old news.
         """
+        LOGGER.debug("Fetching old news from all news sources, limit: %s", limit)
+
         old_news: list[NewsData] = []
         tasks = [news_fetcher.fetch_old_news(limit) for news_fetcher in self.news_sources]
         old_news_results = await asyncio.gather(*tasks)
