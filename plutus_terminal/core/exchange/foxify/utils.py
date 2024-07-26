@@ -31,7 +31,7 @@ STABLE_ADDRESS = AsyncWeb3.to_checksum_address(
     "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
 )
 
-FOXIFY_POSITION_ROUNTER = AsyncWeb3.to_checksum_address(
+FOXIFY_POSITION_ROUTER = AsyncWeb3.to_checksum_address(
     "0x444A707dF66B124c92E0B9cB86ceb359F2A570FD",
 )
 
@@ -156,7 +156,26 @@ def build_position_router_contract(
     ) as f:
         abi = json.load(f)
 
-    return web3_provider.eth.contract(address=FOXIFY_POSITION_ROUNTER, abi=abi)
+    return web3_provider.eth.contract(address=FOXIFY_POSITION_ROUTER, abi=abi)
+
+
+def build_router_contract(
+    web3_provider: AsyncWeb3,
+) -> AsyncContract:
+    """Build router contract.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+
+    Returns:
+        AsyncContract: Contract for router.
+    """
+    with Path.open(
+        Path(__file__).parent.joinpath("abi/foxify_router.json"),
+    ) as f:
+        abi = json.load(f)
+
+    return web3_provider.eth.contract(address=FOXIFY_ROUTER, abi=abi)
 
 
 def build_order_book_contract(
@@ -195,16 +214,93 @@ def build_stable_contract(
     return web3_provider.eth.contract(address=STABLE_ADDRESS, abi=stable_abi)
 
 
+async def is_plugin_approved(
+    web3_provider: AsyncWeb3,
+    plugin_address: ChecksumAddress,
+    wallet_address: ChecksumAddress,
+) -> bool:
+    """Verify if token plugin is approved on router.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+        plugin_address (ChecksumAddress): Plugin address.
+        wallet_address (ChecksumAddress): Address to check for approval.
+
+    Returns:
+        bool: True if the token is already approved. False otherwise.
+    """
+    router_contract = build_router_contract(web3_provider)
+
+    approved = await router_contract.functions.approvedPlugins(
+        wallet_address,
+        plugin_address,
+    ).call()
+    return bool(approved)
+
+
+async def approve_plugin(
+    web3_provider: AsyncWeb3,
+    plugin_address: ChecksumAddress,
+    web3_account: LocalAccount,
+) -> None:
+    """Approve plugin.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+        plugin_address (ChecksumAddress): Plugin address.
+        web3_account (LocalAccount): Web3 account.
+    """
+    if await is_plugin_approved(
+        web3_provider,
+        plugin_address,
+        web3_account.address,
+    ):
+        return
+
+    router_contract = build_router_contract(web3_provider)
+    transaction_count: Nonce = await web3_provider.eth.get_transaction_count(
+        web3_account.address,
+    )
+
+    transaction_params: TxParams = {
+        "gas": Wei(400000),
+        "from": web3_account.address,
+        "nonce": transaction_count,
+        "value": Wei(0),
+    }
+
+    approval_transaction = await router_contract.functions.approvePlugin(
+        web3_account.address,
+        plugin_address,
+    ).build_transaction(transaction_params)
+
+    # Estimate gas for transaction with extra gas for speed
+    approval_transaction.update(
+        {"gas": await web3_utils.estimate_gas(web3_provider, approval_transaction)},
+    )
+
+    signed_txn = web3_account.sign_transaction(approval_transaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+
+    await web3_utils.await_receipt_and_report(
+        txn,
+        web3_provider,
+        "Plugin approved.",
+        "https://arbiscan.io/tx/",
+        LOGGER,
+    )
+
+
 async def is_stable_approved(
     web3_provider: AsyncWeb3,
-    spender: AsyncContract,
+    spender_address: ChecksumAddress,
     wallet_address: ChecksumAddress,
 ) -> bool:
     """Verify is token spend is approved on wallet.
 
     Args:
         web3_provider (AsyncWeb3): Web3 provider.
-        spender (AsyncContract): Spender contract.
+        spender_address (ChecksumAddress): Spender address.
         wallet_address (ChecksumAddress): Address to check allowance.
 
     Returns:
@@ -212,80 +308,64 @@ async def is_stable_approved(
     """
     stable_contract = build_stable_contract(web3_provider)
 
-    toast_id = Toast.show_message(
-        "Checking approval for stable...",
-        type_=ToastType.WARNING,
-        timeout=5000,
-    )
     approved = await stable_contract.functions.allowance(
         wallet_address,
-        spender.address,
+        spender_address,
     ).call()
     approved_quantity = await stable_contract.functions.balanceOf(wallet_address).call()
     if int(approved) <= int(approved_quantity):
-        Toast.update_message(
-            toast_id,
-            "Approving stable...",
-            type_=ToastType.WARNING,
-        )
         return False
-    Toast.update_message(
-        toast_id,
-        "Stable was already approved!",
-        type_=ToastType.SUCCESS,
-    )
     return True
 
 
 async def approve_stable(
     web3_provider: AsyncWeb3,
-    spender: AsyncContract,
+    spender_address: ChecksumAddress,
     web3_account: LocalAccount,
 ) -> None:
     """Approve stable for spender.
 
     Args:
         web3_provider (AsyncWeb3): Web3 provider.
-        spender (AsyncContract): Spender contract.
+        spender_address (ChecksumAddress): Spender address.
         web3_account (LocalAccount): Web3 account.
     """
-    if not await is_stable_approved(web3_provider, spender, web3_account.address):
-        stable_contract = build_stable_contract(web3_provider)
-        transaction_count: Nonce = await web3_provider.eth.get_transaction_count(
-            web3_account.address,
-        )
+    if await is_stable_approved(web3_provider, spender_address, web3_account.address):
+        return
+    stable_contract = build_stable_contract(web3_provider)
+    transaction_count: Nonce = await web3_provider.eth.get_transaction_count(
+        web3_account.address,
+    )
 
-        transaction_params: TxParams = {
-            "gas": Wei(400000),
-            "from": web3_account.address,
-            "nonce": transaction_count,
-            "value": Wei(0),
-            "maxFeePerGas": await web3_utils.estimate_gas_price(web3_provider, Gwei(0)),
-            "maxPriorityFeePerGas": web3_provider.to_wei(0, "gwei"),
-        }
-        max_approval = (
-            115792089237316195423570985008687907853269984665640564039457584007913129639935
-        )
-        approval_transaction = await stable_contract.functions.approve(
-            spender.address,
-            max_approval,
-        ).build_transaction(transaction_params)
+    transaction_params: TxParams = {
+        "gas": Wei(400000),
+        "from": web3_account.address,
+        "nonce": transaction_count,
+        "value": Wei(0),
+        "maxFeePerGas": await web3_utils.estimate_gas_price(web3_provider, Gwei(0)),
+        "maxPriorityFeePerGas": web3_provider.to_wei(0, "gwei"),
+    }
+    max_approval = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    approval_transaction = await stable_contract.functions.approve(
+        spender_address,
+        max_approval,
+    ).build_transaction(transaction_params)
 
-        # Estimate gas for transaction with extra gas for speed
-        approval_transaction.update(
-            {"gas": await web3_utils.estimate_gas(web3_provider, approval_transaction)},
-        )
+    # Estimate gas for transaction with extra gas for speed
+    approval_transaction.update(
+        {"gas": await web3_utils.estimate_gas(web3_provider, approval_transaction)},
+    )
 
-        signed_txn = web3_account.sign_transaction(approval_transaction)
-        txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    signed_txn = web3_account.sign_transaction(approval_transaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
 
-        await web3_utils.await_receipt_and_report(
-            txn,
-            web3_provider,
-            "Stable approved.",
-            "https://arbiscan.io/tx/",
-            LOGGER,
-        )
+    await web3_utils.await_receipt_and_report(
+        txn,
+        web3_provider,
+        "Stable approved.",
+        "https://arbiscan.io/tx/",
+        LOGGER,
+    )
 
 
 async def ensure_referral(

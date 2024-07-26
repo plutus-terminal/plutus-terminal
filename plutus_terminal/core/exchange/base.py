@@ -401,6 +401,23 @@ class ExchangeBase(ABC):
         except OptionsNotAvailableError:
             return False
 
+    @abstractmethod
+    async def is_ready_to_trade(self) -> bool:
+        """Check if account is ready to trade.
+
+        Mainly used for DEXs to check if contract appovals are done.
+
+        Returns:
+            bool: True if account is ready to trade.
+        """
+
+    @abstractmethod
+    async def approve_for_trading(self) -> None:
+        """Approve contracts needed for trading.
+
+        Mainly used for DEXs to approve contract appovals.
+        """
+
     def format_pair_from_coin(self, coin: str) -> str:
         """Format coin to pair name."""
         return f"{self.pair_prefix}{coin}{self.pair_separator}{self.quote_symbol}{self.pair_suffix}"

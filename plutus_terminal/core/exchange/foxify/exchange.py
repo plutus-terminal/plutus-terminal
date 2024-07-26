@@ -56,7 +56,7 @@ class FoxifyExchange(ExchangeBase):
             fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
         """
         super().__init__(fetcher_bus=fetcher_bus)
-        self.web3_provider = build_cycle_provider("Arbitrum One Fetcher")
+        self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         # Get current account
         keyring_account = CONFIG.current_keyring_account
         keyring_password = keyring.get_password(
@@ -165,6 +165,51 @@ class FoxifyExchange(ExchangeBase):
     # def options(self) -> ExchangeOptions:
     #     """Return exchange options."""
     #     return self._options
+
+    @asyncSlot()
+    async def is_ready_to_trade(self) -> bool:
+        """Check if contracts are approaved.
+
+        Returns:
+            bool: True if account is ready to trade.
+        """
+        router_approved, pos_router_plugin, order_book_plugin = await asyncio.gather(
+            foxify_utils.is_stable_approved(
+                self.web3_provider,
+                self.web3_provider.to_checksum_address(foxify_utils.FOXIFY_ROUTER),
+                self.web3_account.address,
+            ),
+            foxify_utils.is_plugin_approved(
+                self.web3_provider,
+                foxify_utils.FOXIFY_POSITION_ROUTER,
+                self.web3_account.address,
+            ),
+            foxify_utils.is_plugin_approved(
+                self.web3_provider,
+                foxify_utils.FOXIFY_ORDER_BOOK,
+                self.web3_account.address,
+            ),
+        )
+        return all([router_approved, pos_router_plugin, order_book_plugin])
+
+    @asyncSlot()
+    async def approve_for_trading(self) -> None:
+        """Approve contracts needed for trading."""
+        await foxify_utils.approve_stable(
+            self.web3_provider,
+            foxify_utils.FOXIFY_ROUTER,
+            self.web3_account,
+        )
+        await foxify_utils.approve_plugin(
+            self.web3_provider,
+            foxify_utils.FOXIFY_POSITION_ROUTER,
+            self.web3_account,
+        )
+        await foxify_utils.approve_plugin(
+            self.web3_provider,
+            foxify_utils.FOXIFY_ORDER_BOOK,
+            self.web3_account,
+        )
 
     async def fetch_prices(self) -> None:
         """Fetch prices in an infinite loop."""

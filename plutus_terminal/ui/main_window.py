@@ -109,7 +109,11 @@ class PlutusTerminal(QMainWindow):
         self._trade_table = TradeTable(self._current_exchange)
 
         # Init account info widget
-        self._account_info = AccountInfo()
+        self._account_info = AccountInfo(
+            self._current_exchange.is_ready_to_trade,
+            self._current_exchange.approve_for_trading,
+            parent=self,
+        )
 
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._current_exchange)
@@ -163,6 +167,7 @@ class PlutusTerminal(QMainWindow):
         )
 
         # Configure account info
+        await self._account_info.set_approve_btn_visibility()
         self._fetcher_message_bus.balance_signal.connect(self._account_info.update_balance)
 
         # Configure Perps Trade
@@ -378,6 +383,11 @@ class PlutusTerminal(QMainWindow):
 
         # reload config from database
         CONFIG.load_config()
+
+        # Update account info
+        self._account_info.approve_btn.setVisible(
+            not await self._current_exchange.is_ready_to_trade(),
+        )
 
         for module in self._account_update_affected:
             module.blockSignals(True)
