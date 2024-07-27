@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING, Self
 
-from tenacity import before_sleep_log, retry, stop_after_attempt
+from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 from web3.exceptions import ContractLogicError
 from web3.types import Gwei, Nonce, Wei
 
@@ -76,19 +77,20 @@ class FoxifyTrader(ExchangeTrader):
         return trader
 
     @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=0.15, max=1),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
     )
     async def init_async(self) -> None:
         """Init async shared attributes."""
-        self._price_precision = await self._vault_contract.functions.PRICE_PRECISION().call()
-        self._position_execution_fee = (
-            await self._position_router_contract.functions.minExecutionFee().call()
-        )
-        self._order_execution_fee = (
-            await self._order_book_contract.functions.minExecutionFee().call()
+        (
+            self._price_precision,
+            self._position_execution_fee,
+            self._order_execution_fee,
+        ) = await asyncio.gather(
+            self._vault_contract.functions.PRICE_PRECISION().call(),
+            self._position_router_contract.functions.minExecutionFee().call(),
+            self._order_book_contract.functions.minExecutionFee().call(),
         )
 
     async def approve_stable(self) -> None:

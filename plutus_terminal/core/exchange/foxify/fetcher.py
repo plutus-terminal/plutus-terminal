@@ -115,8 +115,7 @@ class FoxifyFetcher(ExchangeFetcher):
         return fetcher
 
     @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=0.15, max=1),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
     )
@@ -124,10 +123,10 @@ class FoxifyFetcher(ExchangeFetcher):
         """Initialize async shared attributes."""
         (
             _,
-            price_precision,
-            funding_rate_precision,
-            basis_points_divisor,
-            margin_fee_basis_points,
+            self._vault_price_precision,
+            self._funding_rate_precision,
+            self._basis_points_divisor,
+            self._margin_fee_basis_points,
         ) = await asyncio.gather(
             self._populate_funding_rates(),
             self.vault_contract.functions.PRICE_PRECISION().call(),
@@ -135,12 +134,6 @@ class FoxifyFetcher(ExchangeFetcher):
             self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
             self.vault_contract.functions.marginFeeBasisPoints().call(),
         )
-
-        # Set the attributes
-        self._vault_price_precision = int(price_precision)
-        self._funding_rate_precision = int(funding_rate_precision)
-        self._basis_points_divisor = int(basis_points_divisor)
-        self._margin_fee_basis_points = int(margin_fee_basis_points)
 
     @retry(
         retry=(
