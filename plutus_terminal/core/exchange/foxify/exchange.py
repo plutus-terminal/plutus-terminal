@@ -16,7 +16,10 @@ from web3 import Account
 from web3.types import Gwei
 
 from plutus_terminal.core.config import CONFIG
-from plutus_terminal.core.exceptions import TransactionFailedError
+from plutus_terminal.core.exceptions import (
+    KeyringPasswordNotFoundError,
+    TransactionFailedError,
+)
 from plutus_terminal.core.exchange import helpers as exchange_helpers
 from plutus_terminal.core.exchange.base import (
     ExchangeBase,
@@ -65,7 +68,7 @@ class FoxifyExchange(ExchangeBase):
         )
         if keyring_password is None:
             msg = "Keyring password not found"
-            raise Exception(msg)
+            raise KeyringPasswordNotFoundError(msg)
         web3_account: LocalAccount = Account.from_key(orjson.loads(keyring_password)[0])
 
         self.web3_account = web3_account
@@ -512,9 +515,6 @@ class FoxifyExchange(ExchangeBase):
                 "reduce_only": order_data["reduce_only"],
             },
         )
-        if not cancel_args:
-            msg = "Could not find order to cancel."
-            raise Exception(msg)
 
         try:
             trade_result = await self.trader.cancel_order(cancel_args)

@@ -7,3 +7,7 @@ class OptionsNotAvailableError(Exception):
 
 class TransactionFailedError(Exception):
     """Error raise when transaction failed."""
+
+
+class KeyringPasswordNotFoundError(Exception):
+    """Error raise when password not found in keyring."""
