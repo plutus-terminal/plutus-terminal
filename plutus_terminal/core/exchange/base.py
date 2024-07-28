@@ -141,7 +141,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.
 
         Args:
@@ -664,7 +664,7 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.calculate_position_fee(position_collateral)
 
-    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.
 
         Args:
@@ -673,7 +673,7 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Funding fee in USD Stable Format.
         """
-        return self.fetcher.fetch_borrow_fee(perps_position)
+        return self.fetcher.fetch_funding_fee(perps_position)
 
     def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
         """Calculate liquidation price for a given position.

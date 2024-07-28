@@ -248,10 +248,10 @@ class PositionsTableView(QTableView):
             trade_collateral = data["position_size_stable"] / leverage
             trade_direction = data["trade_direction"]
             position_fee = self._exchange.calculate_position_fee(trade_collateral)
-            borrow_fee = self._exchange.fetch_borrow_fee(data)
+            funding_fee = self._exchange.fetch_funding_fee(data)
             pnl_percent = self._exchange.calculate_pnl_percent(data, current_price)
             pnl_usd = (trade_collateral * pnl_percent) / 100
-            pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
+            pnl_usd_after_fee = pnl_usd - position_fee - funding_fee
             pnl_percent_after_fee = pnl_usd_after_fee * 100 / trade_collateral
 
             pnl_widget = ui_utils.get_stored_widget(
@@ -265,7 +265,7 @@ class PositionsTableView(QTableView):
             pnl_widget.set_pnl(pnl_usd_after_fee, pnl_percent_after_fee)
             pnl_widget.set_tooltip_content(
                 pnl_usd,
-                borrow_fee,
+                funding_fee,
                 position_fee,
                 pnl_usd_after_fee,
             )

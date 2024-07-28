@@ -246,6 +246,6 @@ class CCXTFetcher(ExchangeFetcher):
             },
         )
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
         self.async_stop_event.set()

@@ -700,7 +700,7 @@ class FoxifyFetcher(ExchangeFetcher):
         )
         self._cached_funding_rates[pair][direction] = rate
 
-    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
 
         Args:
@@ -738,7 +738,7 @@ class FoxifyFetcher(ExchangeFetcher):
             Decimal: Liquidation price in USD Stable Format.
         """
         collateral = perps_position["collateral_stable"]
-        borrow_fee = self.fetch_borrow_fee(perps_position)
+        funding_fee = self.fetch_funding_fee(perps_position)
         position_fee = self.calculate_position_fee(perps_position["position_size_stable"])
         size = perps_position["position_size_stable"]
         trade_direction = perps_position["trade_direction"]
@@ -746,8 +746,10 @@ class FoxifyFetcher(ExchangeFetcher):
         open_price = perps_position["open_price"]
 
         if trade_direction == PerpsTradeDirection.LONG:
-            return open_price - (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
-        return open_price + (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
+            return open_price - (
+                ((collateral - funding_fee - position_fee) * open_price / size) / 2
+            )
+        return open_price + (((collateral - funding_fee - position_fee) * open_price / size) / 2)
 
     def calculate_pnl_percent(
         self,

@@ -213,16 +213,16 @@ class ManageOrder(QtWidgets.QDialog):
         leverage = self._associated_position["leverage"]
         trade_collateral = self._associated_position["position_size_stable"] / leverage
         position_fee = self._exchange.calculate_position_fee(trade_collateral)
-        borrow_fee = self._exchange.fetch_borrow_fee(self._associated_position)
+        funding_fee = self._exchange.fetch_funding_fee(self._associated_position)
         pnl_percentage = self._exchange.calculate_pnl_percent(self._associated_position, price)
         pnl_usd = (trade_collateral * pnl_percentage) / 100
-        pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
+        pnl_usd_after_fee = pnl_usd - position_fee - funding_fee
         pnl_percentage_after_fee = pnl_usd_after_fee * 100 / trade_collateral
 
         self._pnl_value.set_pnl(pnl_usd_after_fee, pnl_percentage_after_fee)
         self._pnl_value.set_tooltip_content(
             pnl_usd,
-            borrow_fee,
+            funding_fee,
             position_fee,
             pnl_usd_after_fee,
             push_tool_tip=False,

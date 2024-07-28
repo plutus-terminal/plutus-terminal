@@ -304,9 +304,9 @@ class BitgetExchange(ExchangeBase):
             type_=ToastType.SUCCESS,
         )
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
-        await super().stop()
+        await super().stop_async()
         await self.bidget_ccxt.close()
 
     @staticmethod

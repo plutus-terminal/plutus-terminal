@@ -484,6 +484,7 @@ class AppConfig:
                             "https://arbitrum.blockpi.network/v1/rpc/public",
                             "https://rpc.ankr.com/arbitrum",
                             "https://arbitrum-one.public.blastapi.io/",
+                            "https://arbitrum.llamarpc.com",
                         ],
                     ),
                 },

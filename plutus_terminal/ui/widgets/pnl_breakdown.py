@@ -49,7 +49,7 @@ class PnlBreakdown(QWidget):
     def set_tooltip_content(
         self,
         pnl: Decimal,
-        borrow_fee: Decimal,
+        funding_fee: Decimal,
         closing_fee: Decimal,
         pnl_after_fee: Decimal,
         push_tool_tip: bool = True,
@@ -57,7 +57,7 @@ class PnlBreakdown(QWidget):
         """Set tooltip content."""
         self._tooltip_content = (
             f"PnL: {round(pnl, 3)}<br>"
-            f"Borrow Fee: -{round(borrow_fee, 3)}<br>"
+            f"Funding Fee: -{round(funding_fee, 3)}<br>"
             f"Closing Fee: -{round(closing_fee, 3)}<br><br>"
             f"PnL After Fees: {round(pnl_after_fee, 3)}"
         )
