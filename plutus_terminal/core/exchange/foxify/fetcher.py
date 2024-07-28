@@ -327,7 +327,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 LOGGER.exception("WebSocket connection closed unexpectely")
                 await self._ensure_websocket_connection()
             except asyncio.CancelledError:
-                LOGGER.debug("Watch all positions cancelled.")
+                LOGGER.debug("Receive subscribed prices cancelled.")
                 raise
             except Exception:
                 LOGGER.exception("Unexpected error while receiving prices")
@@ -382,6 +382,9 @@ class FoxifyFetcher(ExchangeFetcher):
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
+            except asyncio.CancelledError:
+                LOGGER.debug("Watch all positions cancelled.")
+                raise
             finally:
                 await asyncio.sleep(1)
 
@@ -467,6 +470,9 @@ class FoxifyFetcher(ExchangeFetcher):
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
+            except asyncio.CancelledError:
+                LOGGER.debug("Watch all order cancelled.")
+                raise
             finally:
                 await asyncio.sleep(1)
 
@@ -598,6 +604,9 @@ class FoxifyFetcher(ExchangeFetcher):
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching stable balance.")
                 continue
+            except asyncio.CancelledError:
+                LOGGER.debug("Watch all balance cancelled.")
+                raise
             finally:
                 await asyncio.sleep(2)
 
@@ -762,8 +771,9 @@ class FoxifyFetcher(ExchangeFetcher):
             current_price = self._cached_prices[perps_position["pair"]]["price"]
         return ((current_price / open_price) - 1) * 100 * leverage * trade_direction_multiplier
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
         self.async_stop_event.set()
         if self._socket is not None:
             await self._socket.close()
+        await self.aclient.aclose()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qasync import asyncio, asyncSlot
+from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.base import (
@@ -353,7 +354,7 @@ class PlutusTerminal(QMainWindow):
 
     async def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
         """Update exchangeBase on all modules of the list exchange_update_affected."""
-        await self._current_exchange.stop()
+        await self._current_exchange.stop_async()
 
         self._news_message_bus.blockSignals(True)
         self._fetcher_message_bus.blockSignals(True)
@@ -398,3 +399,11 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus.blockSignals(False)
 
         await self._current_exchange.fetcher.resubscribe_on_going_connections()
+
+    async def stop_async(self) -> None:
+        """Stop all async tasks and cleanup for deletion."""
+        LOGGER.debug("Stopping Plutus Terminal async")
+        await asyncio.gather(
+            self._news_manager.stop_async(),
+            self._current_exchange.stop_async(),
+        )

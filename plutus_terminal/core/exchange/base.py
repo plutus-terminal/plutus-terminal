@@ -179,7 +179,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
         ...
 
@@ -717,10 +717,12 @@ class ExchangeBase(ABC):
         """
         raise OptionsNotAvailableError
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
-        LOGGER.info("Stopping exchange %s loops", self.name)
-        await self.fetcher.stop()
+        LOGGER.debug("Stopping exchange: `%s`", self.name)
+        for task in self._async_tasks:
+            task.cancel()
+        await self.fetcher.stop_async()
 
     @staticmethod
     @abstractmethod

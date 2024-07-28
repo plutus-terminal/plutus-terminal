@@ -43,3 +43,7 @@ class NewsFetcher(Protocol):
     async def login(self) -> None:
         """Login to news source."""
         ...
+
+    async def stop_async(self) -> None:
+        """Stop infinite loops and close connections."""
+        ...

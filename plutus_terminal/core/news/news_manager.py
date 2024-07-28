@@ -114,3 +114,9 @@ class NewsManager:
             )
 
         self.news_bus.news_signal.emit(raw_news)
+
+    async def stop_async(self) -> None:
+        """Stop all async tasks and cleanup for deletion."""
+        LOGGER.debug("Stopping NewsManager async")
+        for news_fetcher in self.news_sources:
+            await news_fetcher.stop_async()

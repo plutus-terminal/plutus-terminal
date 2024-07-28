@@ -75,7 +75,6 @@ class FoxifyExchange(ExchangeBase):
         self._pair_suffix = ""
         self._pair_map = self.build_pair_map()
         self._inverted_pair_map = {v: k for k, v in self._pair_map.items()}
-        self._async_tasks: list[asyncio.Task] = []
 
     @classmethod
     async def create(cls, fetcher_bus: ExchangeFetcherMessageBus) -> Self:

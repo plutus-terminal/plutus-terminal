@@ -7,7 +7,7 @@ from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING, Self
 
-from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
+from tenacity import before_sleep_log, retry, wait_exponential
 from web3.exceptions import ContractLogicError
 from web3.types import Gwei, Nonce, Wei
 
