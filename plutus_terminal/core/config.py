@@ -477,24 +477,27 @@ class AppConfig:
             # Arbitrum One
             Web3RPC.get_or_create(
                 chain_name="Arbitrum One Fetcher",
-                rpc_urls=orjson.dumps(
-                    [
-                        "https://arbitrum-one-rpc.publicnode.com",
-                        "https://arbitrum.blockpi.network/v1/rpc/public",
-                        "https://rpc.ankr.com/arbitrum",
-                        "https://arbitrum-one.public.blastapi.io/",
-                        "https://arbitrum.llamarpc.com/",
-                    ],
-                ),
+                defaults={
+                    "rpc_urls": orjson.dumps(
+                        [
+                            "https://arbitrum-one-rpc.publicnode.com",
+                            "https://arbitrum.blockpi.network/v1/rpc/public",
+                            "https://rpc.ankr.com/arbitrum",
+                            "https://arbitrum-one.public.blastapi.io/",
+                        ],
+                    ),
+                },
             )
 
             Web3RPC.get_or_create(
                 chain_name="Arbitrum One Trader",
-                rpc_urls=orjson.dumps(
-                    [
-                        "https://arb1.arbitrum.io/rpc",
-                    ],
-                ),
+                defaults={
+                    "rpc_urls": orjson.dumps(
+                        [
+                            "https://arb1.arbitrum.io/rpc",
+                        ],
+                    ),
+                },
             )
 
     @staticmethod
