@@ -366,6 +366,10 @@ class PositionManager(QWidget):
     @asyncSlot()
     async def create_reduce_order(self, kwargs: dict) -> None:
         """Create reduce order."""
+        # Close position if size matches
+        if self._position["position_size_stable"] == kwargs["size"]:
+            await self._exchange.close_position(self._position)
+            return
         await self._exchange.create_reduce_order(**kwargs)
 
     def on_tp_sl_clicked(self) -> None:
