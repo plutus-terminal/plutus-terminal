@@ -60,6 +60,7 @@ class PlutusTerminal(QMainWindow):
         super().__init__()
         self._fetcher_message_bus = ExchangeFetcherMessageBus()
         self._news_message_bus = NewsMessageBus()
+        self._async_tasks = []
 
         self.main_layout = QVBoxLayout()
         self.main_widget = QWidget()
@@ -97,7 +98,7 @@ class PlutusTerminal(QMainWindow):
         self._current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
             self._fetcher_message_bus,
         )
-        asyncio.create_task(self._current_exchange.fetch_prices())
+        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
 
         self._chart = TradingChart(
@@ -121,7 +122,7 @@ class PlutusTerminal(QMainWindow):
 
         # Init news manager
         self._news_manager = NewsManager(self._news_message_bus)
-        asyncio.create_task(self._news_manager.fetch_news())
+        self._async_tasks.append(asyncio.create_task(self._news_manager.fetch_news()))
         self._news_list = NewsList(self._current_exchange)
 
         # Init options Widget
@@ -362,7 +363,7 @@ class PlutusTerminal(QMainWindow):
         self._current_exchange = await new_exchange.create(self._fetcher_message_bus)
 
         # Init price fetching loops
-        asyncio.create_task(self._current_exchange.fetch_prices())
+        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
 
         # Update modules with new exchange
@@ -399,10 +400,13 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus.blockSignals(False)
 
         await self._current_exchange.fetcher.resubscribe_on_going_connections()
+        self._update_quick_trade_values()
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
         LOGGER.debug("Stopping Plutus Terminal async")
+        for task in self._async_tasks:
+            task.cancel()
         await asyncio.gather(
             self._news_manager.stop_async(),
             self._current_exchange.stop_async(),

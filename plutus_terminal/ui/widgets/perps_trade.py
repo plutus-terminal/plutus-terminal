@@ -11,11 +11,13 @@ from PySide6.QtCore import Signal
 from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.types import PerpsPosition
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.decimal_spin_box import DecimalSpinBoxWithButton
 from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButton
+from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
@@ -405,12 +407,18 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         """Handle quick trade click."""
         amount = getattr(CONFIG, option_key)
         pair = self._pair_combo_box.currentData()
-        await self._exchange.create_order(
-            pair,
-            amount,
-            direction,
-            PerpsTradeType.MARKET,
-        )
+        try:
+            await self._exchange.create_order(
+                pair,
+                amount,
+                direction,
+                PerpsTradeType.MARKET,
+            )
+        except InvalidOrderSizeError as error:
+            Toast.show_message(
+                f"{error}",
+                type_=ToastType.ERROR,
+            )
 
     def _handle_percent_button_click(self, button: QtWidgets.QAbstractButton) -> None:
         """Handle percent button click.
@@ -448,15 +456,21 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         )
         stop_loss = Decimal(current_tab.get_stop_loss())
         take_profit = Decimal(current_tab.get_take_profit())
-        await self._exchange.create_order(
-            pair,
-            amount,
-            direction,
-            trade_type,
-            execution_price,
-            take_profit,
-            stop_loss,
-        )
+        try:
+            await self._exchange.create_order(
+                pair,
+                amount,
+                direction,
+                trade_type,
+                execution_price,
+                take_profit,
+                stop_loss,
+            )
+        except InvalidOrderSizeError as error:
+            Toast.show_message(
+                f"{error}",
+                type_=ToastType.ERROR,
+            )
 
     def get_trade_type(self) -> PerpsTradeType:
         """Get trade type from active tab."""

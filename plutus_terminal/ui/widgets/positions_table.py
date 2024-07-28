@@ -323,7 +323,7 @@ class PositionManager(QWidget):
     def _setup_widgets(self) -> None:
         """Condifure widgets."""
         self._menu.setObjectName("floating")
-        self._close_action.reduce_clicked.connect(self.create_reduce_order)
+        self._close_action.reduce_clicked.connect(self._on_close_reduce_clicked)
         self._close_action.set_price_clicked.connect(self.set_price_limit)
         self._menu.addAction(self._close_action)
 
@@ -364,8 +364,8 @@ class PositionManager(QWidget):
         await self._exchange.close_position(self._position)
 
     @asyncSlot()
-    async def create_reduce_order(self, kwargs: dict) -> None:
-        """Create reduce order."""
+    async def _on_close_reduce_clicked(self, kwargs: dict) -> None:
+        """Handle click on reduce."""
         # Close position if size matches
         if self._position["position_size_stable"] == kwargs["size"]:
             await self._exchange.close_position(self._position)
@@ -390,11 +390,11 @@ class PositionManager(QWidget):
             associated_position=deepcopy(self._position),
             parent=self,
         )
-        order_dialog.execute_order.connect(self.execute_order)
+        order_dialog.execute_order.connect(self._handle_tp_sl_clicked)
         order_dialog.show()
 
     @asyncSlot()
-    async def execute_order(self, order_data: OrderData) -> None:
+    async def _handle_tp_sl_clicked(self, order_data: OrderData) -> None:
         """Execute order on exchange.
 
         Args:

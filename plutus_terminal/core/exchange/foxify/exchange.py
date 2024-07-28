@@ -17,6 +17,7 @@ from web3.types import Gwei
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import (
+    InvalidOrderSizeError,
     KeyringPasswordNotFoundError,
     TransactionFailedError,
 )
@@ -163,6 +164,13 @@ class FoxifyExchange(ExchangeBase):
         """Return stable balance."""
         return self.fetcher._cached_stable_balance  # noqa: SLF001
 
+    @property
+    def min_order_size(self) -> Decimal:
+        """Return min trade size."""
+        # Could not find this from any contracts only on the front end.
+        # TODO: Fix this with the value from the contract
+        return Decimal(10)
+
     # @property
     # def options(self) -> ExchangeOptions:
     #     """Return exchange options."""
@@ -260,7 +268,15 @@ class FoxifyExchange(ExchangeBase):
                 If None use CONFIG.take_profit.
             stop_loss_percent (Optional[float], optional): Stop loss price.
                 If None use CONFIG.stop_loss.
+
+        Raises:
+            InvalidOrderSizeError: If order size is not valid.
+            TransactionFailedError: If transaction failed
         """
+        if not self.is_valid_order_size(amount):
+            msg = f"Invalid order size. Order needs to be > {self.min_order_size} and < {self.max_order_size}"  # noqa: E501
+            raise InvalidOrderSizeError(msg)
+
         toast_id = Toast.show_message(
             f"Creating {trade_type.name} order for {pair}",
             type_=ToastType.WARNING,
@@ -345,6 +361,9 @@ class FoxifyExchange(ExchangeBase):
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
             new_execution_price (Decimal, optional): Execution price.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         toast_id = Toast.show_message(
             f"Editing order {order_data['id']}",
@@ -417,7 +436,9 @@ class FoxifyExchange(ExchangeBase):
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.
-            is_stop_loss (bool): True if this is a stop loss order. False if it's a take profit.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         toast_id = Toast.show_message(
             f"Creating {trade_type.name} order for {pair}",
@@ -493,7 +514,6 @@ class FoxifyExchange(ExchangeBase):
 
         Raises:
             TransactionFailed: If the transaction fails.
-
         """
         toast_id = Toast.show_message(
             f"Canceling {order_data['order_type'].name} order for {order_data['pair']}",
@@ -545,6 +565,9 @@ class FoxifyExchange(ExchangeBase):
 
         Args:
             perp_position (PerpPosition): Position to close.
+
+        Raises:
+            TransactionFailed: If the transaction fails.
         """
         toast_id = Toast.show_message(
             f"Closing position for {perp_position['pair']}",

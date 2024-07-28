@@ -11,3 +11,7 @@ class TransactionFailedError(Exception):
 
 class KeyringPasswordNotFoundError(Exception):
     """Error raise when password not found in keyring."""
+
+
+class InvalidOrderSizeError(Exception):
+    """Error raise when order size is invalid."""

@@ -390,6 +390,16 @@ class ExchangeBase(ABC):
         return self.format_pair_from_coin("BTC")
 
     @property
+    def min_order_size(self) -> Decimal:
+        """Return min trade size."""
+        return Decimal(0)
+
+    @property
+    def max_order_size(self) -> Decimal:
+        """Return max trade size."""
+        return Decimal(100_000_000_000_000_000_000_000)
+
+    @property
     def options(self) -> ExchangeOptions:
         """Returns: Exchange Options."""
         raise OptionsNotAvailableError
@@ -540,6 +550,19 @@ class ExchangeBase(ABC):
         )
         CONFIG.leverage = leverage
 
+    def is_valid_order_size(self, order_size: Decimal) -> bool:
+        """Validate order size with min and max values.
+
+        Args:
+            order_size (Decimal): Size to validate.
+
+        Returns:
+            bool: True if order size is valid.
+        """
+        if order_size < self.min_order_size or order_size > self.max_order_size:
+            return False
+        return True
+
     @abstractmethod
     async def create_order(
         self,
@@ -564,6 +587,10 @@ class ExchangeBase(ABC):
                 If None use CONFIG.take_profit.
             stop_loss (Optional[float], optional): Stop loss price.
                 If None use CONFIG.stop_loss.
+
+        Raises:
+            InvalidOrderSizeError: If order size is not valid.
+            TransactionFailedError: If transaction failed
         """
 
     @abstractmethod
@@ -580,6 +607,9 @@ class ExchangeBase(ABC):
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
             new_execution_price (Optional[Decimal], optional): Execution price.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         ...
 
@@ -601,8 +631,9 @@ class ExchangeBase(ABC):
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.
-            is_stop_loss (bool): True if this is a stop loss order.
-                False if it's a take profit.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
 
     @abstractmethod
@@ -625,6 +656,9 @@ class ExchangeBase(ABC):
 
         Args:
             perps_position (PerpsPosition): Position to close.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         toast_id = Toast.show_message(
             f"Closing position for {perps_position['pair']}",
