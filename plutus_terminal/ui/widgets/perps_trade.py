@@ -324,6 +324,13 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         coin = self._exchange.format_coin_from_pair(pair)
         await self._exchange.set_leverage(coin, leverage_value)
 
+        # In case the levarage was changed due to limits, ensure UI is up to date
+        if CONFIG.leverage != leverage_value:
+            self._leverage_spin.blockSignals(True)
+            self._leverage_spin.setValue(CONFIG.leverage)
+            self._update_leverage_buttons(CONFIG.leverage)
+            self._leverage_spin.blockSignals(False)
+
     def _update_info(self) -> None:
         """Update frame info."""
         current_widget = self._trade_tab.currentWidget()

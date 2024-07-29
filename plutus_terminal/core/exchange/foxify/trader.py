@@ -46,6 +46,7 @@ class FoxifyTrader(ExchangeTrader):
         self.pair_map = pair_map
         self.web3_account = web3_account
         self.extra_gas = extra_gas
+        self._receiver_address = web3_account.address
         self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         self._vault_contract = foxify_utils.build_vault_contract(self.web3_provider)
         self._position_router_contract = foxify_utils.build_position_router_contract(
@@ -234,7 +235,6 @@ class FoxifyTrader(ExchangeTrader):
         Returns:
             TradeResults: Result of the trade.
         """
-        await foxify_utils.ensure_referral(self.web3_provider, self.web3_account)
         nonce: Nonce = await self.web3_provider.eth.get_transaction_count(
             self.web3_account.address,
         )
@@ -401,7 +401,7 @@ class FoxifyTrader(ExchangeTrader):
                 0,  # collateralDelta
                 int(trade_arguments["size_delta"] * self._price_precision),
                 trade_arguments["trade_direction"].value,
-                self.web3_account.address,
+                self._receiver_address,
                 int(trade_arguments["acceptable_price"] * self._price_precision),
                 0,
                 self._position_execution_fee,

@@ -103,7 +103,7 @@ class FoxifyExchange(ExchangeBase):
         )
         self._fetcher = await FoxifyFetcher.create(
             self._pair_map,
-            self.web3_account,
+            self.web3_account.address,
             self.fetcher_bus,
         )
         # Options are being rebuild in Foxify. Disable for now
@@ -220,6 +220,7 @@ class FoxifyExchange(ExchangeBase):
             foxify_utils.FOXIFY_ORDER_BOOK,
             self.web3_account,
         )
+        await foxify_utils.ensure_referral(self.web3_provider, self.web3_account)
 
     async def fetch_prices(self) -> None:
         """Fetch prices in an infinite loop."""
@@ -274,7 +275,10 @@ class FoxifyExchange(ExchangeBase):
             TransactionFailedError: If transaction failed
         """
         if not self.is_valid_order_size(amount):
-            msg = f"Invalid order size. Order needs to be > {self.min_order_size} and < {self.max_order_size}"  # noqa: E501
+            msg = (
+                f"Invalid order size. Order needs to be: "
+                f"less than {self.min_order_size:.2f} and greater than {self.max_order_size:.2f}"
+            )
             raise InvalidOrderSizeError(msg)
 
         toast_id = Toast.show_message(

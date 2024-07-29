@@ -55,6 +55,10 @@ FOXIFY_ROUTER_CALLBACK = AsyncWeb3.to_checksum_address(
     "0xabDBacB016705D5647C0d9eea6990765DC045120",
 )
 
+FOXIFY_FUNDED_FACTORY = AsyncWeb3.to_checksum_address(
+    "0x57B0421e3B2A7E18102223F2e1E052b9f8aD1eFB",
+)
+
 USDC_DECIMAL_PLACES = 6
 MAX_SLIPPAGE = 0.005
 
@@ -195,6 +199,46 @@ def build_order_book_contract(
         abi = json.load(f)
 
     return web3_provider.eth.contract(address=FOXIFY_ORDER_BOOK, abi=abi)
+
+
+def build_funded_factory_contract(
+    web3_provider: AsyncWeb3,
+) -> AsyncContract:
+    """Build funded factory contract.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+
+    Returns:
+        AsyncContract: Contract for order book.
+    """
+    with Path.open(
+        Path(__file__).parent.joinpath("abi/foxify_funded_factory.json"),
+    ) as f:
+        abi = json.load(f)
+
+    return web3_provider.eth.contract(address=FOXIFY_FUNDED_FACTORY, abi=abi)
+
+
+def build_funded_trader_contract(
+    trader_address: ChecksumAddress,
+    web3_provider: AsyncWeb3,
+) -> AsyncContract:
+    """Build funded trader contract.
+
+    Args:
+        trader_address (ChecksumAddress): Trader address.
+        web3_provider (AsyncWeb3): Web3 provider.
+
+    Returns:
+        AsyncContract: Contract for order book.
+    """
+    with Path.open(
+        Path(__file__).parent.joinpath("abi/foxify_funded_trader.json"),
+    ) as f:
+        abi = json.load(f)
+
+    return web3_provider.eth.contract(address=trader_address, abi=abi)
 
 
 def build_stable_contract(

@@ -1,0 +1,1275 @@
+[
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "challenge",
+                "type": "uint8"
+            }
+        ],
+        "name": "ChallengeUnavailable",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "actualBalance",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "requiredBalance",
+                "type": "uint256"
+            }
+        ],
+        "name": "InsufficientBalance",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "requestedLeverage",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "minLeverage",
+                "type": "uint256"
+            }
+        ],
+        "name": "LeverageTooLow",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "msgValue",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "executionFee",
+                "type": "uint256"
+            }
+        ],
+        "name": "MsgValueNotEqualToExecutionFee",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "nftId",
+                "type": "uint256"
+            }
+        ],
+        "name": "NftAlreadyLocked",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NoNftToUnlock",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "OpenPositionsDisallowed",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "requestedLeverage",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxLeverage",
+                "type": "uint256"
+            }
+        ],
+        "name": "Overleveraged",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "actualCollateral",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "maxCollateral",
+                "type": "uint256"
+            }
+        ],
+        "name": "PositionOvercollateralized",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "actualCollateral",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "minCollateral",
+                "type": "uint256"
+            }
+        ],
+        "name": "PositionUndercollateralized",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "TraderAlreadyFunded",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "UnauthorizedCaller",
+        "type": "error"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "trader",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint8",
+                "name": "challengeNumber",
+                "type": "uint8"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "timestamp",
+                "type": "uint256"
+            }
+        ],
+        "name": "ChallengeStarted",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint8",
+                "name": "version",
+                "type": "uint8"
+            }
+        ],
+        "name": "Initialized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "trader",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint8",
+                "name": "challengeNumber",
+                "type": "uint8"
+            }
+        ],
+        "name": "TraderDemoted",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "trader",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint8",
+                "name": "challengeNumber",
+                "type": "uint8"
+            }
+        ],
+        "name": "TraderNotPromoted",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "trader",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "uint8",
+                "name": "challengeNumber",
+                "type": "uint8"
+            }
+        ],
+        "name": "TraderPromoted",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "trader",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "address",
+                "name": "recipient",
+                "type": "address"
+            }
+        ],
+        "name": "WithdrawCollateral",
+        "type": "event"
+    },
+    {
+        "stateMutability": "payable",
+        "type": "fallback"
+    },
+    {
+        "inputs": [],
+        "name": "BASIS_POINTS",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "POSITION_POINTS",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "SIG_EXECUTE_DECREASE_POSITIONS",
+        "outputs": [
+            {
+                "internalType": "bytes4",
+                "name": "",
+                "type": "bytes4"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "SIG_EXECUTE_INCREASE_POSITIONS",
+        "outputs": [
+            {
+                "internalType": "bytes4",
+                "name": "",
+                "type": "bytes4"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "balance",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "canResetChallenge",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "orderIndex",
+                "type": "uint256"
+            }
+        ],
+        "name": "cancelDecreaseOrder",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "key",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address payable",
+                "name": "executionFeeReceiver",
+                "type": "address"
+            }
+        ],
+        "name": "cancelDecreasePosition",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "result",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "orderIndex",
+                "type": "uint256"
+            }
+        ],
+        "name": "cancelIncreaseOrder",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "requestAmountIn",
+                "type": "uint256"
+            }
+        ],
+        "name": "cancelIncreasePositionCallback",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "challengeStartedAtTimestamp",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bool",
+                "name": "desiredStatus",
+                "type": "bool"
+            }
+        ],
+        "name": "checkChallengeStatus",
+        "outputs": [],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "indexToken",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "sizeDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "collateralDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "isLong",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "triggerPrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "triggerAboveThreshold",
+                "type": "bool"
+            }
+        ],
+        "name": "createDecreaseOrder",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "indexToken",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "collateralDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "sizeDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "isLong",
+                "type": "bool"
+            },
+            {
+                "internalType": "address",
+                "name": "receiver",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "acceptablePrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "minOut",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "executionFee",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "callbackTarget",
+                "type": "address"
+            }
+        ],
+        "name": "createDecreasePosition",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "amountIn",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "indexToken",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "sizeDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "isLong",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "triggerPrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "triggerAboveThreshold",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "executionFee",
+                "type": "uint256"
+            }
+        ],
+        "name": "createIncreaseOrder",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "indexToken",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amountIn",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "minOut",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "sizeDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "isLong",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "acceptablePrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "executionFee",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "referralCode",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "bytes",
+                "name": "_orderExecutionData",
+                "type": "bytes"
+            },
+            {
+                "internalType": "address",
+                "name": "callbackTarget",
+                "type": "address"
+            }
+        ],
+        "name": "createIncreasePosition",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "result",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint8",
+                        "name": "challengeDurationInDays",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint8",
+                        "name": "minActiveDays",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "traderProfitShareBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "poolProfitShareBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "minTradeCount",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "targetWinRatioBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "pnlDemotionBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "pnlPayoutBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "pnlPromotionBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "minPositionCollateralBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "maxPositionCollateralBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint32",
+                        "name": "minLeverageBp",
+                        "type": "uint32"
+                    },
+                    {
+                        "internalType": "uint32",
+                        "name": "maxLeverageBp",
+                        "type": "uint32"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "funding",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "minDepositStable",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256[3]",
+                        "name": "fundingNft",
+                        "type": "uint256[3]"
+                    }
+                ],
+                "internalType": "struct IFactory.TraderChallengeConfig",
+                "name": "traderChallengeConfig",
+                "type": "tuple"
+            }
+        ],
+        "name": "evaluateTraderKpis",
+        "outputs": [
+            {
+                "internalType": "enum ITrader.ChallengeResults",
+                "name": "challengeResults",
+                "type": "uint8"
+            },
+            {
+                "internalType": "bool",
+                "name": "payout",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint256",
+                        "name": "positionCollateral",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "address",
+                        "name": "tokenIndex",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "isLong",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "amountOutUsd",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "int256",
+                        "name": "deltaPnlUsd",
+                        "type": "int256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "positionSize",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "amountOutUsdRequested",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct ITrader.DecreaseOrderCallbackParams",
+                "name": "params",
+                "type": "tuple"
+            }
+        ],
+        "name": "executeDecreaseOrderCallback",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "tokenIndex",
+                "type": "address"
+            },
+            {
+                "internalType": "bool",
+                "name": "isLong",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "leverageBp",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "feeUsd",
+                "type": "uint256"
+            }
+        ],
+        "name": "executeIncreaseOrderCallback",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "factory",
+        "outputs": [
+            {
+                "internalType": "contract IFactory",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "requirePromotion",
+                "type": "bool"
+            }
+        ],
+        "name": "fundAccount",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "fundedVault",
+        "outputs": [
+            {
+                "internalType": "contract IFundedVault",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "funding",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "daysElapsed",
+                "type": "uint8"
+            }
+        ],
+        "name": "getActiveDaysTradesCount",
+        "outputs": [
+            {
+                "internalType": "uint8",
+                "name": "activeDays",
+                "type": "uint8"
+            },
+            {
+                "internalType": "uint32",
+                "name": "trades",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "uint8",
+                        "name": "challengeDurationInDays",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint8",
+                        "name": "minActiveDays",
+                        "type": "uint8"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "traderProfitShareBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "poolProfitShareBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "minTradeCount",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "targetWinRatioBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "pnlDemotionBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "pnlPayoutBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "pnlPromotionBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "minPositionCollateralBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint16",
+                        "name": "maxPositionCollateralBp",
+                        "type": "uint16"
+                    },
+                    {
+                        "internalType": "uint32",
+                        "name": "minLeverageBp",
+                        "type": "uint32"
+                    },
+                    {
+                        "internalType": "uint32",
+                        "name": "maxLeverageBp",
+                        "type": "uint32"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "funding",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "minDepositStable",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256[3]",
+                        "name": "fundingNft",
+                        "type": "uint256[3]"
+                    }
+                ],
+                "internalType": "struct IFactory.TraderChallengeConfig",
+                "name": "traderChallengeConfig",
+                "type": "tuple"
+            }
+        ],
+        "name": "getProfitShares",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "traderProfitShare",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "vaultProfitShare",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "trader_",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "factory_",
+                "type": "address"
+            }
+        ],
+        "name": "initialize",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "lockFoxifyNft",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "openPositionsCount",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pendingOpenPositionsCount",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "pnl",
+        "outputs": [
+            {
+                "internalType": "int256",
+                "name": "",
+                "type": "int256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            },
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "name": "positions",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "qualifications",
+        "outputs": [
+            {
+                "internalType": "uint8",
+                "name": "",
+                "type": "uint8"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "reset",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "startingCapital",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "trader",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "traderChallenge",
+        "outputs": [
+            {
+                "internalType": "uint8",
+                "name": "",
+                "type": "uint8"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "tradesWon",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "",
+                "type": "uint8"
+            }
+        ],
+        "name": "tradingDays",
+        "outputs": [
+            {
+                "internalType": "uint32",
+                "name": "",
+                "type": "uint32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "unlockFoxifyNft",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "orderIndex",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "collateralDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "sizeDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "triggerPrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "triggerAboveThreshold",
+                "type": "bool"
+            }
+        ],
+        "name": "updateDecreaseOrder",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "orderIndex",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "sizeDelta",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "triggerPrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "triggerAboveThreshold",
+                "type": "bool"
+            }
+        ],
+        "name": "updateIncreaseOrder",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "withdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "stateMutability": "payable",
+        "type": "receive"
+    }
+]

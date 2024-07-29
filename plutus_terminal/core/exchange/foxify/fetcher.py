@@ -41,7 +41,7 @@ from plutus_terminal.core.types_ import (
 from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
-    from eth_account.signers.local import LocalAccount
+    from eth_typing import ChecksumAddress
 
     from plutus_terminal.core.exchange.base import ExchangeFetcherMessageBus
 
@@ -54,23 +54,20 @@ class FoxifyFetcher(ExchangeFetcher):
     def __init__(
         self,
         pair_map: dict[str, str],
-        web3_account: LocalAccount,
+        web3_address: ChecksumAddress,
         message_bus: ExchangeFetcherMessageBus,
     ) -> None:
         """Initialize shared attributes.
 
-        Pair index is unique to foxify due to how they manage their trading arguments.
-
         Args:
             pair_map (dict[str, dict[str, str]]): Dict with adress and pair.
-            web3_account (eth_account.signers.local.LocalAccount): Web3 account to
-                get address from.
+            web3_address (ChecksumAddress): Web3 account address.
             message_bus (ExchangeFetcherMessageBus): Message bus.
         """
         LOGGER.info("Initialize FoxifyFetcher")
         self.aclient = AsyncClient()
         self.pair_map = pair_map
-        self.web3_account = web3_account
+        self.web3_address = web3_address
         self.web3_provider = build_cycle_provider("Arbitrum One Fetcher")
         self.vault_contract = foxify_utils.build_vault_contract(self.web3_provider)
         self.order_book_contract = foxify_utils.build_order_book_contract(
@@ -96,21 +93,20 @@ class FoxifyFetcher(ExchangeFetcher):
     async def create(
         cls,
         pair_map: dict[str, str],
-        web3_account: LocalAccount,
+        web3_address: ChecksumAddress,
         message_bus: ExchangeFetcherMessageBus,
     ) -> Self:
         """Create class instance and init_async.
 
         Args:
             pair_map (dict[str, str]): Dict with adress and pair.
-            web3_account (eth_account.signers.local.LocalAccount): Web3 account to
-                get address from.
+            web3_address (ChecksumAddress): Web3 account address.
             message_bus (ExchangeFetcherMessageBus): Message bus.
 
         Returns:
             FoxifyFetcher: Instance of FoxifyFetcher.
         """
-        fetcher = cls(pair_map, web3_account, message_bus)
+        fetcher = cls(pair_map, web3_address, message_bus)
         await fetcher.init_async()
         return fetcher
 
@@ -425,7 +421,7 @@ class FoxifyFetcher(ExchangeFetcher):
         }
         """
 
-        variables = {"account": self.web3_account.address.lower()}
+        variables = {"account": self.web3_address.lower()}
         response = await self.aclient.post(
             self._goldsky_url,
             json={"query": query, "variables": variables},
@@ -517,7 +513,7 @@ class FoxifyFetcher(ExchangeFetcher):
           }
         }
         """
-        variables = {"account": self.web3_account.address.lower()}
+        variables = {"account": self.web3_address.lower()}
         response = await self.aclient.post(
             self._goldsky_url,
             json={"query": query, "variables": variables},
@@ -531,7 +527,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 f"get{order['type'].capitalize()}Order",
             )
             chain_order = await func(
-                self.web3_account.address,
+                self.web3_address,
                 int(order["index"]),
             ).call()
 
@@ -625,7 +621,7 @@ class FoxifyFetcher(ExchangeFetcher):
         Returns:
             Decimal: Balance in USD Stable Format.
         """
-        balance = await self.stable_contract.functions.balanceOf(self.web3_account.address).call()
+        balance = await self.stable_contract.functions.balanceOf(self.web3_address).call()
 
         return Decimal(balance) / 10**foxify_utils.USDC_DECIMAL_PLACES
 
