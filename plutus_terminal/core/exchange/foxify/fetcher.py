@@ -127,12 +127,14 @@ class FoxifyFetcher(ExchangeFetcher):
             self._funding_rate_precision,
             self._basis_points_divisor,
             self._margin_fee_basis_points,
+            self._liquidation_fee,
         ) = await asyncio.gather(
             self._populate_funding_rates(),
             self.vault_contract.functions.PRICE_PRECISION().call(),
             self.vault_contract.functions.FUNDING_RATE_PRECISION().call(),
             self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
             self.vault_contract.functions.marginFeeBasisPoints().call(),
+            self.vault_contract.functions.liquidationFeeUsd().call(),
         )
 
     @retry(
@@ -740,16 +742,21 @@ class FoxifyFetcher(ExchangeFetcher):
         collateral = perps_position["collateral_stable"]
         funding_fee = self.fetch_funding_fee(perps_position)
         position_fee = self.calculate_position_fee(perps_position["position_size_stable"])
+        liquidation_fee = Decimal(self._liquidation_fee / self._vault_price_precision)
         size = perps_position["position_size_stable"]
         trade_direction = perps_position["trade_direction"]
+        total_fees = funding_fee + position_fee + liquidation_fee
 
         open_price = perps_position["open_price"]
 
+        if total_fees > collateral:
+            if trade_direction == PerpsTradeDirection.LONG:
+                return open_price - ((total_fees - collateral) * open_price / size)
+            return open_price + ((total_fees - collateral) * open_price / size)
+
         if trade_direction == PerpsTradeDirection.LONG:
-            return open_price - (
-                ((collateral - funding_fee - position_fee) * open_price / size) / 2
-            )
-        return open_price + (((collateral - funding_fee - position_fee) * open_price / size) / 2)
+            return open_price - ((collateral - total_fees) * open_price / size)
+        return open_price + ((collateral - total_fees) * open_price / size)
 
     def calculate_pnl_percent(
         self,
