@@ -371,6 +371,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                     "open_price": open_price,
                     "trade_direction": PerpsTradeDirection.LONG,
                     "leverage": Decimal(leverage_value),
+                    "liquidation_price": Decimal(0),
                 },
             ),
         )
@@ -390,6 +391,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                     "open_price": open_price,
                     "trade_direction": PerpsTradeDirection.SHORT,
                     "leverage": Decimal(leverage_value),
+                    "liquidation_price": Decimal(0),
                 },
             ),
         )

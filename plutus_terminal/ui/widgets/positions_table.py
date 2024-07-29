@@ -52,6 +52,7 @@ HEADER_MAP = {
     "leverage": "Lev",
     "position_size_stable": "Size",
     "open_price": "Avg Entry",
+    "liquidation_price": "Est. Liq. Price",
     "pnl": "PnL",
     "close": "Close",
 }
@@ -93,14 +94,17 @@ class PositionsTableModel(QAbstractTableModel):
                 # Removing the Pair prefix if any
                 return self.format_simple_pair(value)
             if isinstance(value, Decimal):
-                minimal_digits = ui_utils.get_minimal_digits(float(value), 4)
-                return f"{value:,.{minimal_digits}f}"
+                minimal_digits = ui_utils.get_minimal_digits(float(value), 3)
+                return f"${value:,.{minimal_digits}f}"
             return value
 
-        if role == Qt.ItemDataRole.ForegroundRole and current_header == "trade_direction":
-            if value is PerpsTradeDirection.LONG:
-                return QBrush(QColor("green"))
-            return QBrush(QColor("red"))
+        if role == Qt.ItemDataRole.ForegroundRole:
+            if current_header == "trade_direction":
+                if value is PerpsTradeDirection.LONG:
+                    return QBrush(QColor("green"))
+                return QBrush(QColor("red"))
+            if current_header == "liquidation_price":
+                return QBrush(QColor("orange"))
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return Qt.AlignmentFlag.AlignCenter

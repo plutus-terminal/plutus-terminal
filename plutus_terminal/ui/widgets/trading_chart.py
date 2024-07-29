@@ -53,14 +53,12 @@ class TradingChart(QWidget):
         self,
         available_pairs: set[str],
         format_simple_pair: Callable[[str], str],
-        get_liquidation_price: Callable[[PerpsPosition], Decimal],
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._available_pairs = available_pairs
         self._format_simple_pair = format_simple_pair
-        self._get_liquidation_price = get_liquidation_price
 
         self._main_layout = QVBoxLayout()
 
@@ -206,7 +204,7 @@ class TradingChart(QWidget):
                     current_line.update(float(position["open_price"]))
 
                 # Update liquidation line if price has changed
-                liquidation_price = self._get_liquidation_price(position)
+                liquidation_price = position["liquidation_price"]
                 current_liquidation_line = self._liquidation_lines[pos_id]
                 if float(liquidation_price) != current_liquidation_line.price:
                     current_liquidation_line.update(float(liquidation_price))
@@ -223,11 +221,11 @@ class TradingChart(QWidget):
                 self._position_lines[pos_id] = new_pos_line
 
                 # Create new liquidation line
-                liquidation_price = self._get_liquidation_price(position)
+                liquidation_price = position["liquidation_price"]
                 new_liquidation_line = self._main_chart.horizontal_line(
                     float(liquidation_price),
                     width=1,
-                    color="rgb(255, 80, 80)",
+                    color="rgb(225, 110, 30)",
                     style="solid",
                     text=f"Liq. {position['trade_direction'].name.capitalize()}",
                     axis_label_visible=False,

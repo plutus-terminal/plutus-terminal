@@ -104,7 +104,6 @@ class PlutusTerminal(QMainWindow):
         self._chart = TradingChart(
             self._current_exchange.available_pairs,
             self._current_exchange.format_simple_pair_from_pair,
-            self._current_exchange.calculate_liquidation_price,
         )
 
         # Init open trades widget

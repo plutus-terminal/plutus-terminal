@@ -70,6 +70,7 @@ class PerpsPosition(TypedDict):
     open_price: Decimal
     trade_direction: PerpsTradeDirection
     leverage: Decimal
+    liquidation_price: Decimal
     extra: NotRequired[dict]
 
 

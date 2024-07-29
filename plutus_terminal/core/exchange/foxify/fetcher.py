@@ -458,8 +458,10 @@ class FoxifyFetcher(ExchangeFetcher):
                     ),
                     "leverage": round(leverage, 2),
                     "extra": extra,
+                    "liquidation_price": Decimal(0),
                 },
             )
+            position["liquidation_price"] = self.calculate_liquidation_price(position)
             self._cached_positions.append(position)
         return self._cached_positions
 
