@@ -31,7 +31,7 @@ contracts.
 
 ## ⚠️  Disclaimer
 
-Plutus Terminal is in **alpha** version and not ready for production use. It
+Plutus Terminal is in **alpha** version and it's more likely to break. It
 trades on the Perpetuals DEX using real money. Do not risk money you cannot
 afford to lose.
 
@@ -312,10 +312,10 @@ This filter will play the `powerup` sound if the title of the news is `Tree News
 Current supported exchanges are:
 
 * <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify](https://perp.foxify.trade/#/trade/?ref=plutus_terminal)
+* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 
 Planned support:
 
-* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 * <img src="./assets/gmx.svg" height="25px" alt="Foxify Logo"/> [GMX](https://app.gmx.io/#/trade/?ref=plutus_terminal)
 
 ## ❤️  Support
