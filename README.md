@@ -51,6 +51,10 @@ when possible.
 Plutus Terminal is a Python package with multiple dependencies. You can install
 it by downloading the PyApp executable, using pipx, or building it with Poetry.
 
+> [!WARNING]
+> The following instructions will show how to install Plutus Terminal unstable version!
+> Unstable version is more likely to break.
+
 <details>
 <summary>
 <strong>Installation using <code>PyApp executable</code>:</strong>
@@ -135,10 +139,10 @@ Navigate to the cloned repository:
 cd plutus-terminal
 ```
 
-Checkout the `main` branch:
+Checkout the `unstable` branch:
 
 ```bash
-git checkout main
+git checkout unstable
 ```
 
 Then, install the package:
