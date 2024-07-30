@@ -16,7 +16,11 @@ from web3 import Account
 from web3.types import Gwei
 
 from plutus_terminal.core.config import CONFIG
-from plutus_terminal.core.exceptions import TransactionFailedError
+from plutus_terminal.core.exceptions import (
+    InvalidOrderSizeError,
+    KeyringPasswordNotFoundError,
+    TransactionFailedError,
+)
 from plutus_terminal.core.exchange import helpers as exchange_helpers
 from plutus_terminal.core.exchange.base import (
     ExchangeBase,
@@ -56,7 +60,7 @@ class FoxifyExchange(ExchangeBase):
             fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
         """
         super().__init__(fetcher_bus=fetcher_bus)
-        self.web3_provider = build_cycle_provider("Arbitrum One Fetcher")
+        self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         # Get current account
         keyring_account = CONFIG.current_keyring_account
         keyring_password = keyring.get_password(
@@ -65,7 +69,7 @@ class FoxifyExchange(ExchangeBase):
         )
         if keyring_password is None:
             msg = "Keyring password not found"
-            raise Exception(msg)
+            raise KeyringPasswordNotFoundError(msg)
         web3_account: LocalAccount = Account.from_key(orjson.loads(keyring_password)[0])
 
         self.web3_account = web3_account
@@ -75,7 +79,6 @@ class FoxifyExchange(ExchangeBase):
         self._pair_suffix = ""
         self._pair_map = self.build_pair_map()
         self._inverted_pair_map = {v: k for k, v in self._pair_map.items()}
-        self._async_tasks: list[asyncio.Task] = []
 
     @classmethod
     async def create(cls, fetcher_bus: ExchangeFetcherMessageBus) -> Self:
@@ -100,16 +103,11 @@ class FoxifyExchange(ExchangeBase):
         )
         self._fetcher = await FoxifyFetcher.create(
             self._pair_map,
-            self.web3_account,
+            self.web3_account.address,
             self.fetcher_bus,
         )
         # Options are being rebuild in Foxify. Disable for now
         # self._options = await FoxifyOptions.create(self.web3_account, Gwei(0))
-
-    @property
-    def name(self) -> str:
-        """Returns: Exchange name."""
-        return "foxify"
 
     @property
     def trader(self) -> FoxifyTrader:
@@ -157,14 +155,76 @@ class FoxifyExchange(ExchangeBase):
         return self.fetcher._cached_prices  # noqa: SLF001
 
     @property
+    def account_info(self) -> dict[str, str]:
+        """Return info to be added to account info widget."""
+        return {
+            "Exchange": self.name().capitalize(),
+            "Exchange Type": self.exchange_type().name,
+            "Wallet": f"{self.web3_account.address[:5]}...{self.web3_account.address[-5:]}",
+        }
+
+    @property
     def stable_balance(self) -> Decimal:
         """Return stable balance."""
         return self.fetcher._cached_stable_balance  # noqa: SLF001
+
+    @property
+    def min_order_size(self) -> Decimal:
+        """Return min trade size."""
+        # Could not find this from any contracts only on the front end.
+        # TODO: Fix this with the value from the contract
+        return Decimal(10)
 
     # @property
     # def options(self) -> ExchangeOptions:
     #     """Return exchange options."""
     #     return self._options
+
+    @asyncSlot()
+    async def is_ready_to_trade(self) -> bool:
+        """Check if contracts are approaved.
+
+        Returns:
+            bool: True if account is ready to trade.
+        """
+        router_approved, pos_router_plugin, order_book_plugin = await asyncio.gather(
+            foxify_utils.is_stable_approved(
+                self.web3_provider,
+                self.web3_provider.to_checksum_address(foxify_utils.FOXIFY_ROUTER),
+                self.web3_account.address,
+            ),
+            foxify_utils.is_plugin_approved(
+                self.web3_provider,
+                foxify_utils.FOXIFY_POSITION_ROUTER,
+                self.web3_account.address,
+            ),
+            foxify_utils.is_plugin_approved(
+                self.web3_provider,
+                foxify_utils.FOXIFY_ORDER_BOOK,
+                self.web3_account.address,
+            ),
+        )
+        return all([router_approved, pos_router_plugin, order_book_plugin])
+
+    @asyncSlot()
+    async def approve_for_trading(self) -> None:
+        """Approve contracts needed for trading."""
+        await foxify_utils.approve_stable(
+            self.web3_provider,
+            foxify_utils.FOXIFY_ROUTER,
+            self.web3_account,
+        )
+        await foxify_utils.approve_plugin(
+            self.web3_provider,
+            foxify_utils.FOXIFY_POSITION_ROUTER,
+            self.web3_account,
+        )
+        await foxify_utils.approve_plugin(
+            self.web3_provider,
+            foxify_utils.FOXIFY_ORDER_BOOK,
+            self.web3_account,
+        )
+        await foxify_utils.ensure_referral(self.web3_provider, self.web3_account)
 
     async def fetch_prices(self) -> None:
         """Fetch prices in an infinite loop."""
@@ -213,7 +273,18 @@ class FoxifyExchange(ExchangeBase):
                 If None use CONFIG.take_profit.
             stop_loss_percent (Optional[float], optional): Stop loss price.
                 If None use CONFIG.stop_loss.
+
+        Raises:
+            InvalidOrderSizeError: If order size is not valid.
+            TransactionFailedError: If transaction failed
         """
+        if not self.is_valid_order_size(amount):
+            msg = (
+                f"Invalid order size. Order needs to be: "
+                f"less than {self.min_order_size:.2f} and greater than {self.max_order_size:.2f}"
+            )
+            raise InvalidOrderSizeError(msg)
+
         toast_id = Toast.show_message(
             f"Creating {trade_type.name} order for {pair}",
             type_=ToastType.WARNING,
@@ -298,6 +369,9 @@ class FoxifyExchange(ExchangeBase):
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
             new_execution_price (Decimal, optional): Execution price.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         toast_id = Toast.show_message(
             f"Editing order {order_data['id']}",
@@ -370,7 +444,9 @@ class FoxifyExchange(ExchangeBase):
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.
-            is_stop_loss (bool): True if this is a stop loss order. False if it's a take profit.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         toast_id = Toast.show_message(
             f"Creating {trade_type.name} order for {pair}",
@@ -446,7 +522,6 @@ class FoxifyExchange(ExchangeBase):
 
         Raises:
             TransactionFailed: If the transaction fails.
-
         """
         toast_id = Toast.show_message(
             f"Canceling {order_data['order_type'].name} order for {order_data['pair']}",
@@ -468,9 +543,6 @@ class FoxifyExchange(ExchangeBase):
                 "reduce_only": order_data["reduce_only"],
             },
         )
-        if not cancel_args:
-            msg = "Could not find order to cancel."
-            raise Exception(msg)
 
         try:
             trade_result = await self.trader.cancel_order(cancel_args)
@@ -501,6 +573,9 @@ class FoxifyExchange(ExchangeBase):
 
         Args:
             perp_position (PerpPosition): Position to close.
+
+        Raises:
+            TransactionFailed: If the transaction fails.
         """
         toast_id = Toast.show_message(
             f"Closing position for {perp_position['pair']}",
@@ -594,6 +669,11 @@ class FoxifyExchange(ExchangeBase):
     #         available_to_spend -= orders_to_buy["orders"][row["orderId"]]
     #
     #     await self._options.buy_options(orders_to_buy)
+
+    @staticmethod
+    def name() -> str:
+        """Return exchange name."""
+        return "foxify"
 
     @staticmethod
     def new_account_info() -> NewAccountInfo:

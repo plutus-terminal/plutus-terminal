@@ -52,6 +52,7 @@ HEADER_MAP = {
     "leverage": "Lev",
     "position_size_stable": "Size",
     "open_price": "Avg Entry",
+    "liquidation_price": "Est. Liq. Price",
     "pnl": "PnL",
     "close": "Close",
 }
@@ -93,14 +94,17 @@ class PositionsTableModel(QAbstractTableModel):
                 # Removing the Pair prefix if any
                 return self.format_simple_pair(value)
             if isinstance(value, Decimal):
-                minimal_digits = ui_utils.get_minimal_digits(float(value), 4)
-                return f"{value:,.{minimal_digits}f}"
+                minimal_digits = ui_utils.get_minimal_digits(float(value), 3)
+                return f"${value:,.{minimal_digits}f}"
             return value
 
-        if role == Qt.ItemDataRole.ForegroundRole and current_header == "trade_direction":
-            if value is PerpsTradeDirection.LONG:
-                return QBrush(QColor("green"))
-            return QBrush(QColor("red"))
+        if role == Qt.ItemDataRole.ForegroundRole:
+            if current_header == "trade_direction":
+                if value is PerpsTradeDirection.LONG:
+                    return QBrush(QColor("green"))
+                return QBrush(QColor("red"))
+            if current_header == "liquidation_price":
+                return QBrush(QColor("orange"))
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return Qt.AlignmentFlag.AlignCenter
@@ -248,10 +252,10 @@ class PositionsTableView(QTableView):
             trade_collateral = data["position_size_stable"] / leverage
             trade_direction = data["trade_direction"]
             position_fee = self._exchange.calculate_position_fee(trade_collateral)
-            borrow_fee = self._exchange.fetch_borrow_fee(data)
+            funding_fee = self._exchange.fetch_funding_fee(data)
             pnl_percent = self._exchange.calculate_pnl_percent(data, current_price)
             pnl_usd = (trade_collateral * pnl_percent) / 100
-            pnl_usd_after_fee = pnl_usd - position_fee - borrow_fee
+            pnl_usd_after_fee = pnl_usd - position_fee - funding_fee
             pnl_percent_after_fee = pnl_usd_after_fee * 100 / trade_collateral
 
             pnl_widget = ui_utils.get_stored_widget(
@@ -265,7 +269,7 @@ class PositionsTableView(QTableView):
             pnl_widget.set_pnl(pnl_usd_after_fee, pnl_percent_after_fee)
             pnl_widget.set_tooltip_content(
                 pnl_usd,
-                borrow_fee,
+                funding_fee,
                 position_fee,
                 pnl_usd_after_fee,
             )
@@ -323,7 +327,7 @@ class PositionManager(QWidget):
     def _setup_widgets(self) -> None:
         """Condifure widgets."""
         self._menu.setObjectName("floating")
-        self._close_action.reduce_clicked.connect(self.create_reduce_order)
+        self._close_action.reduce_clicked.connect(self._on_close_reduce_clicked)
         self._close_action.set_price_clicked.connect(self.set_price_limit)
         self._menu.addAction(self._close_action)
 
@@ -364,8 +368,12 @@ class PositionManager(QWidget):
         await self._exchange.close_position(self._position)
 
     @asyncSlot()
-    async def create_reduce_order(self, kwargs: dict) -> None:
-        """Create reduce order."""
+    async def _on_close_reduce_clicked(self, kwargs: dict) -> None:
+        """Handle click on reduce."""
+        # Close position if size matches
+        if self._position["position_size_stable"] == kwargs["size"]:
+            await self._exchange.close_position(self._position)
+            return
         await self._exchange.create_reduce_order(**kwargs)
 
     def on_tp_sl_clicked(self) -> None:
@@ -386,11 +394,11 @@ class PositionManager(QWidget):
             associated_position=deepcopy(self._position),
             parent=self,
         )
-        order_dialog.execute_order.connect(self.execute_order)
+        order_dialog.execute_order.connect(self._handle_tp_sl_clicked)
         order_dialog.show()
 
     @asyncSlot()
-    async def execute_order(self, order_data: OrderData) -> None:
+    async def _handle_tp_sl_clicked(self, order_data: OrderData) -> None:
         """Execute order on exchange.
 
         Args:

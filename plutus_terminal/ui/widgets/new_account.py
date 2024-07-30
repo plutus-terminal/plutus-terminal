@@ -125,7 +125,7 @@ class NewAccountDialog(QtWidgets.QDialog):
         for exchange_name, exchange in VALID_EXCHANGES.items():
             if exchange.exchange_type() == ExchangeType[selected_type]:
                 icon = QPixmap(f":/exchanges/{exchange_name}")
-                self._exchange_combo_box.addItem(icon, exchange_name)
+                self._exchange_combo_box.addItem(icon, exchange.name(), userData=exchange_name)
 
         self._fill_secrets_group()
 
@@ -143,7 +143,7 @@ class NewAccountDialog(QtWidgets.QDialog):
         self._secrets_labels.clear()
         self._secrets_line_edits.clear()
 
-        selected_exchange = self._exchange_combo_box.currentText()
+        selected_exchange = self._exchange_combo_box.currentData()
         exchange = VALID_EXCHANGES[selected_exchange]
         new_account_info = exchange.new_account_info()
 
@@ -182,7 +182,7 @@ class NewAccountDialog(QtWidgets.QDialog):
 
         account_name = self._account_line_edit.text()
         secrets = [secret.text() for secret in self._secrets_line_edits]
-        exchange_name = self._exchange_combo_box.currentText()
+        exchange_name = self._exchange_combo_box.currentData()
 
         # Validate secrets
         exchange = VALID_EXCHANGES[exchange_name]

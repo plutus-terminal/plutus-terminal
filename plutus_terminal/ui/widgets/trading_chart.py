@@ -53,14 +53,12 @@ class TradingChart(QWidget):
         self,
         available_pairs: set[str],
         format_simple_pair: Callable[[str], str],
-        get_liquidation_price: Callable[[PerpsPosition], Decimal],
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._available_pairs = available_pairs
         self._format_simple_pair = format_simple_pair
-        self._get_liquidation_price = get_liquidation_price
 
         self._main_layout = QVBoxLayout()
 
@@ -69,8 +67,9 @@ class TradingChart(QWidget):
 
         self._main_chart = QtChart(toolbox=True)
         self._current_pair = ""
-        self._position_lines: list[HorizontalLine] = []
-        self._order_lines: list[HorizontalLine] = []
+        self._position_lines: dict[int, HorizontalLine] = {}
+        self._liquidation_lines: dict[int, HorizontalLine] = {}
+        self._order_lines: dict[str, HorizontalLine] = {}
 
         self._config_widgets()
         self._config_chart()
@@ -194,34 +193,55 @@ class TradingChart(QWidget):
         Args:
             all_positions (list[PerpsPosition]): List of current positions.
         """
-        for horizontal_line in self._position_lines:
-            horizontal_line.delete()
-        self._position_lines.clear()
+        new_positions = {pos["id"]: pos for pos in all_positions}
 
-        for position in all_positions:
-            if position["pair"] == self._current_pair:
-                self._position_lines.append(
-                    self._main_chart.horizontal_line(
-                        float(position["open_price"]),
-                        width=1,
-                        color="rgb(255, 80, 80)",
-                        style="dotted",
-                        text=f"Open {position['trade_direction'].name.capitalize()}",
-                        axis_label_visible=False,
-                    ),
-                )
+        # Update existing positions
+        for pos_id, position in new_positions.items():
+            if pos_id in self._position_lines:
+                # Update position if open price has changed
+                current_line = self._position_lines[pos_id]
+                if float(position["open_price"]) != current_line.price:
+                    current_line.update(float(position["open_price"]))
 
-                liquidation_price = self._get_liquidation_price(position)
-                self._position_lines.append(
-                    self._main_chart.horizontal_line(
-                        float(liquidation_price),
-                        width=1,
-                        color="rgb(255, 80, 80)",
-                        style="solid",
-                        text=f"Liq. {position['trade_direction'].name.capitalize()}",
-                        axis_label_visible=False,
-                    ),
+                # Update liquidation line if price has changed
+                liquidation_price = position["liquidation_price"]
+                current_liquidation_line = self._liquidation_lines[pos_id]
+                if float(liquidation_price) != current_liquidation_line.price:
+                    current_liquidation_line.update(float(liquidation_price))
+            else:
+                # Create new position line
+                new_pos_line = self._main_chart.horizontal_line(
+                    float(position["open_price"]),
+                    width=1,
+                    color="rgb(255, 80, 80)",
+                    style="dotted",
+                    text=f"Open {position['trade_direction'].name.capitalize()}",
+                    axis_label_visible=False,
                 )
+                self._position_lines[pos_id] = new_pos_line
+
+                # Create new liquidation line
+                liquidation_price = position["liquidation_price"]
+                new_liquidation_line = self._main_chart.horizontal_line(
+                    float(liquidation_price),
+                    width=1,
+                    color="rgb(225, 110, 30)",
+                    style="solid",
+                    text=f"Liq. {position['trade_direction'].name.capitalize()}",
+                    axis_label_visible=False,
+                )
+                self._liquidation_lines[pos_id] = new_liquidation_line
+
+        # Delete old lines
+        positions_to_delete = [
+            pos_id for pos_id in self._position_lines if pos_id not in new_positions
+        ]
+
+        for pos_id in positions_to_delete:
+            self._position_lines[pos_id].delete()
+            del self._position_lines[pos_id]
+            self._liquidation_lines[pos_id].delete()
+            del self._liquidation_lines[pos_id]
 
     def draw_orders(self, all_orders: list[OrderData]) -> None:
         """Draw orders lines on the chart.
@@ -229,22 +249,31 @@ class TradingChart(QWidget):
         Args:
             all_orders (list[OrderData]): List of current orders.
         """
-        for horizontal_line in self._order_lines:
-            horizontal_line.delete()
-        self._order_lines.clear()
+        new_orders = {order["id"]: order for order in all_orders}
 
-        for order in all_orders:
-            if order["pair"] == self._current_pair:
-                self._order_lines.append(
-                    self._main_chart.horizontal_line(
-                        float(order["trigger_price"]),
-                        width=1,
-                        color="rgb(255, 80, 80)",
-                        style="dashed",
-                        text=f"{order['order_type'].name.replace('_', ' ').capitalize()}",
-                        axis_label_visible=False,
-                    ),
+        for order_id, order in new_orders.items():
+            if order_id in self._order_lines:
+                # Update order if price has changed
+                current_line = self._order_lines[order_id]
+                if float(order["trigger_price"]) != current_line.price:
+                    current_line.update(float(order["trigger_price"]))
+            else:
+                # Create new order line
+                self._order_lines[order_id] = self._main_chart.horizontal_line(
+                    float(order["trigger_price"]),
+                    width=1,
+                    color="rgb(255, 80, 80)",
+                    style="dashed",
+                    text=f"{order['order_type'].name.replace('_', ' ').capitalize()}",
+                    axis_label_visible=False,
                 )
+
+        # Delete old lines
+        order_to_delete = [order_id for order_id in self._order_lines if order_id not in new_orders]
+
+        for order_id in order_to_delete:
+            self._order_lines[order_id].delete()
+            del self._order_lines[order_id]
 
     def on_timeframe_selection(self, chart: Chart) -> None:
         """Emit signal to change timeframe."""

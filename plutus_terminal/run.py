@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QSplashScreen,
     QSystemTrayIcon,
 )
-from qasync import QEventLoop
+from qasync import QEventLoop, asyncSlot
 
 from plutus_terminal.core.config import CONFIG, AppConfig
 from plutus_terminal.log_utils import setup_logging
@@ -38,6 +38,7 @@ class PlutusSystemTrayApp(QApplication):
         self._tray_icon = QSystemTrayIcon()
         self._tray_icon.setIcon(QPixmap(":/icons/plutus_icon"))
         self._tray_icon.setToolTip("Plutus Terminal")
+
         self._init_tray()
 
     def _init_tray(self) -> None:
@@ -73,6 +74,11 @@ class PlutusSystemTrayApp(QApplication):
             if not new_account_dialog.exec():
                 sys.exit()
 
+    @asyncSlot()
+    async def cleanup(self) -> None:
+        """Clean up async connections before closing."""
+        await self.main_window.stop_async()
+
 
 def run() -> None:
     """Run plutus terminal."""
@@ -103,8 +109,15 @@ def run() -> None:
 
     app.validate_if_account()
 
-    event_loop.create_task(app.init_and_show())
-    event_loop.run_until_complete(app_close_event.wait())
+    async def run_and_await() -> None:
+        """Run all and await close event."""
+        await app.init_and_show()
+        await app_close_event.wait()
+
+    event_loop.create_task(run_and_await())
+    event_loop.run_forever()
+
+    event_loop.run_until_complete(app.cleanup())
     event_loop.close()
 
 

@@ -141,7 +141,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.
 
         Args:
@@ -179,7 +179,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
         ...
 
@@ -331,11 +331,6 @@ class ExchangeBase(ABC):
 
     @property
     @abstractmethod
-    def name(self) -> str:
-        """Returns: Exchange name."""
-
-    @property
-    @abstractmethod
     def trader(self) -> ExchangeTrader:
         """Returns: Exchange Trader."""
 
@@ -379,6 +374,13 @@ class ExchangeBase(ABC):
     def stable_balance(self) -> Decimal:
         """Return stable balance."""
 
+    @property
+    def account_info(self) -> dict[str, str]:
+        """Return info to be added to account info widget."""
+        return {
+            "Exchange": self.name(),
+        }
+
     @classmethod
     @abstractmethod
     async def create(cls, fetcher_bus: ExchangeFetcherMessageBus) -> Self:
@@ -388,6 +390,16 @@ class ExchangeBase(ABC):
     def default_pair(self) -> str:
         """Return default pair name to auto subscribe."""
         return self.format_pair_from_coin("BTC")
+
+    @property
+    def min_order_size(self) -> Decimal:
+        """Return min trade size."""
+        return Decimal(0)
+
+    @property
+    def max_order_size(self) -> Decimal:
+        """Return max trade size."""
+        return Decimal(100_000_000_000_000_000_000_000)
 
     @property
     def options(self) -> ExchangeOptions:
@@ -400,6 +412,23 @@ class ExchangeBase(ABC):
             return self.options is not None
         except OptionsNotAvailableError:
             return False
+
+    @abstractmethod
+    async def is_ready_to_trade(self) -> bool:
+        """Check if account is ready to trade.
+
+        Mainly used for DEXs to check if contract appovals are done.
+
+        Returns:
+            bool: True if account is ready to trade.
+        """
+
+    @abstractmethod
+    async def approve_for_trading(self) -> None:
+        """Approve contracts needed for trading.
+
+        Mainly used for DEXs to approve contract appovals.
+        """
 
     def format_pair_from_coin(self, coin: str) -> str:
         """Format coin to pair name."""
@@ -523,6 +552,19 @@ class ExchangeBase(ABC):
         )
         CONFIG.leverage = leverage
 
+    def is_valid_order_size(self, order_size: Decimal) -> bool:
+        """Validate order size with min and max values.
+
+        Args:
+            order_size (Decimal): Size to validate.
+
+        Returns:
+            bool: True if order size is valid.
+        """
+        if order_size < self.min_order_size or order_size > self.max_order_size:
+            return False
+        return True
+
     @abstractmethod
     async def create_order(
         self,
@@ -547,6 +589,10 @@ class ExchangeBase(ABC):
                 If None use CONFIG.take_profit.
             stop_loss (Optional[float], optional): Stop loss price.
                 If None use CONFIG.stop_loss.
+
+        Raises:
+            InvalidOrderSizeError: If order size is not valid.
+            TransactionFailedError: If transaction failed
         """
 
     @abstractmethod
@@ -563,6 +609,9 @@ class ExchangeBase(ABC):
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
             new_execution_price (Optional[Decimal], optional): Execution price.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         ...
 
@@ -584,8 +633,9 @@ class ExchangeBase(ABC):
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.
-            is_stop_loss (bool): True if this is a stop loss order.
-                False if it's a take profit.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
 
     @abstractmethod
@@ -608,6 +658,9 @@ class ExchangeBase(ABC):
 
         Args:
             perps_position (PerpsPosition): Position to close.
+
+        Raises:
+            TransactionFailedError: If transaction failed
         """
         toast_id = Toast.show_message(
             f"Closing position for {perps_position['pair']}",
@@ -647,7 +700,7 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.calculate_position_fee(position_collateral)
 
-    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.
 
         Args:
@@ -656,7 +709,7 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Funding fee in USD Stable Format.
         """
-        return self.fetcher.fetch_borrow_fee(perps_position)
+        return self.fetcher.fetch_funding_fee(perps_position)
 
     def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
         """Calculate liquidation price for a given position.
@@ -700,10 +753,17 @@ class ExchangeBase(ABC):
         """
         raise OptionsNotAvailableError
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
-        LOGGER.info("Stopping exchange %s loops", self.name)
-        await self.fetcher.stop()
+        LOGGER.debug("Stopping exchange: `%s`", self.name())
+        for task in self._async_tasks:
+            task.cancel()
+        await self.fetcher.stop_async()
+
+    @staticmethod
+    @abstractmethod
+    def name() -> str:
+        """Return exchange name."""
 
     @staticmethod
     @abstractmethod

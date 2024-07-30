@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qasync import asyncio, asyncSlot
+from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.base import (
@@ -59,6 +60,7 @@ class PlutusTerminal(QMainWindow):
         super().__init__()
         self._fetcher_message_bus = ExchangeFetcherMessageBus()
         self._news_message_bus = NewsMessageBus()
+        self._async_tasks = []
 
         self.main_layout = QVBoxLayout()
         self.main_widget = QWidget()
@@ -96,27 +98,31 @@ class PlutusTerminal(QMainWindow):
         self._current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
             self._fetcher_message_bus,
         )
-        asyncio.create_task(self._current_exchange.fetch_prices())
+        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
 
         self._chart = TradingChart(
             self._current_exchange.available_pairs,
             self._current_exchange.format_simple_pair_from_pair,
-            self._current_exchange.calculate_liquidation_price,
         )
 
         # Init open trades widget
         self._trade_table = TradeTable(self._current_exchange)
 
         # Init account info widget
-        self._account_info = AccountInfo()
+        self._account_info = AccountInfo(
+            self._current_exchange.account_info,
+            self._current_exchange.is_ready_to_trade,
+            self._current_exchange.approve_for_trading,
+            parent=self,
+        )
 
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._current_exchange)
 
         # Init news manager
         self._news_manager = NewsManager(self._news_message_bus)
-        asyncio.create_task(self._news_manager.fetch_news())
+        self._async_tasks.append(asyncio.create_task(self._news_manager.fetch_news()))
         self._news_list = NewsList(self._current_exchange)
 
         # Init options Widget
@@ -163,6 +169,7 @@ class PlutusTerminal(QMainWindow):
         )
 
         # Configure account info
+        await self._account_info.set_approve_btn_visibility()
         self._fetcher_message_bus.balance_signal.connect(self._account_info.update_balance)
 
         # Configure Perps Trade
@@ -307,8 +314,10 @@ class PlutusTerminal(QMainWindow):
     @asyncSlot()
     async def _fill_news_list(self) -> None:
         """Fill news list with old news."""
+        self._news_list.setDisabled(True)
         old_news = await self._news_manager.fetch_old_news(self._news_list.max_news)
         self._news_list.fill_old_news(old_news)
+        self._news_list.setDisabled(False)
 
     @asyncSlot()
     async def change_account(self, account: KeyringAccount) -> None:
@@ -346,7 +355,7 @@ class PlutusTerminal(QMainWindow):
 
     async def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
         """Update exchangeBase on all modules of the list exchange_update_affected."""
-        await self._current_exchange.stop()
+        await self._current_exchange.stop_async()
 
         self._news_message_bus.blockSignals(True)
         self._fetcher_message_bus.blockSignals(True)
@@ -354,7 +363,7 @@ class PlutusTerminal(QMainWindow):
         self._current_exchange = await new_exchange.create(self._fetcher_message_bus)
 
         # Init price fetching loops
-        asyncio.create_task(self._current_exchange.fetch_prices())
+        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
 
         # Update modules with new exchange
@@ -377,6 +386,11 @@ class PlutusTerminal(QMainWindow):
         # reload config from database
         CONFIG.load_config()
 
+        # Update account info
+        self._account_info.approve_btn.setVisible(
+            not await self._current_exchange.is_ready_to_trade(),
+        )
+
         for module in self._account_update_affected:
             module.blockSignals(True)
             module.on_new_account()  # type: ignore
@@ -386,3 +400,14 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus.blockSignals(False)
 
         await self._current_exchange.fetcher.resubscribe_on_going_connections()
+        self._update_quick_trade_values()
+
+    async def stop_async(self) -> None:
+        """Stop all async tasks and cleanup for deletion."""
+        LOGGER.debug("Stopping Plutus Terminal async")
+        for task in self._async_tasks:
+            task.cancel()
+        await asyncio.gather(
+            self._news_manager.stop_async(),
+            self._current_exchange.stop_async(),
+        )

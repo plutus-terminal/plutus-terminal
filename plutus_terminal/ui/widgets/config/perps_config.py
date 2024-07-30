@@ -11,6 +11,7 @@ from PySide6.QtGui import QPixmap
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButton
+from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 
@@ -33,6 +34,7 @@ class PerpsConfig(QtWidgets.QWidget):
         self._tp_spin = DoubleSpinBoxWithButton(button_text="%")
         self._sl_label = QtWidgets.QLabel("Stop Loss:")
         self._sl_spin = DoubleSpinBoxWithButton(button_text="%")
+        self._tp_sl_update = QtWidgets.QPushButton("Update TP/SL")
         self._advanced_bar = TopBar("Advanced Config")
         self._advanced_box_layout = QtWidgets.QVBoxLayout()
         self._trade_values_box = QtWidgets.QGroupBox("Quick Buy Values")
@@ -77,15 +79,16 @@ class PerpsConfig(QtWidgets.QWidget):
 
         self._tp_spin.setValue(CONFIG.take_profit)
         self._tp_spin.setMinimum(0)
-        self._tp_spin.setMaximum(100_000_000)
+        self._tp_spin.setMaximum(100)
         self._tp_spin.setDecimals(2)
-        self._tp_spin.valueChanged.connect(partial(setattr, CONFIG, "take_profit"))
 
         self._sl_spin.setValue(CONFIG.stop_loss)
         self._sl_spin.setMinimum(0)
         self._sl_spin.setMaximum(100)
         self._sl_spin.setDecimals(2)
-        self._sl_spin.valueChanged.connect(partial(setattr, CONFIG, "stop_loss"))
+
+        self._tp_sl_update.setMinimumHeight(35)
+        self._tp_sl_update.clicked.connect(self._update_tp_sl)
 
         self._trade_lowest_spin.setMinimum(1)
         self._trade_lowest_spin.setMaximum(100_000_000)
@@ -129,6 +132,7 @@ class PerpsConfig(QtWidgets.QWidget):
         self._auto_tp_sl_box_layout.addWidget(self._tp_spin, 0, 1)
         self._auto_tp_sl_box_layout.addWidget(self._sl_label, 1, 0)
         self._auto_tp_sl_box_layout.addWidget(self._sl_spin, 1, 1)
+        self._auto_tp_sl_box_layout.addWidget(self._tp_sl_update, 2, 0, 1, 2)
         self._auto_tp_sl_box.setLayout(self._auto_tp_sl_box_layout)
         self.main_layout.addWidget(self._auto_tp_sl_box)
 
@@ -201,6 +205,12 @@ class PerpsConfig(QtWidgets.QWidget):
         CONFIG.trade_value_medium = self._trade_med_spin.value()
         CONFIG.trade_value_high = self._trade_high_spin.value()
         self.updated_trade_values.emit()
+
+    def _update_tp_sl(self) -> None:
+        """Update take profit and stop loss."""
+        CONFIG.take_profit = self._tp_spin.value()
+        CONFIG.stop_loss = self._sl_spin.value()
+        Toast.show_message("TP/SL values updated", type_=ToastType.SUCCESS)
 
     def on_new_account(self) -> None:
         """Update info based on new account."""

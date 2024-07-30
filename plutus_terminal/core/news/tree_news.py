@@ -193,3 +193,8 @@ class TreeNews(NewsFetcher):
             sfx=":/sfx/coin",
             ignored=False,
         )
+
+    async def stop_async(self) -> None:
+        """Stop infinite loops and close connections."""
+        if self._socket is not None:
+            await self._socket.close()

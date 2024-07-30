@@ -31,9 +31,10 @@ contracts.
 
 ## ⚠️  Disclaimer
 
-Plutus Terminal is in **alpha** version and not ready for production use. It
+Plutus Terminal is in **alpha** version and it's more likely to break. It
 trades on the Perpetuals DEX using real money. Do not risk money you cannot
 afford to lose.
+
 
 **PLUTUS TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK.** The
 authors and all affiliates assume no responsibility for your trading results.
@@ -52,7 +53,7 @@ it by downloading the PyApp executable, using pipx, or building it with Poetry.
 
 > [!WARNING]
 > The following instructions will show how to install Plutus Terminal unstable version!
-> Unstable version is not yet ready for production use.
+> Unstable version is more likely to break.
 
 <details>
 <summary>
@@ -81,16 +82,16 @@ From the terminal run:
 
 > [!NOTE]
 > To learn more about PyApp, check out the [PyApp documentation](https://ofek.dev/pyapp/latest/)
+
 <br>
-
 </details>
-
 <br>
 
 <details>
 <summary>
 <strong>Installation using <code>pipx</code>:</strong>
 </summary>
+
 <br>
 
 ### Pipx
@@ -98,7 +99,7 @@ From the terminal run:
 #### To install
 
 ```bash
-pipx install git+https://github.com/plutus-terminal/plutus-terminal.git@unstable
+pipx install plutus-terminal
 ```
 
 Run with:
@@ -114,7 +115,6 @@ pipx upgrade plutus-terminal
 ```
 
 </details>
-
 <br>
 
 <details>
@@ -156,7 +156,6 @@ Run the tool with:
 ```bash
 poetry run plutus-terminal
 ```
-
 #### To update
 
 ```bash
@@ -317,10 +316,10 @@ This filter will play the `powerup` sound if the title of the news is `Tree News
 Current supported exchanges are:
 
 * <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify](https://perp.foxify.trade/#/trade/?ref=plutus_terminal)
+* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 
 Planned support:
 
-* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 * <img src="./assets/gmx.svg" height="25px" alt="Foxify Logo"/> [GMX](https://app.gmx.io/#/trade/?ref=plutus_terminal)
 
 ## ❤️  Support

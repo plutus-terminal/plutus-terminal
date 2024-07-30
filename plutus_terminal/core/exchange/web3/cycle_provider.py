@@ -4,6 +4,7 @@ import itertools
 import logging
 from typing import Any
 
+from aiohttp import ClientResponseError
 import orjson
 from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3.providers.async_base import AsyncJSONBaseProvider
@@ -38,7 +39,15 @@ class AsyncCycleWeb3Provider(AsyncJSONBaseProvider):
             dict: Response.
         """
         provider = next(self._providers_cycle)
-        return await provider.make_request(method, params)
+        try:
+            result = await provider.make_request(method, params)
+        except ClientResponseError:
+            LOGGER.warning("Provider %s is not available. Removing it...", provider)
+            self._providers.remove(provider)
+            self._providers_cycle = itertools.cycle(self._providers)
+            return await self.make_request(method, params)
+
+        return result
 
 
 def build_cycle_provider(chain_name: str) -> AsyncWeb3:

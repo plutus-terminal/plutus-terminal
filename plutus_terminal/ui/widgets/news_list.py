@@ -53,7 +53,7 @@ class NewsList(QtWidgets.QWidget):
 
         self._selected_news_widget: Optional[NewsWidget] = None
 
-        self.max_news = 50
+        self.max_news = 25
 
         self._load_sfxs()
         self._setup_widgets()
@@ -97,7 +97,7 @@ class NewsList(QtWidgets.QWidget):
         self._top_bar_notifications.setToolTip("Enable Desktop Notifications")
         self._top_bar_notifications.toggled.connect(self.notifications_toggled)
 
-        self._top_bar_max_news.addItems(["50 results", "100 results", "200 results"])
+        self._top_bar_max_news.addItems(["25 results", "50 results", "100 results", "200 results"])
         self._top_bar_max_news.currentIndexChanged.connect(
             self.update_max_news,
         )
@@ -226,6 +226,7 @@ class NewsList(QtWidgets.QWidget):
 
     def fill_old_news(self, list_news: list[NewsData]) -> None:
         """Clear and fill list with given data."""
+        self.setDisabled(True)
         self._scroll_area.blockSignals(True)
         self.clear_list()
         for news_data in list_news:
@@ -235,6 +236,7 @@ class NewsList(QtWidgets.QWidget):
 
             self._add_news_to_list(news_data)
         self._scroll_area.blockSignals(False)
+        self.setDisabled(False)
 
     def _add_news_to_list(self, news_data: NewsData) -> NewsWidget:
         """Add news to list respecting the limit.

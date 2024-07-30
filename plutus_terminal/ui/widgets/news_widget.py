@@ -14,10 +14,12 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequ
 import re2  # type: ignore
 
 from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.types import PerpsTradeType
 from plutus_terminal.core.types_ import NewsData, PerpsTradeDirection
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.image_web_viewer import ImageWebViewer
+from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -491,7 +493,13 @@ class NewsWidget(QtWidgets.QGroupBox):
             trade_type (PerpsTradeType): Trade type.
         """
         amount = getattr(CONFIG, config_key_value)
-        trade_function(coin, amount, trade_direction, trade_type)
+        try:
+            trade_function(coin, amount, trade_direction, trade_type)
+        except InvalidOrderSizeError as error:
+            Toast.show_message(
+                f"{error}",
+                type_=ToastType.ERROR,
+            )
 
     def _unsubscribe_from_price_updates(
         self,

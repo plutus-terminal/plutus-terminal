@@ -20,7 +20,7 @@ class ExchangeType(IntEnum):
     """Exchange type."""
 
     DEX = 0
-    CEX = 1
+    # CEX = 1
 
 
 class PerpsTradeType(IntEnum):
@@ -70,6 +70,7 @@ class PerpsPosition(TypedDict):
     open_price: Decimal
     trade_direction: PerpsTradeDirection
     leverage: Decimal
+    liquidation_price: Decimal
     extra: NotRequired[dict]
 
 

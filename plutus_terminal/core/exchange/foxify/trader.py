@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING, Self
 
-from tenacity import before_sleep_log, retry, stop_after_attempt
+from tenacity import before_sleep_log, retry, wait_exponential
 from web3.exceptions import ContractLogicError
 from web3.types import Gwei, Nonce, Wei
 
@@ -45,6 +46,7 @@ class FoxifyTrader(ExchangeTrader):
         self.pair_map = pair_map
         self.web3_account = web3_account
         self.extra_gas = extra_gas
+        self._receiver_address = web3_account.address
         self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         self._vault_contract = foxify_utils.build_vault_contract(self.web3_provider)
         self._position_router_contract = foxify_utils.build_position_router_contract(
@@ -76,19 +78,20 @@ class FoxifyTrader(ExchangeTrader):
         return trader
 
     @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=0.15, max=1),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
     )
     async def init_async(self) -> None:
         """Init async shared attributes."""
-        self._price_precision = await self._vault_contract.functions.PRICE_PRECISION().call()
-        self._position_execution_fee = (
-            await self._position_router_contract.functions.minExecutionFee().call()
-        )
-        self._order_execution_fee = (
-            await self._order_book_contract.functions.minExecutionFee().call()
+        (
+            self._price_precision,
+            self._position_execution_fee,
+            self._order_execution_fee,
+        ) = await asyncio.gather(
+            self._vault_contract.functions.PRICE_PRECISION().call(),
+            self._position_router_contract.functions.minExecutionFee().call(),
+            self._order_book_contract.functions.minExecutionFee().call(),
         )
 
     async def approve_stable(self) -> None:
@@ -232,7 +235,6 @@ class FoxifyTrader(ExchangeTrader):
         Returns:
             TradeResults: Result of the trade.
         """
-        await foxify_utils.ensure_referral(self.web3_provider, self.web3_account)
         nonce: Nonce = await self.web3_provider.eth.get_transaction_count(
             self.web3_account.address,
         )
@@ -399,7 +401,7 @@ class FoxifyTrader(ExchangeTrader):
                 0,  # collateralDelta
                 int(trade_arguments["size_delta"] * self._price_precision),
                 trade_arguments["trade_direction"].value,
-                self.web3_account.address,
+                self._receiver_address,
                 int(trade_arguments["acceptable_price"] * self._price_precision),
                 0,
                 self._position_execution_fee,

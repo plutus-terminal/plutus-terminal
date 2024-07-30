@@ -41,7 +41,7 @@ from plutus_terminal.core.types_ import (
 from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
-    from eth_account.signers.local import LocalAccount
+    from eth_typing import ChecksumAddress
 
     from plutus_terminal.core.exchange.base import ExchangeFetcherMessageBus
 
@@ -54,23 +54,20 @@ class FoxifyFetcher(ExchangeFetcher):
     def __init__(
         self,
         pair_map: dict[str, str],
-        web3_account: LocalAccount,
+        web3_address: ChecksumAddress,
         message_bus: ExchangeFetcherMessageBus,
     ) -> None:
         """Initialize shared attributes.
 
-        Pair index is unique to foxify due to how they manage their trading arguments.
-
         Args:
             pair_map (dict[str, dict[str, str]]): Dict with adress and pair.
-            web3_account (eth_account.signers.local.LocalAccount): Web3 account to
-                get address from.
+            web3_address (ChecksumAddress): Web3 account address.
             message_bus (ExchangeFetcherMessageBus): Message bus.
         """
         LOGGER.info("Initialize FoxifyFetcher")
         self.aclient = AsyncClient()
         self.pair_map = pair_map
-        self.web3_account = web3_account
+        self.web3_address = web3_address
         self.web3_provider = build_cycle_provider("Arbitrum One Fetcher")
         self.vault_contract = foxify_utils.build_vault_contract(self.web3_provider)
         self.order_book_contract = foxify_utils.build_order_book_contract(
@@ -96,44 +93,44 @@ class FoxifyFetcher(ExchangeFetcher):
     async def create(
         cls,
         pair_map: dict[str, str],
-        web3_account: LocalAccount,
+        web3_address: ChecksumAddress,
         message_bus: ExchangeFetcherMessageBus,
     ) -> Self:
         """Create class instance and init_async.
 
         Args:
             pair_map (dict[str, str]): Dict with adress and pair.
-            web3_account (eth_account.signers.local.LocalAccount): Web3 account to
-                get address from.
+            web3_address (ChecksumAddress): Web3 account address.
             message_bus (ExchangeFetcherMessageBus): Message bus.
 
         Returns:
             FoxifyFetcher: Instance of FoxifyFetcher.
         """
-        fetcher = cls(pair_map, web3_account, message_bus)
+        fetcher = cls(pair_map, web3_address, message_bus)
         await fetcher.init_async()
         return fetcher
 
     @retry(
-        reraise=True,
-        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=0.15, max=1),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
     )
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
-        await self._populate_funding_rates()
-        self._vault_price_precision = int(
-            await self.vault_contract.functions.PRICE_PRECISION().call(),
-        )
-        self._funding_rate_precision = int(
-            await self.vault_contract.functions.FUNDING_RATE_PRECISION().call(),
-        )
-        self._basis_points_divisor = int(
-            await self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
-        )
-        self._margin_fee_basis_points = int(
-            await self.vault_contract.functions.marginFeeBasisPoints().call(),
+        (
+            _,
+            self._vault_price_precision,
+            self._funding_rate_precision,
+            self._basis_points_divisor,
+            self._margin_fee_basis_points,
+            self._liquidation_fee,
+        ) = await asyncio.gather(
+            self._populate_funding_rates(),
+            self.vault_contract.functions.PRICE_PRECISION().call(),
+            self.vault_contract.functions.FUNDING_RATE_PRECISION().call(),
+            self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
+            self.vault_contract.functions.marginFeeBasisPoints().call(),
+            self.vault_contract.functions.liquidationFeeUsd().call(),
         )
 
     @retry(
@@ -328,7 +325,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 LOGGER.exception("WebSocket connection closed unexpectely")
                 await self._ensure_websocket_connection()
             except asyncio.CancelledError:
-                LOGGER.debug("Watch all positions cancelled.")
+                LOGGER.debug("Receive subscribed prices cancelled.")
                 raise
             except Exception:
                 LOGGER.exception("Unexpected error while receiving prices")
@@ -383,6 +380,9 @@ class FoxifyFetcher(ExchangeFetcher):
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
+            except asyncio.CancelledError:
+                LOGGER.debug("Watch all positions cancelled.")
+                raise
             finally:
                 await asyncio.sleep(1)
 
@@ -421,7 +421,7 @@ class FoxifyFetcher(ExchangeFetcher):
         }
         """
 
-        variables = {"account": self.web3_account.address.lower()}
+        variables = {"account": self.web3_address.lower()}
         response = await self.aclient.post(
             self._goldsky_url,
             json={"query": query, "variables": variables},
@@ -454,8 +454,10 @@ class FoxifyFetcher(ExchangeFetcher):
                     ),
                     "leverage": round(leverage, 2),
                     "extra": extra,
+                    "liquidation_price": Decimal(0),
                 },
             )
+            position["liquidation_price"] = self.calculate_liquidation_price(position)
             self._cached_positions.append(position)
         return self._cached_positions
 
@@ -468,6 +470,9 @@ class FoxifyFetcher(ExchangeFetcher):
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
+            except asyncio.CancelledError:
+                LOGGER.debug("Watch all order cancelled.")
+                raise
             finally:
                 await asyncio.sleep(1)
 
@@ -508,7 +513,7 @@ class FoxifyFetcher(ExchangeFetcher):
           }
         }
         """
-        variables = {"account": self.web3_account.address.lower()}
+        variables = {"account": self.web3_address.lower()}
         response = await self.aclient.post(
             self._goldsky_url,
             json={"query": query, "variables": variables},
@@ -522,7 +527,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 f"get{order['type'].capitalize()}Order",
             )
             chain_order = await func(
-                self.web3_account.address,
+                self.web3_address,
                 int(order["index"]),
             ).call()
 
@@ -599,6 +604,9 @@ class FoxifyFetcher(ExchangeFetcher):
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching stable balance.")
                 continue
+            except asyncio.CancelledError:
+                LOGGER.debug("Watch all balance cancelled.")
+                raise
             finally:
                 await asyncio.sleep(2)
 
@@ -613,7 +621,7 @@ class FoxifyFetcher(ExchangeFetcher):
         Returns:
             Decimal: Balance in USD Stable Format.
         """
-        balance = await self.stable_contract.functions.balanceOf(self.web3_account.address).call()
+        balance = await self.stable_contract.functions.balanceOf(self.web3_address).call()
 
         return Decimal(balance) / 10**foxify_utils.USDC_DECIMAL_PLACES
 
@@ -659,22 +667,40 @@ class FoxifyFetcher(ExchangeFetcher):
             )
 
     async def _populate_funding_rates(self) -> None:
-        """Fetch funding rate of cached positions.."""
+        """Fetch funding rate of cached positions."""
+        tasks = []
         for direction in [
             PerpsTradeDirection.LONG.value,
             PerpsTradeDirection.SHORT.value,
         ]:
             for pair_address, pair in self.pair_map.items():
                 self._cached_funding_rates.setdefault(pair, {})
-                self._cached_funding_rates[pair][direction] = int(
-                    await self.vault_contract.functions.cumulativeFundingRates(
-                        self.web3_provider.to_checksum_address(pair_address),
-                        direction,
-                    ).call(),
-                )
-                await asyncio.sleep(0.1)
+                tasks.append(self._fetch_and_cache_funding_rate(pair, pair_address, direction))
 
-    def fetch_borrow_fee(self, perps_position: PerpsPosition) -> Decimal:
+        await asyncio.gather(*tasks)
+
+    async def _fetch_and_cache_funding_rate(
+        self,
+        pair: str,
+        pair_address: str,
+        direction: bool,
+    ) -> None:
+        """Fetch and cache funding rate for a specific pair and direction.
+
+        Args:
+            pair (str): Pair name e.g Crypto.BTC/USD.
+            pair_address (str): Pair address.
+            direction (bool): Direction to fetch funding rate for.
+        """
+        rate = int(
+            await self.vault_contract.functions.cumulativeFundingRates(
+                self.web3_provider.to_checksum_address(pair_address),
+                direction,
+            ).call(),
+        )
+        self._cached_funding_rates[pair][direction] = rate
+
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Get funding fee for a given position.
 
         Args:
@@ -712,16 +738,23 @@ class FoxifyFetcher(ExchangeFetcher):
             Decimal: Liquidation price in USD Stable Format.
         """
         collateral = perps_position["collateral_stable"]
-        borrow_fee = self.fetch_borrow_fee(perps_position)
+        funding_fee = self.fetch_funding_fee(perps_position)
         position_fee = self.calculate_position_fee(perps_position["position_size_stable"])
+        liquidation_fee = Decimal(self._liquidation_fee / self._vault_price_precision)
         size = perps_position["position_size_stable"]
         trade_direction = perps_position["trade_direction"]
+        total_fees = funding_fee + position_fee + liquidation_fee
 
         open_price = perps_position["open_price"]
 
+        if total_fees > collateral:
+            if trade_direction == PerpsTradeDirection.LONG:
+                return open_price - ((total_fees - collateral) * open_price / size)
+            return open_price + ((total_fees - collateral) * open_price / size)
+
         if trade_direction == PerpsTradeDirection.LONG:
-            return open_price - (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
-        return open_price + (((collateral - borrow_fee - position_fee) * open_price / size) / 2)
+            return open_price - ((collateral - total_fees) * open_price / size)
+        return open_price + ((collateral - total_fees) * open_price / size)
 
     def calculate_pnl_percent(
         self,
@@ -745,8 +778,9 @@ class FoxifyFetcher(ExchangeFetcher):
             current_price = self._cached_prices[perps_position["pair"]]["price"]
         return ((current_price / open_price) - 1) * 100 * leverage * trade_direction_multiplier
 
-    async def stop(self) -> None:
+    async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
         self.async_stop_event.set()
         if self._socket is not None:
             await self._socket.close()
+        await self.aclient.aclose()
