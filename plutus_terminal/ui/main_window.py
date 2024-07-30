@@ -111,6 +111,7 @@ class PlutusTerminal(QMainWindow):
 
         # Init account info widget
         self._account_info = AccountInfo(
+            self._current_exchange.account_info,
             self._current_exchange.is_ready_to_trade,
             self._current_exchange.approve_for_trading,
             parent=self,

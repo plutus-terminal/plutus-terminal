@@ -80,6 +80,26 @@ class FoxifyFundedExchange(FoxifyExchange):
         """Return max trade size."""
         return self._max_order_size
 
+    @property
+    def account_info(self) -> dict[str, str]:
+        """Return info to be added to account info widget."""
+        return {
+            "Exchange": self.name().capitalize(),
+            "Exchange Type": self.exchange_type().name,
+            "Wallet": f"{self.web3_account.address[:5]}...{self.web3_account.address[-5:]}",
+            "Trader Wallet": f"{self._funded_trader_address[:5]}...{self._funded_trader_address[-5:]}",  # noqa: E501
+        }
+
+    @asyncSlot()
+    async def is_ready_to_trade(self) -> bool:
+        """Check if contracts are approaved.
+
+        Returns:
+            bool: True if account is ready to trade.
+        """
+        # Funded contracts don't need to be approved
+        return True
+
     @asyncSlot()
     async def set_all_leverage(self, leverage: int) -> None:
         """Set leverage for all positions.
@@ -137,6 +157,11 @@ class FoxifyFundedExchange(FoxifyExchange):
             leverage = self._max_leverage
 
         CONFIG.leverage = leverage
+
+    @staticmethod
+    def name() -> str:
+        """Return exchange name."""
+        return "foxify-FUNDED"
 
     @staticmethod
     def validate_secrets(secrets: list[str]) -> tuple[bool, str]:

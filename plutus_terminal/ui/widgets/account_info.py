@@ -23,12 +23,14 @@ class AccountInfo(QtWidgets.QWidget):
 
     def __init__(
         self,
+        exchange_account_info: dict[str, Any],
         is_ready_to_trade: Callable[[], Coroutine[Any, Any, bool]],
         approve_for_trading: Callable[[], Coroutine[Any, Any, None]],
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent)
+        self._exchange_account_info = exchange_account_info
         self._is_ready_to_trade = is_ready_to_trade
         self._approve_for_trading = approve_for_trading
 
@@ -39,6 +41,7 @@ class AccountInfo(QtWidgets.QWidget):
         self._frame_layout = QtWidgets.QGridLayout()
         self._balance_label = QtWidgets.QLabel("Available Balance:")
         self._balance_value = QtWidgets.QLabel("$0.00 USD")
+        self._exchange_account_info_layout = QtWidgets.QGridLayout()
         self.approve_btn = QtWidgets.QPushButton("Approve For Trading")
 
         self._setup_widgets()
@@ -46,6 +49,9 @@ class AccountInfo(QtWidgets.QWidget):
 
     def _setup_widgets(self) -> None:
         """Configure widgets."""
+        self.top_bar.icon.setPixmap(
+            QPixmap(":/icons/account_info"),
+        )
         self._frame.setObjectName("newsFrameQuote")
         self._balance_value.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._balance_value.setObjectName("subTitle")
@@ -53,9 +59,35 @@ class AccountInfo(QtWidgets.QWidget):
         self.approve_btn.setMinimumHeight(30)
         self.approve_btn.clicked.connect(self._on_approve_for_trading)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.top_bar.icon.setPixmap(
-            QPixmap(":/icons/account_info"),
-        )
+        self.refresh_exchange_account_info(self._exchange_account_info)
+
+    def refresh_exchange_account_info(self, exchange_account_info: dict[str, Any]) -> None:
+        """Refresh exchange account info."""
+        self._exchange_account_info = exchange_account_info
+
+        # clear exchange_account_info layout
+        while self._exchange_account_info_layout.count():
+            old_widget = self._exchange_account_info_layout.takeAt(
+                self._exchange_account_info_layout.count() - 1,
+            ).widget()
+            old_widget.deleteLater()
+
+        for label, value in self._exchange_account_info.items():
+            label_widget = QtWidgets.QLabel(label)
+            value_widget = QtWidgets.QLabel(str(value))
+            value_widget.setAlignment(Qt.AlignmentFlag.AlignRight)
+            value_widget.setObjectName("subTitle")
+            row_count = self._exchange_account_info_layout.rowCount()
+            self._exchange_account_info_layout.addWidget(
+                label_widget,
+                row_count,
+                0,
+            )
+            self._exchange_account_info_layout.addWidget(
+                value_widget,
+                row_count,
+                1,
+            )
 
     def _setup_layout(self) -> None:
         """Configure layout."""
@@ -63,6 +95,7 @@ class AccountInfo(QtWidgets.QWidget):
 
         self._frame_layout.addWidget(self._balance_label, 0, 0)
         self._frame_layout.addWidget(self._balance_value, 0, 1)
+        self._frame_layout.addLayout(self._exchange_account_info_layout, 1, 0, 1, 2)
         self._frame.setLayout(self._frame_layout)
         self.main_layout.addWidget(self._frame, 1, 0, 1, 2)
         self.main_layout.addWidget(self.approve_btn, 2, 0, 1, 2)
@@ -95,3 +128,4 @@ class AccountInfo(QtWidgets.QWidget):
         """
         self._is_ready_to_trade = new_exchange.is_ready_to_trade
         self._approve_for_trading = new_exchange.approve_for_trading
+        self.refresh_exchange_account_info(new_exchange.account_info)

@@ -331,11 +331,6 @@ class ExchangeBase(ABC):
 
     @property
     @abstractmethod
-    def name(self) -> str:
-        """Returns: Exchange name."""
-
-    @property
-    @abstractmethod
     def trader(self) -> ExchangeTrader:
         """Returns: Exchange Trader."""
 
@@ -378,6 +373,13 @@ class ExchangeBase(ABC):
     @abstractmethod
     def stable_balance(self) -> Decimal:
         """Return stable balance."""
+
+    @property
+    def account_info(self) -> dict[str, str]:
+        """Return info to be added to account info widget."""
+        return {
+            "Exchange": self.name(),
+        }
 
     @classmethod
     @abstractmethod
@@ -753,10 +755,15 @@ class ExchangeBase(ABC):
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
-        LOGGER.debug("Stopping exchange: `%s`", self.name)
+        LOGGER.debug("Stopping exchange: `%s`", self.name())
         for task in self._async_tasks:
             task.cancel()
         await self.fetcher.stop_async()
+
+    @staticmethod
+    @abstractmethod
+    def name() -> str:
+        """Return exchange name."""
 
     @staticmethod
     @abstractmethod

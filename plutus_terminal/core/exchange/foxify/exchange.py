@@ -110,11 +110,6 @@ class FoxifyExchange(ExchangeBase):
         # self._options = await FoxifyOptions.create(self.web3_account, Gwei(0))
 
     @property
-    def name(self) -> str:
-        """Returns: Exchange name."""
-        return "foxify"
-
-    @property
     def trader(self) -> FoxifyTrader:
         """Returns: Exchange Trader."""
         return self._trader
@@ -158,6 +153,15 @@ class FoxifyExchange(ExchangeBase):
     def cached_prices(self) -> dict:
         """Return all prices from cache."""
         return self.fetcher._cached_prices  # noqa: SLF001
+
+    @property
+    def account_info(self) -> dict[str, str]:
+        """Return info to be added to account info widget."""
+        return {
+            "Exchange": self.name().capitalize(),
+            "Exchange Type": self.exchange_type().name,
+            "Wallet": f"{self.web3_account.address[:5]}...{self.web3_account.address[-5:]}",
+        }
 
     @property
     def stable_balance(self) -> Decimal:
@@ -665,6 +669,11 @@ class FoxifyExchange(ExchangeBase):
     #         available_to_spend -= orders_to_buy["orders"][row["orderId"]]
     #
     #     await self._options.buy_options(orders_to_buy)
+
+    @staticmethod
+    def name() -> str:
+        """Return exchange name."""
+        return "foxify"
 
     @staticmethod
     def new_account_info() -> NewAccountInfo:
