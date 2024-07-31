@@ -99,7 +99,7 @@ From the terminal run:
 #### To install
 
 ```bash
-pipx install plutus-terminal
+pipx install git+https://github.com/plutus-terminal/plutus-terminal.git@unstable
 ```
 
 Run with:
