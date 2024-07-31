@@ -756,7 +756,7 @@ class FoxifyFetcher(ExchangeFetcher):
             return open_price - ((collateral - total_fees) * open_price / size)
         return open_price + ((collateral - total_fees) * open_price / size)
 
-    def calculate_pnl_percent(
+    def calculate_pnl_percent_before_fees(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],

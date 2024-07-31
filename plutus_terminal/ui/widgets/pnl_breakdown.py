@@ -50,7 +50,7 @@ class PnlBreakdown(QWidget):
         self,
         pnl: Decimal,
         funding_fee: Decimal,
-        closing_fee: Decimal,
+        position_fee: Decimal,
         pnl_after_fee: Decimal,
         push_tool_tip: bool = True,
     ) -> None:
@@ -58,7 +58,8 @@ class PnlBreakdown(QWidget):
         self._tooltip_content = (
             f"PnL: {round(pnl, 3)}<br>"
             f"Funding Fee: -{round(funding_fee, 3)}<br>"
-            f"Closing Fee: -{round(closing_fee, 3)}<br><br>"
+            f"Opening Fee: -{round(position_fee, 3)}<br>"
+            f"Closing Fee: -{round(position_fee, 3)}<br><br>"
             f"PnL After Fees: {round(pnl_after_fee, 3)}"
         )
         if self._show_tooltip and push_tool_tip:
