@@ -31,20 +31,25 @@ contracts.
 
 ## ⚠️  Disclaimer
 
-Plutus Terminal is in **alpha** version and not ready for production use. It
+Plutus Terminal is in i**alpha** version and not ready for production use. It
 trades on the Perpetuals DEX using real money. Do not risk money you cannot
 afford to lose.
 
+**PLUTUS TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK**. The
+authors and all affiliates assume no responsibility for your trading results or
+any other consequences arising from the use of this tool. The entire risk as to
+the quality and performance of the program is with you. Should the program
+prove defective, you assume the cost of all necessary servicing, repair, or
+correction.
 
-**PLUTUS TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK.** The
-authors and all affiliates assume no responsibility for your trading results.
-The entire risk as to the quality and performance of the program is with you.
-Should the program prove defective, you assume the cost of all necessary
-servicing, repair, or correction.
+By using Plutus Terminal, you acknowledge and agree that:o
 
-Everyone is encouraged to read and understand the source code before using it.
-Positions opened with Plutus Terminal will automatically use our referral codes
-when possible.
+* You understand the risks involved in trading cryptocurrencies.
+* You will not hold the authors or affiliates liable for any financial losses, data breaches, or other damages.
+* You have read and understood the source code before using the tool.
+* Positions opened with Plutus Terminal will automatically use our referral codes when possible.
+
+Plutus Terminal is for educational and informational purposes only and does not constitute financial advice.
 
 ## 🛠️  Installation
 
