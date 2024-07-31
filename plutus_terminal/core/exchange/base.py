@@ -130,11 +130,11 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
+    def calculate_position_fee(self, position_size: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
-            position_collateral (Decimal): Position size to get fee for.
+            position_size (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Fee amount in USD Stable Format.
@@ -689,16 +689,16 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.get_position_associated_with_order(order)
 
-    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
+    def calculate_position_fee(self, position_size: Decimal) -> Decimal:
         """Get fee for a given position.
 
         Args:
-            position_collateral (Decimal): Position size to get fee for.
+            position_size (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Position fee.
         """
-        return self.fetcher.calculate_position_fee(position_collateral)
+        return self.fetcher.calculate_position_fee(position_size)
 
     def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.

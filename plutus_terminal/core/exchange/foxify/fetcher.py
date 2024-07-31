@@ -625,18 +625,18 @@ class FoxifyFetcher(ExchangeFetcher):
 
         return Decimal(balance) / 10**foxify_utils.USDC_DECIMAL_PLACES
 
-    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
+    def calculate_position_fee(self, position_size: Decimal) -> Decimal:
         """Calulate fee for a given position.
 
         Args:
-            position_collateral (Decimal): Position size to get fee for.
+            position_size (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Fee amount in USD Stable Format.
         """
-        return (
-            position_collateral * (self._basis_points_divisor - self._margin_fee_basis_points)
-        ) / (self._basis_points_divisor * 10**3)
+        return (position_size * (self._basis_points_divisor - self._margin_fee_basis_points)) / (
+            self._basis_points_divisor * 10**3
+        )
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.15, max=5),

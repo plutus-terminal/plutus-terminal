@@ -251,7 +251,7 @@ class PositionsTableView(QTableView):
             leverage = data["leverage"]
             trade_collateral = data["position_size_stable"] / leverage
             trade_direction = data["trade_direction"]
-            position_fee = self._exchange.calculate_position_fee(trade_collateral)
+            position_fee = self._exchange.calculate_position_fee(trade_collateral * leverage)
             funding_fee = self._exchange.fetch_funding_fee(data)
             pnl_percent = self._exchange.calculate_pnl_percent(data, current_price)
             pnl_usd = (trade_collateral * pnl_percent) / 100
