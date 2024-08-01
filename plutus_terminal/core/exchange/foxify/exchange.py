@@ -337,7 +337,7 @@ class FoxifyExchange(ExchangeBase):
         except TransactionFailedError as error:
             Toast.update_message(
                 toast_id,
-                f"Failed to create order > {error}",
+                f"Failed to create order: {error}",
                 type_=ToastType.ERROR,
             )
             return
@@ -410,7 +410,7 @@ class FoxifyExchange(ExchangeBase):
         except TransactionFailedError as error:
             Toast.update_message(
                 toast_id,
-                f"Failed to edit order > {error}",
+                f"Failed to edit order: {error}",
                 type_=ToastType.ERROR,
             )
             return
@@ -488,14 +488,14 @@ class FoxifyExchange(ExchangeBase):
         except TransactionFailedError as error:
             Toast.update_message(
                 toast_id,
-                f"Failed to create reduce order > {error}",
+                f"Failed to create reduce order: {error}",
                 type_=ToastType.ERROR,
             )
             return
         except NotImplementedError as error:
             Toast.update_message(
                 toast_id,
-                f"Reduce order not supported > {error}",
+                f"Reduce order not supported: {error}",
                 type_=ToastType.ERROR,
             )
             return
@@ -549,7 +549,7 @@ class FoxifyExchange(ExchangeBase):
         except TransactionFailedError as error:
             Toast.update_message(
                 toast_id,
-                f"Failed to create reduce order > {error}",
+                f"Failed to create reduce order: {error}",
                 type_=ToastType.ERROR,
             )
             return
@@ -614,7 +614,7 @@ class FoxifyExchange(ExchangeBase):
         except TransactionFailedError as error:
             Toast.update_message(
                 toast_id,
-                f"Failed to close position > {error}",
+                f"Failed to close position: {error}",
                 type_=ToastType.ERROR,
             )
             return
