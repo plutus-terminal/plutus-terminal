@@ -32,7 +32,6 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from decimal import Decimal
 
     from lightweight_charts import Chart
     from lightweight_charts.abstract import HorizontalLine
@@ -153,9 +152,11 @@ class TradingChart(QWidget):
             reset (bool, optional): Reset chart for new symbol. Defaults to False.
         """
         self._main_chart.set(ohlcv)
+        self._main_chart.price_scale()
+        self._main_chart.fit()
         if reset:
-            # TODO: Reset chart drawings
-            LOGGER.debug("Not implemented")
+            # TODO: remove draw_positions
+            pass
 
     def update_chart_ohlcv(self, ohlcv: pandas.DataFrame) -> None:
         """Update the chart with the ohlcv data.
@@ -193,7 +194,9 @@ class TradingChart(QWidget):
         Args:
             all_positions (list[PerpsPosition]): List of current positions.
         """
-        new_positions = {pos["id"]: pos for pos in all_positions}
+        new_positions = {
+            pos["id"]: pos for pos in all_positions if pos["pair"] == self.current_pair
+        }
 
         # Update existing positions
         for pos_id, position in new_positions.items():
@@ -249,7 +252,9 @@ class TradingChart(QWidget):
         Args:
             all_orders (list[OrderData]): List of current orders.
         """
-        new_orders = {order["id"]: order for order in all_orders}
+        new_orders = {
+            order["id"]: order for order in all_orders if order["pair"] == self.current_pair
+        }
 
         for order_id, order in new_orders.items():
             if order_id in self._order_lines:
