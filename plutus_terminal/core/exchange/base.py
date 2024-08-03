@@ -131,8 +131,8 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def calculate_position_fee(self, position_size: Decimal) -> Decimal:
-        """Get fee for a given position.
+    def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
+        """Calcualte margin fee for a given position.
 
         Args:
             position_size (Decimal): Position size to get fee for.
@@ -690,8 +690,8 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.get_position_associated_with_order(order)
 
-    def calculate_position_fee(self, position_size: Decimal) -> Decimal:
-        """Get fee for a given position.
+    def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
+        """Caculate margin fee for a given position.
 
         Args:
             position_size (Decimal): Position size to get fee for.
@@ -699,7 +699,7 @@ class ExchangeBase(ABC):
         Returns:
             Decimal: Position fee.
         """
-        return self.fetcher.calculate_position_fee(position_size)
+        return self.fetcher.calculate_margin_fee(position_size)
 
     def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.
@@ -739,7 +739,7 @@ class ExchangeBase(ABC):
         """
         leverage = perps_position["leverage"]
         trade_collateral = perps_position["position_size_stable"] / leverage
-        position_fee = self.fetcher.calculate_position_fee(trade_collateral)
+        position_fee = self.fetcher.calculate_margin_fee(perps_position["position_size_stable"])
         funding_fee = self.fetcher.fetch_funding_fee(perps_position)
         pnl_percentage = self.fetcher.calculate_pnl_percent_before_fees(
             perps_position,

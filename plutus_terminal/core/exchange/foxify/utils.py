@@ -241,6 +241,26 @@ def build_funded_trader_contract(
     return web3_provider.eth.contract(address=trader_address, abi=abi)
 
 
+async def build_time_lock_contract(
+    web3_provider: AsyncWeb3,
+) -> AsyncContract:
+    """Build time lock contract.
+
+    Args:
+        web3_provider (AsyncWeb3): Web3 provider.
+
+    Returns:
+        AsyncContract: Contract for time lock.
+    """
+    with Path.open(
+        Path(__file__).parent.joinpath("abi/foxify_time_lock.json"),
+    ) as f:
+        abi = json.load(f)
+
+    time_lock_address = await build_vault_contract(web3_provider).functions.owner().call()
+    return web3_provider.eth.contract(address=time_lock_address, abi=abi)
+
+
 def build_stable_contract(
     web3_provider: AsyncWeb3,
 ) -> AsyncContract:
