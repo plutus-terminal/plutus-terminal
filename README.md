@@ -1,5 +1,10 @@
 <div align="center">
 
+![Made with Python](https://img.shields.io/badge/python-3.12-yellow?style=flat&logo=python&logoColor=white&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
+![License](https://img.shields.io/badge/license-GPLv3-red?style=flat&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
+[![Docuemntation](https://img.shields.io/badge/documentation-blue?style=flat)](https://plutuss-organization.gitbook.io/documentation/)
+
+
 <img src="./assets/plutus_icon_full.png" height="400px" alt="Plutus Terminal Splash Screen"/>
 
 # Plutus Terminal
@@ -31,7 +36,7 @@ contracts.
 
 ## ⚠️  Disclaimer
 
-Plutus Terminal is in i**alpha** version and not ready for production use. It
+Plutus Terminal is in **alpha** version and it's more likely to break. It
 trades on the Perpetuals DEX using real money. Do not risk money you cannot
 afford to lose.
 
@@ -42,7 +47,7 @@ the quality and performance of the program is with you. Should the program
 prove defective, you assume the cost of all necessary servicing, repair, or
 correction.
 
-By using Plutus Terminal, you acknowledge and agree that:o
+By using Plutus Terminal, you acknowledge and agree that:
 
 * You understand the risks involved in trading cryptocurrencies.
 * You will not hold the authors or affiliates liable for any financial losses, data breaches, or other damages.
@@ -170,7 +175,7 @@ poetry update
 
 Bellow you will find a simple guide on how to get started with Plutus Terminal.
 For a more complete documentation please refer to the
-[documentation](https://github.com/plutus-terminal/plutus-terminal/blob/main/README.md)
+[documentation](https://plutuss-organization.gitbook.io/documentation)
 
 ### Create new account
 
