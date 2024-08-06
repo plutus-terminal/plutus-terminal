@@ -334,7 +334,6 @@ async def approve_plugin(
     }
 
     approval_transaction = await router_contract.functions.approvePlugin(
-        web3_account.address,
         plugin_address,
     ).build_transaction(transaction_params)
 
