@@ -1,5 +1,6 @@
 """Web3 Provider that cicles between mutiple providers to avoid rate limiting."""
 
+import asyncio
 import itertools
 import logging
 from typing import Any
@@ -26,6 +27,7 @@ class AsyncCycleWeb3Provider(AsyncJSONBaseProvider):
         """
         self._providers = providers
         self._providers_cycle = itertools.cycle(providers)
+        self._lock = asyncio.Lock()
         super().__init__()
 
     async def make_request(self, method: RPCEndpoint, params: Any) -> RPCResponse:  # noqa: ANN401
@@ -38,13 +40,15 @@ class AsyncCycleWeb3Provider(AsyncJSONBaseProvider):
         Returns:
             dict: Response.
         """
-        provider = next(self._providers_cycle)
+        async with self._lock:
+            provider = next(self._providers_cycle)
         try:
             result = await provider.make_request(method, params)
         except ClientResponseError:
             LOGGER.warning("Provider %s is not available. Removing it...", provider)
-            self._providers.remove(provider)
-            self._providers_cycle = itertools.cycle(self._providers)
+            async with self._lock:
+                self._providers.remove(provider)
+                self._providers_cycle = itertools.cycle(self._providers)
             return await self.make_request(method, params)
 
         return result

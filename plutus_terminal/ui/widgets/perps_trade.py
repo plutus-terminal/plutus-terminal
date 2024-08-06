@@ -337,10 +337,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
             return
         amount = current_widget.amount_box.value()
-        position_fee = self._exchange.calculate_position_fee(
+        margin_fee = self._exchange.calculate_margin_fee(
             Decimal(amount) * self._leverage_spin.value(),
         )
-        self._fees_value.setText(f"${position_fee:.3f}")
+        self._fees_value.setText(f"${margin_fee:.3f}")
 
         leverage_value = self._leverage_spin.value()
         self._leverage_info_value.setText(f"{leverage_value}x")

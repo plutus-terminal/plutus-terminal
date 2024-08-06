@@ -117,6 +117,7 @@ class FoxifyFetcher(ExchangeFetcher):
     )
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
+        self.time_lock_contract = await foxify_utils.build_time_lock_contract(self.web3_provider)
         (
             _,
             self._vault_price_precision,
@@ -129,7 +130,7 @@ class FoxifyFetcher(ExchangeFetcher):
             self.vault_contract.functions.PRICE_PRECISION().call(),
             self.vault_contract.functions.FUNDING_RATE_PRECISION().call(),
             self.vault_contract.functions.BASIS_POINTS_DIVISOR().call(),
-            self.vault_contract.functions.marginFeeBasisPoints().call(),
+            self.time_lock_contract.functions.marginFeeBasisPoints().call(),
             self.vault_contract.functions.liquidationFeeUsd().call(),
         )
 
@@ -625,18 +626,22 @@ class FoxifyFetcher(ExchangeFetcher):
 
         return Decimal(balance) / 10**foxify_utils.USDC_DECIMAL_PLACES
 
-    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
+    def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
         """Calulate fee for a given position.
 
         Args:
-            position_collateral (Decimal): Position size to get fee for.
+            position_size (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Fee amount in USD Stable Format.
         """
         return (
-            position_collateral * (self._basis_points_divisor - self._margin_fee_basis_points)
-        ) / (self._basis_points_divisor * 10**3)
+            position_size
+            * (
+                self._basis_points_divisor
+                - (self._basis_points_divisor - self._margin_fee_basis_points)
+            )
+        ) / (self._basis_points_divisor)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.15, max=5),
@@ -739,14 +744,54 @@ class FoxifyFetcher(ExchangeFetcher):
         """
         collateral = perps_position["collateral_stable"]
         funding_fee = self.fetch_funding_fee(perps_position)
-        position_fee = self.calculate_position_fee(perps_position["position_size_stable"])
+        margin_fee = self.calculate_margin_fee(perps_position["position_size_stable"])
         liquidation_fee = Decimal(self._liquidation_fee / self._vault_price_precision)
         size = perps_position["position_size_stable"]
         trade_direction = perps_position["trade_direction"]
-        total_fees = funding_fee + position_fee + liquidation_fee
+        total_fees = funding_fee + margin_fee + liquidation_fee
 
         open_price = perps_position["open_price"]
 
+        liquidation_price_for_fees = self._calculate_liquidation_price_from_delta(
+            total_fees,
+            size,
+            collateral,
+            open_price,
+            trade_direction,
+        )
+
+        liquidation_price_for_max_leverage = self._calculate_liquidation_price_from_delta(
+            size * self._basis_points_divisor / 1000000,
+            size,
+            collateral,
+            open_price,
+            trade_direction,
+        )
+
+        if trade_direction == PerpsTradeDirection.LONG:
+            return max(liquidation_price_for_fees, liquidation_price_for_max_leverage)
+        return min(liquidation_price_for_fees, liquidation_price_for_max_leverage)
+
+    def _calculate_liquidation_price_from_delta(
+        self,
+        total_fees: Decimal,
+        size: Decimal,
+        collateral: Decimal,
+        open_price: Decimal,
+        trade_direction: PerpsTradeDirection,
+    ) -> Decimal:
+        """Calculate liquidation price from delta.
+
+        Args:
+            total_fees (Decimal): Total fees (collateral + position fee + liquidation fee).
+            size (Decimal): Position size.
+            collateral (Decimal): Collateral.
+            open_price (Decimal): Open price.
+            trade_direction (PerpsTradeDirection): Trade direction.
+
+        Returns:
+            Decimal: Liquidation price in USD Stable Format.
+        """
         if total_fees > collateral:
             if trade_direction == PerpsTradeDirection.LONG:
                 return open_price - ((total_fees - collateral) * open_price / size)
@@ -756,7 +801,7 @@ class FoxifyFetcher(ExchangeFetcher):
             return open_price - ((collateral - total_fees) * open_price / size)
         return open_price + ((collateral - total_fees) * open_price / size)
 
-    def calculate_pnl_percent(
+    def calculate_pnl_percent_before_fees(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],

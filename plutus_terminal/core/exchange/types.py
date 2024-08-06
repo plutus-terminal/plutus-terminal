@@ -74,6 +74,17 @@ class PerpsPosition(TypedDict):
     extra: NotRequired[dict]
 
 
+class PnlDetails(TypedDict):
+    """Pnl details from exchange."""
+
+    pnl_usd_before_fees: Decimal
+    pnl_percentage_before_fees: Decimal
+    funding_fee_usd: Decimal
+    position_fee_usd: Decimal
+    pnl_usd_after_fees: Decimal
+    pnl_percentage_after_fees: Decimal
+
+
 class OrderData(TypedDict):
     """Order data from exchange."""
 

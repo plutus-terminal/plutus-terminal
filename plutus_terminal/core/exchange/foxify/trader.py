@@ -206,12 +206,8 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._position_execution_fee,
                 },
             )
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )
@@ -267,12 +263,8 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._order_execution_fee,
                 },
             )
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )
@@ -366,12 +358,8 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._order_execution_fee + 1,
                 },
             )
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )
@@ -422,12 +410,8 @@ class FoxifyTrader(ExchangeTrader):
                     "value": self._position_execution_fee,
                 },
             )
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )
@@ -475,11 +459,7 @@ class FoxifyTrader(ExchangeTrader):
                 },
             )
             tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )
@@ -549,12 +529,8 @@ class FoxifyTrader(ExchangeTrader):
                     "gas": Wei(1000000),
                 },
             )
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )
@@ -603,12 +579,8 @@ class FoxifyTrader(ExchangeTrader):
                     "gas": Wei(1000000),
                 },
             )
-        except (ContractLogicError, ValueError, TypeError) as error:
-            LOGGER.exception("Transaction failed")
-            raise TransactionFailedError from error
-        tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
-        signed_tx = self.web3_account.sign_transaction(tx)
-        try:
+            tx.update({"gas": await web3_utils.estimate_gas(self.web3_provider, tx)})
+            signed_tx = self.web3_account.sign_transaction(tx)
             return await self.web3_provider.eth.send_raw_transaction(
                 signed_tx.rawTransaction,
             )

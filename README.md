@@ -1,5 +1,10 @@
 <div align="center">
 
+![Made with Python](https://img.shields.io/badge/python-3.12-yellow?style=flat&logo=python&logoColor=white&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
+![License](https://img.shields.io/badge/license-GPLv3-red?style=flat&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
+[![Docuemntation](https://img.shields.io/badge/documentation-blue?style=flat)](https://plutuss-organization.gitbook.io/documentation/)
+
+
 <img src="./assets/plutus_icon_full.png" height="400px" alt="Plutus Terminal Splash Screen"/>
 
 # Plutus Terminal
@@ -35,16 +40,21 @@ Plutus Terminal is in **alpha** version and it's more likely to break. It
 trades on the Perpetuals DEX using real money. Do not risk money you cannot
 afford to lose.
 
+**PLUTUS TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK**. The
+authors and all affiliates assume no responsibility for your trading results or
+any other consequences arising from the use of this tool. The entire risk as to
+the quality and performance of the program is with you. Should the program
+prove defective, you assume the cost of all necessary servicing, repair, or
+correction.
 
-**PLUTUS TERMINAL IS PROVIDED "AS IS". USE THE SOFTWARE AT YOUR OWN RISK.** The
-authors and all affiliates assume no responsibility for your trading results.
-The entire risk as to the quality and performance of the program is with you.
-Should the program prove defective, you assume the cost of all necessary
-servicing, repair, or correction.
+By using Plutus Terminal, you acknowledge and agree that:
 
-Everyone is encouraged to read and understand the source code before using it.
-Positions opened with Plutus Terminal will automatically use our referral codes
-when possible.
+* You understand the risks involved in trading cryptocurrencies.
+* You will not hold the authors or affiliates liable for any financial losses, data breaches, or other damages.
+* You have read and understood the source code before using the tool.
+* Positions opened with Plutus Terminal will automatically use our referral codes when possible.
+
+Plutus Terminal is for educational and informational purposes only and does not constitute financial advice.
 
 ## 🛠️  Installation
 
@@ -169,7 +179,7 @@ poetry update
 
 Bellow you will find a simple guide on how to get started with Plutus Terminal.
 For a more complete documentation please refer to the
-[documentation](https://github.com/plutus-terminal/plutus-terminal/blob/main/README.md)
+[documentation](https://plutuss-organization.gitbook.io/documentation)
 
 ### Create new account
 
@@ -316,10 +326,10 @@ This filter will play the `powerup` sound if the title of the news is `Tree News
 Current supported exchanges are:
 
 * <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify](https://perp.foxify.trade/#/trade/?ref=plutus_terminal)
-* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 
 Planned support:
 
+* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 * <img src="./assets/gmx.svg" height="25px" alt="Foxify Logo"/> [GMX](https://app.gmx.io/#/trade/?ref=plutus_terminal)
 
 ## ❤️  Support

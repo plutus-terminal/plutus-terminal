@@ -248,16 +248,10 @@ class PositionsTableView(QTableView):
                 return
 
             pnl_index = self.model().index(row, self._pnl_index)
-            leverage = data["leverage"]
-            trade_collateral = data["position_size_stable"] / leverage
-            trade_direction = data["trade_direction"]
-            position_fee = self._exchange.calculate_position_fee(trade_collateral)
-            funding_fee = self._exchange.fetch_funding_fee(data)
-            pnl_percent = self._exchange.calculate_pnl_percent(data, current_price)
-            pnl_usd = (trade_collateral * pnl_percent) / 100
-            pnl_usd_after_fee = pnl_usd - position_fee - funding_fee
-            pnl_percent_after_fee = pnl_usd_after_fee * 100 / trade_collateral
 
+            pnl_details = self._exchange.calculate_pnl(data, current_price)
+
+            trade_direction = data["trade_direction"]
             pnl_widget = ui_utils.get_stored_widget(
                 self._pnl_widgets,
                 data["pair"],
@@ -266,12 +260,15 @@ class PositionsTableView(QTableView):
             if pnl_widget is None or not isinstance(pnl_widget, PnlBreakdown):
                 return
 
-            pnl_widget.set_pnl(pnl_usd_after_fee, pnl_percent_after_fee)
+            pnl_widget.set_pnl(
+                pnl_details["pnl_usd_after_fees"],
+                pnl_details["pnl_percentage_after_fees"],
+            )
             pnl_widget.set_tooltip_content(
-                pnl_usd,
-                funding_fee,
-                position_fee,
-                pnl_usd_after_fee,
+                pnl_details["pnl_usd_before_fees"],
+                pnl_details["funding_fee_usd"],
+                pnl_details["position_fee_usd"],
+                pnl_details["pnl_usd_after_fees"],
             )
             self.setIndexWidget(pnl_index, pnl_widget)
             # Set row height to 2x to make it fit in the table

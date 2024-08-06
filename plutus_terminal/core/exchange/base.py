@@ -17,6 +17,7 @@ from plutus_terminal.core.exceptions import (
     OptionsNotAvailableError,
     TransactionFailedError,
 )
+from plutus_terminal.core.exchange.types import PnlDetails
 from plutus_terminal.core.types_ import (
     ExchangeType,
     NewAccountInfo,
@@ -130,11 +131,11 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
-        """Get fee for a given position.
+    def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
+        """Calcualte margin fee for a given position.
 
         Args:
-            position_collateral (Decimal): Position size to get fee for.
+            position_size (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Fee amount in USD Stable Format.
@@ -163,7 +164,7 @@ class ExchangeFetcher(Protocol):
         """
         ...
 
-    def calculate_pnl_percent(
+    def calculate_pnl_percent_before_fees(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
@@ -689,16 +690,16 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.get_position_associated_with_order(order)
 
-    def calculate_position_fee(self, position_collateral: Decimal) -> Decimal:
-        """Get fee for a given position.
+    def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
+        """Caculate margin fee for a given position.
 
         Args:
-            position_collateral (Decimal): Position size to get fee for.
+            position_size (Decimal): Position size to get fee for.
 
         Returns:
             Decimal: Position fee.
         """
-        return self.fetcher.calculate_position_fee(position_collateral)
+        return self.fetcher.calculate_margin_fee(position_size)
 
     def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Fetch funding fee for a given position.
@@ -722,21 +723,42 @@ class ExchangeBase(ABC):
         """
         return self.fetcher.calculate_liquidation_price(perps_position)
 
-    def calculate_pnl_percent(
+    def calculate_pnl(
         self,
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
-    ) -> Decimal:
-        """Calculate pnl percent for a given position.
+    ) -> PnlDetails:
+        """Calculate pnl for a given position.
 
         Args:
             perps_position (PerpsPosition): Position to get pnl for.
-            current_price (Optional[Decimal]): Current price of the pair.
+            current_price (Optional[Decimal]): Current price of the pair. If None, use last price
 
         Returns:
             Decimal: PNL in USD Stable Format.
         """
-        return self.fetcher.calculate_pnl_percent(perps_position, current_price)
+        leverage = perps_position["leverage"]
+        trade_collateral = perps_position["position_size_stable"] / leverage
+        position_fee = self.fetcher.calculate_margin_fee(perps_position["position_size_stable"])
+        funding_fee = self.fetcher.fetch_funding_fee(perps_position)
+        pnl_percentage = self.fetcher.calculate_pnl_percent_before_fees(
+            perps_position,
+            current_price,
+        )
+        pnl_usd = (trade_collateral * pnl_percentage) / 100
+        pnl_usd_after_fees = pnl_usd - (2 * position_fee) - funding_fee
+        pnl_percentage_after_fees = pnl_usd_after_fees * 100 / trade_collateral
+
+        return PnlDetails(
+            {
+                "pnl_usd_before_fees": pnl_usd,
+                "pnl_percentage_before_fees": pnl_percentage,
+                "position_fee_usd": position_fee,
+                "funding_fee_usd": funding_fee,
+                "pnl_usd_after_fees": pnl_usd_after_fees,
+                "pnl_percentage_after_fees": pnl_percentage_after_fees,
+            },
+        )
 
     async def buy_options_with_strategy(
         self,
