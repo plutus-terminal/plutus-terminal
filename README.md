@@ -63,7 +63,6 @@ it by downloading the PyApp executable, using pipx, or building it with Poetry.
 
 > [!WARNING]
 > The following instructions will show how to install Plutus Terminal unstable version!
-
 > Unstable version is more likely to break.
 
 <details>
