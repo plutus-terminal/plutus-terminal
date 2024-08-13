@@ -6,6 +6,7 @@ from typing import Any, Optional, TypeVar
 
 from PySide6.QtCore import QDir
 from PySide6.QtWidgets import QWidget
+from qasync import contextlib
 
 from plutus_terminal.core.exchange.types import PerpsTradeDirection
 
@@ -57,9 +58,10 @@ def create_stored_widget(
     """
     new_widget = widget(**kwargs)
     storage.setdefault(pair, {})
-    old_widget = get_stored_widget(storage, pair, trade_direction)
+    old_widget = storage[pair].pop(trade_direction.value, None)
     if old_widget is not None:
-        old_widget.deleteLater()
+        with contextlib.suppress(RuntimeError):
+            old_widget.deleteLater()
     storage[pair][trade_direction.value] = new_widget
     return new_widget
 
@@ -84,3 +86,34 @@ def get_stored_widget(
         trade_direction.value,
         None,
     )
+
+
+def get_or_create_stored_widget(
+    widget: type[T],
+    storage: dict,
+    pair: str,
+    trade_direction: PerpsTradeDirection,
+    **kwargs: Any,  # noqa: ANN401
+) -> Optional[QWidget] | T:
+    """Get or create stored widget.
+
+    Args:
+        widget (QtWidget): Widget to store.
+        storage (dict): Dict to store created widget.
+        pair (str): Pair.
+        trade_direction (PerpsTradeDirection): Trade direction.
+        **kwargs (Any): Additional kwargs.
+
+    Returns:
+        QWidget: Stored widget.
+    """
+    stored_widget = get_stored_widget(storage, pair, trade_direction)
+    if stored_widget is None:
+        stored_widget = create_stored_widget(
+            widget,
+            storage,
+            pair,
+            trade_direction,
+            **kwargs,
+        )
+    return stored_widget

@@ -252,10 +252,15 @@ class PositionsTableView(QTableView):
             pnl_details = self._exchange.calculate_pnl(data, current_price)
 
             trade_direction = data["trade_direction"]
-            pnl_widget = ui_utils.get_stored_widget(
+
+            pnl_widget = ui_utils.get_or_create_stored_widget(
+                PnlBreakdown,
                 self._pnl_widgets,
                 data["pair"],
                 trade_direction,
+                position=data,
+                exchange=self._exchange,
+                parent=self,
             )
             if pnl_widget is None or not isinstance(pnl_widget, PnlBreakdown):
                 return
