@@ -29,6 +29,7 @@ from plutus_terminal.core.exchange.base import (
 )
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.base import NewsMessageBus
+from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.account_info import AccountInfo
@@ -79,6 +80,7 @@ class PlutusTerminal(QMainWindow):
         self._config_dialog: ConfigDialog
         self._user_top_bar: UserTopBar
         self._news_manager: NewsManager
+        self._filter_manager: FilterManager
         self._news_list: NewsList
         self._options_widget: OptionsWidget
 
@@ -120,8 +122,11 @@ class PlutusTerminal(QMainWindow):
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._current_exchange)
 
+        # Init filter manager
+        self._filter_manager = FilterManager()
+
         # Init news manager
-        self._news_manager = NewsManager(self._news_message_bus)
+        self._news_manager = NewsManager(self._news_message_bus, self._filter_manager)
         self._async_tasks.append(asyncio.create_task(self._news_manager.fetch_news()))
         self._news_list = NewsList(self._current_exchange)
 
@@ -167,6 +172,7 @@ class PlutusTerminal(QMainWindow):
         self._config_dialog.leverage_changed.connect(
             self._current_exchange.set_all_leverage,
         )
+        self._config_dialog.update_filters.connect(self._update_news_filters)
 
         # Configure account info
         await self._account_info.set_approve_btn_visibility()
@@ -352,6 +358,11 @@ class PlutusTerminal(QMainWindow):
         self._news_list.update_news_trade_buttons()
         self._perps_trade.update_trade_buttons()
         Toast.show_message("Trade values updated!", type_=ToastType.SUCCESS)
+
+    def _update_news_filters(self) -> None:
+        """Update news filters."""
+        self._filter_manager.update_filters()
+        Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)
 
     async def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
         """Update exchangeBase on all modules of the list exchange_update_affected."""

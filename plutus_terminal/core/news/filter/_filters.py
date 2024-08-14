@@ -27,6 +27,9 @@ class FilterBase(Protocol):
         """Execute filter on newsData."""
         ...
 
+    def clear_queue(self) -> None:
+        """Clear filter queue."""
+
 
 class KeywordMatchingFilter(FilterBase):
     """Filter news by keywords.
@@ -75,6 +78,10 @@ class KeywordMatchingFilter(FilterBase):
                     return news_data
 
         return news_data
+
+    def clear_queue(self) -> None:
+        """Clear filter queue."""
+        self._actions_to_execute.clear()
 
 
 class DataMatchingFilter(FilterBase):
@@ -140,3 +147,7 @@ class DataMatchingFilter(FilterBase):
                     if news_data["ignored"]:
                         return news_data
         return news_data
+
+    def clear_queue(self) -> None:
+        """Clear filter queue."""
+        self._actions_by_data_key.clear()

@@ -17,6 +17,7 @@ class ConfigDialog(QtWidgets.QDialog):
 
     updated_trade_values = Signal()
     leverage_changed = Signal(int)
+    update_filters = Signal()
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         """Initialize dialog."""
@@ -45,6 +46,8 @@ class ConfigDialog(QtWidgets.QDialog):
         self.persp_config.updated_trade_values.connect(self.updated_trade_values)
         self.persp_config.leverage_changed.connect(self.leverage_changed)
         self._tab_widget.addTab(self.persp_config, "Trade")
+
+        self.news_config.update_filters.connect(self.update_filters)
 
         self._tab_widget.addTab(self.news_config, "News Source")
 
