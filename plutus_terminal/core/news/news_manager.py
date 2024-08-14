@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING
 
 import pandas
 
-from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.phoenix_news import PhoenixNews
 from plutus_terminal.core.news.tree_news import TreeNews
 
 if TYPE_CHECKING:
     from plutus_terminal.core.news.base import NewsFetcher, NewsMessageBus
+    from plutus_terminal.core.news.filter.filter_manager import FilterManager
     from plutus_terminal.core.types_ import NewsData
 
 LOGGER = logging.getLogger(__name__)
@@ -23,15 +23,16 @@ LOGGER = logging.getLogger(__name__)
 class NewsManager:
     """Manage multiple news source."""
 
-    def __init__(self, news_bus: NewsMessageBus) -> None:
+    def __init__(self, news_bus: NewsMessageBus, filter_manager: FilterManager) -> None:
         """Initialize shared variables.
 
         Args:
             news_bus (NewsMessageBus): Message bus to send news signals.
+            filter_manager (FilterManager): Filter manager to filter news.
         """
         self.news_bus = news_bus
         self.news_sources: list[NewsFetcher] = [TreeNews(), PhoenixNews()]
-        self._filter_manager = FilterManager()
+        self._filter_manager = filter_manager
         self._seen_links: set[str] = set()
         self._news_task: list[asyncio.Task] = []
 

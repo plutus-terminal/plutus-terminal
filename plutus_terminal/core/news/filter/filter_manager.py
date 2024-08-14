@@ -17,6 +17,7 @@ from plutus_terminal.core.news.filter._filters import (
 from plutus_terminal.core.news.filter.types import ActionType, FilterType
 
 if TYPE_CHECKING:
+    from plutus_terminal.core.db.models import UserFilter
     from plutus_terminal.core.types_ import NewsData
 
 
@@ -34,7 +35,7 @@ class FilterManager:
                 FilterType.DATA_MATCHING: self._data_matching_filters,
             },
         )
-        self._all_user_filters = AppConfig.get_all_user_filters()
+        self._all_user_filters: list[UserFilter] = AppConfig.get_all_user_filters()
 
         self._create_internal_filters()
         self._create_user_filters()
@@ -76,6 +77,14 @@ class FilterManager:
                 FILTER_ACTIONS_MAP[action_type],
                 action_args,
             )
+
+    def update_filters(self) -> None:
+        """Re-create all internal and user filters."""
+        for filter_type in self._filter_type_map.values():
+            filter_type.clear_queue()
+        self._all_user_filters: list[UserFilter] = AppConfig.get_all_user_filters()
+        self._create_internal_filters()
+        self._create_user_filters()
 
     def filter(self, news_data: NewsData) -> NewsData:
         """Run all created filters on the news data provided.
