@@ -49,7 +49,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             trader_challenge,
         ).call()
 
-        min_deposit_stable = chanllenge_configs[14] / 10**foxify_utils.USDC_DECIMAL_PLACES
+        min_deposit_stable = chanllenge_configs[13] / 10**foxify_utils.USDC_DECIMAL_PLACES
         self._min_leverage = chanllenge_configs[11] / basis_point
         self._max_leverage = chanllenge_configs[12] / basis_point
         self._min_order_size = Decimal(chanllenge_configs[9] / basis_point) * Decimal(
