@@ -158,7 +158,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(50)
         self._leverage_spin.setValue(CONFIG.leverage)
-        self._leverage_spin.valueChanged.connect(self._set_leverage_spin)
+        self._leverage_spin.editingFinished.connect(
+            lambda: self._set_leverage_spin(
+                self._leverage_spin.value(),
+            ),
+        )
         self._update_leverage_buttons(self._leverage_spin.value())
 
         self._trade_tab.setObjectName("tradeType")
