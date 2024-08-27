@@ -392,7 +392,7 @@ class PlutusTerminal(QMainWindow):
         await self._fill_news_list()
 
         # Update chart
-        await self._set_chart_timeframe("1")
+        await self._set_chart_timeframe(self._chart.current_timeframe)
 
         # reload config from database
         CONFIG.load_config()
