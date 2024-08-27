@@ -29,7 +29,7 @@ class KeyringAccount(BaseModel):
 
     username = CharField(unique=True)
     exchange_type = IntegerField()
-    exchange_name = CharField(unique=True)
+    exchange_name = CharField()
 
 
 class TradeConfig(BaseModel):
@@ -120,3 +120,5 @@ def create_database() -> None:
 
         GUISettings.create(key="minimize_to_tray", value=orjson.dumps(True))
         GUISettings.create(key="window_geometry", value=orjson.dumps({}))
+
+        GUISettings.create(key="toast_position", value=orjson.dumps("bottom_left"))
