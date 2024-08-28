@@ -346,9 +346,7 @@ class PlutusTerminal(QMainWindow):
             timeout=20000,
         )
         self.setEnabled(False)
-        new_exchange = await VALID_EXCHANGES[str(account.exchange_name)].create(
-            self._fetcher_message_bus,
-        )
+        new_exchange = VALID_EXCHANGES[str(account.exchange_name)]
         await self.on_new_exchange(new_exchange)
         self.setEnabled(True)
         Toast.update_message(
@@ -378,14 +376,14 @@ class PlutusTerminal(QMainWindow):
         self._current_exchange = await new_exchange.create(self._fetcher_message_bus)
 
         # Init price fetching loops
-        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
+        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
 
         # Update modules with new exchange
         for module in self._exchange_update_affected:
             LOGGER.debug("Setting up new exchange: %s", module)
             module.blockSignals(True)
-            module.on_new_exchange(new_exchange)  # type: ignore
+            module.on_new_exchange(self._current_exchange)  # type: ignore
             module.blockSignals(False)
 
         # Enable options if available

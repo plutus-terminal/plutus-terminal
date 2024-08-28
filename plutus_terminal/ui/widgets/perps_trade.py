@@ -137,7 +137,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 ),
             )
 
-        self._set_from_exchange()
+        self._set_data_from_exchange()
         self._pair_combo_box.currentTextChanged.connect(
             lambda pair: self.pair_changed.emit(
                 f"{self._exchange.pair_prefix}{pair}{self._exchange.pair_suffix}",
@@ -262,7 +262,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             alignment=QtCore.Qt.AlignmentFlag.AlignBottom,
         )
 
-    def _set_from_exchange(self) -> None:
+    def _set_data_from_exchange(self) -> None:
         """Set data from exchange."""
         # Fill combo box with available pairs
         self._pair_combo_box.clear()
@@ -542,7 +542,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             new_exchange (ExchangeBase): New exchangeBase.
         """
         self._exchange = new_exchange
-        self._set_from_exchange()
+        self._set_data_from_exchange()
 
     def on_new_account(self) -> None:
         """Update info based on new account."""
