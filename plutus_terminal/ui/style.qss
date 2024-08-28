@@ -81,18 +81,18 @@ QDoubleSpinBox::up-button, QDoubleSpinBox::down-button, QSpinBox::up-button, QSp
     height: 0px;
 }
 
-QDoubleSpinBox:disabled, QRadioButton:disabled {
+QDoubleSpinBox:disabled, QRadioButton:disabled, QCheckBox:disabled {
     background-color: gray;
 }
 
 
-QRadioButton::indicator {
+QRadioButton::indicator, QCheckBox::indicator {
     width: 0px;
     height: 0px;
     border-color: transparent;
 }
 
-QRadioButton {
+QRadioButton, QCheckBox {
     color: white;
     background-color: rgba(0, 0, 0, 0);
     border: 2px solid rgba(180, 180, 180, 255);
@@ -101,17 +101,17 @@ QRadioButton {
     min-width: 25px;
 }
 
-QRadioButton:checked {
+QRadioButton:checked, QCheckBox:checked {
     background-color: rgba(255, 200, 100, 80);
     border-color: #D68347;
 }
 
-QRadioButton:hover:checked {
+QRadioButton:hover:checked, QCheckBox:hover:checked {
     background-color: rgba(255, 200, 100, 120);
     border-color: #D68347;
 }
 
-QRadioButton:hover:!checked {
+QRadioButton:hover:!checked, QCheckBox:hover:!checked {
     background-color: rgba(255, 255, 255, 30);
 }
 
