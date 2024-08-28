@@ -9,6 +9,7 @@ from PySide6.QtGui import QPixmap
 from plutus_terminal.ui.widgets.config.account_config import AccountConfig
 from plutus_terminal.ui.widgets.config.news_config import NewsConfig
 from plutus_terminal.ui.widgets.config.perps_config import PerpsConfig
+from plutus_terminal.ui.widgets.config.terminal_config import TerminalConfig
 from plutus_terminal.ui.widgets.config.web3_config import Web3Config
 
 
@@ -18,6 +19,8 @@ class ConfigDialog(QtWidgets.QDialog):
     updated_trade_values = Signal()
     leverage_changed = Signal(int)
     update_filters = Signal()
+    show_images_toggled = Signal(bool)
+    desktop_notifications_toggled = Signal(bool)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         """Initialize dialog."""
@@ -31,6 +34,7 @@ class ConfigDialog(QtWidgets.QDialog):
         self.news_config = NewsConfig()
         self.web3_config = Web3Config()
         self.account_config = AccountConfig()
+        self.terminal_config = TerminalConfig()
 
         self._setup_widgets()
         self._setup_layout()
@@ -48,12 +52,17 @@ class ConfigDialog(QtWidgets.QDialog):
         self._tab_widget.addTab(self.persp_config, "Trade")
 
         self.news_config.update_filters.connect(self.update_filters)
-
         self._tab_widget.addTab(self.news_config, "News Source")
 
         self._tab_widget.addTab(self.web3_config, "Web3")
 
         self._tab_widget.addTab(self.account_config, "Account")
+
+        self.terminal_config.show_images_toggled.connect(self.show_images_toggled)
+        self.terminal_config.desktop_notifications_toggled.connect(
+            self.desktop_notifications_toggled,
+        )
+        self._tab_widget.addTab(self.terminal_config, "Terminal")
 
     def _setup_persp_config(self) -> None:
         """Config persp config."""

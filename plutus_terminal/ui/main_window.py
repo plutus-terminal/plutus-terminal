@@ -173,6 +173,10 @@ class PlutusTerminal(QMainWindow):
             self._current_exchange.set_all_leverage,
         )
         self._config_dialog.update_filters.connect(self._update_news_filters)
+        self._config_dialog.show_images_toggled.connect(self._news_list.show_images_toggled)
+        self._config_dialog.desktop_notifications_toggled.connect(
+            self._news_list.notifications_toggled,
+        )
 
         # Configure account info
         await self._account_info.set_approve_btn_visibility()

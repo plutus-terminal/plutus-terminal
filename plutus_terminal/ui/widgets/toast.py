@@ -34,6 +34,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from plutus_terminal.core.config import CONFIG
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -198,9 +200,23 @@ class Toast(QFrame):
             elif not add_event and self:
                 break
 
-        geometry.moveBottomRight(
-            self.parent_rect.bottomRight() + QPoint(-self._margin, -self._margin - offset),
-        )
+        match CONFIG.get_gui_settings("toast_position"):
+            case "top_left":
+                geometry.moveTopLeft(
+                    self.parent_rect.topLeft() + QPoint(self._margin, self._margin),
+                )
+            case "top_right":
+                geometry.moveTopRight(
+                    self.parent_rect.topRight() + QPoint(-self._margin, self._margin),
+                )
+            case "bottom_left":
+                geometry.moveBottomLeft(
+                    self.parent_rect.bottomLeft() + QPoint(self._margin, -self._margin - offset),
+                )
+            case "bottom_right":
+                geometry.moveBottomRight(
+                    self.parent_rect.bottomRight() + QPoint(-self._margin, -self._margin - offset),
+                )
 
         self.setGeometry(geometry)
 

@@ -305,6 +305,9 @@ class NewsList(QtWidgets.QWidget):
     def show_images_toggled(self, value: bool) -> None:
         """Show images toggled."""
         CONFIG.set_gui_settings("news_show_images", value)
+        self._top_bar_show_images.blockSignals(True)
+        self._top_bar_show_images.setChecked(value)
+        self._top_bar_show_images.blockSignals(False)
         for index in range(self._scroll_layout.count()):
             widget = self._scroll_layout.itemAt(index).widget()
             if isinstance(widget, NewsWidget):
@@ -320,6 +323,9 @@ class NewsList(QtWidgets.QWidget):
     def notifications_toggled(self, value: bool) -> None:
         """Notifications toggled."""
         CONFIG.set_gui_settings("news_desktop_notifications", value)
+        self._top_bar_notifications.blockSignals(True)
+        self._top_bar_notifications.setChecked(value)
+        self._top_bar_notifications.blockSignals(False)
         if value:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_on"))
         else:
