@@ -293,7 +293,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 },
             ),
         )
-        self._cached_prices.pop(pair)
+        self._cached_prices.pop(pair, None)
 
         self.connection_count[pair] = 0
         LOGGER.info("Unsubscribed to receive price updates of: %s", pair)
