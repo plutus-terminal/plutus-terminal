@@ -92,9 +92,9 @@ class PlutusTerminal(QMainWindow):
 
     async def init_async(self) -> None:
         """Initialize async shared variables."""
-        self._config_dialog = ConfigDialog(self)
+        self._config_dialog = ConfigDialog(self._pass_guard, parent=self)
 
-        self._user_top_bar = UserTopBar(self._config_dialog)
+        self._user_top_bar = UserTopBar(self._config_dialog, self._pass_guard)
         self._user_top_bar.account_picker.account_changed.connect(self.change_account)
 
         # Start current exchange loops

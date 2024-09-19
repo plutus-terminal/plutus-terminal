@@ -6,6 +6,7 @@ from PySide6 import QtWidgets
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QPixmap
 
+from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.ui.widgets.config.account_config import AccountConfig
 from plutus_terminal.ui.widgets.config.news_config import NewsConfig
 from plutus_terminal.ui.widgets.config.perps_config import PerpsConfig
@@ -22,7 +23,11 @@ class ConfigDialog(QtWidgets.QDialog):
     show_images_toggled = Signal(bool)
     desktop_notifications_toggled = Signal(bool)
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        pass_guard: PasswordGuard,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
         """Initialize dialog."""
         super().__init__(parent)
 
@@ -33,7 +38,7 @@ class ConfigDialog(QtWidgets.QDialog):
         self.persp_config = PerpsConfig()
         self.news_config = NewsConfig()
         self.web3_config = Web3Config()
-        self.account_config = AccountConfig()
+        self.account_config = AccountConfig(pass_guard)
         self.terminal_config = TerminalConfig()
 
         self._setup_widgets()

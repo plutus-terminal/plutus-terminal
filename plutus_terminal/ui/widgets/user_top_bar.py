@@ -11,6 +11,7 @@ from plutus_terminal.ui.widgets.account_picker import AccountPicker
 from plutus_terminal.ui.widgets.clock import WebClock
 
 if TYPE_CHECKING:
+    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.ui.widgets.config import ConfigDialog
 
 
@@ -20,6 +21,7 @@ class UserTopBar(QtWidgets.QWidget):
     def __init__(
         self,
         config_dialog: ConfigDialog,
+        pass_guard: PasswordGuard,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize widget."""
@@ -28,7 +30,7 @@ class UserTopBar(QtWidgets.QWidget):
         self.main_layout = QtWidgets.QVBoxLayout()
         self._bar_layout = QtWidgets.QHBoxLayout()
 
-        self.account_picker = AccountPicker()
+        self.account_picker = AccountPicker(pass_guard)
         self._clock = WebClock()
         self._config_dialog = config_dialog
         self._config_button = QtWidgets.QPushButton()

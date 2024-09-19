@@ -13,14 +13,20 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
     from plutus_terminal.core.db.models import KeyringAccount
+    from plutus_terminal.core.password_guard import PasswordGuard
 
 
 class AccountConfig(QtWidgets.QWidget):
     """Widget to control account configs."""
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        pass_guard: PasswordGuard,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
+        self._pass_guard = pass_guard
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -81,7 +87,7 @@ class AccountConfig(QtWidgets.QWidget):
 
     def _add_account(self) -> None:
         """Add account."""
-        new_account_dialog = NewAccountDialog()
+        new_account_dialog = NewAccountDialog(self._pass_guard)
         new_account_dialog.exec()
         self.populate_accounts()
         Toast.show_message("New account added", type_=ToastType.SUCCESS)

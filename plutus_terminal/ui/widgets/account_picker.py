@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
@@ -12,15 +12,19 @@ from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.db.models import KeyringAccount
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 
+if TYPE_CHECKING:
+    from plutus_terminal.core.password_guard import PasswordGuard
+
 
 class AccountPicker(QComboBox):
     """Combo box to select account."""
 
     account_changed = Signal(KeyringAccount)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, pass_guard: PasswordGuard, parent: Optional[QWidget] = None) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
+        self._pass_guard = pass_guard
         self._current_index = 0
 
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -63,7 +67,7 @@ class AccountPicker(QComboBox):
         account = self.itemData(index)
 
         if account == "New Account":
-            new_account_dialog = NewAccountDialog()
+            new_account_dialog = NewAccountDialog(self._pass_guard)
 
             if not new_account_dialog.exec():
                 self.blockSignals(True)
