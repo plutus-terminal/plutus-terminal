@@ -15,3 +15,7 @@ class KeyringPasswordNotFoundError(Exception):
 
 class InvalidOrderSizeError(Exception):
     """Error raise when order size is invalid."""
+
+
+class InvalidPasswordError(Exception):
+    """Error raise when password is invalid."""

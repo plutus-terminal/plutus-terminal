@@ -44,6 +44,7 @@ from plutus_terminal.ui.widgets.user_top_bar import UserTopBar
 
 if TYPE_CHECKING:
     from plutus_terminal.core.db.models import KeyringAccount
+    from plutus_terminal.core.password_guard import PasswordGuard
 
 
 # TODO: To remove later
@@ -56,9 +57,10 @@ def reload_style() -> None:  # noqa: D103
 class PlutusTerminal(QMainWindow):
     """Plutus terminal main window."""
 
-    def __init__(self) -> None:
+    def __init__(self, pass_guard: PasswordGuard) -> None:
         """Initialize shared variables."""
         super().__init__()
+        self._pass_guard = pass_guard
         self._fetcher_message_bus = ExchangeFetcherMessageBus()
         self._news_message_bus = NewsMessageBus()
         self._async_tasks = []
@@ -99,6 +101,7 @@ class PlutusTerminal(QMainWindow):
         keyring_account: KeyringAccount = self._user_top_bar.account_picker.currentData()
         self._current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
             self._fetcher_message_bus,
+            self._pass_guard,
         )
         self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
@@ -373,7 +376,10 @@ class PlutusTerminal(QMainWindow):
         self._news_message_bus.blockSignals(True)
         self._fetcher_message_bus.blockSignals(True)
 
-        self._current_exchange = await new_exchange.create(self._fetcher_message_bus)
+        self._current_exchange = await new_exchange.create(
+            self._fetcher_message_bus,
+            self._pass_guard,
+        )
 
         # Init price fetching loops
         self._current_pair = self._current_exchange.default_pair

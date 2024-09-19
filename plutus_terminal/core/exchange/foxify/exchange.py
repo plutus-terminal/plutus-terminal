@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Self
 
-import keyring
 import orjson
 from qasync import asyncSlot
 from web3 import Account
@@ -18,7 +17,6 @@ from web3.types import Gwei
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import (
     InvalidOrderSizeError,
-    KeyringPasswordNotFoundError,
     TransactionFailedError,
 )
 from plutus_terminal.core.exchange import helpers as exchange_helpers
@@ -45,6 +43,7 @@ if TYPE_CHECKING:
         ExchangeFetcherMessageBus,
     )
     from plutus_terminal.core.exchange.types import OrderData, PerpsPosition
+    from plutus_terminal.core.password_guard import PasswordGuard
 
 
 LOGGER = logging.getLogger(__name__)
@@ -53,24 +52,19 @@ LOGGER = logging.getLogger(__name__)
 class FoxifyExchange(ExchangeBase):
     """Class to interact with Foxify Exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus) -> None:
+    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
         """Initialize shared attributes.
 
         Args:
             fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
+            pass_guard (PasswordGuard): PasswordGuard.
         """
-        super().__init__(fetcher_bus=fetcher_bus)
+        super().__init__(fetcher_bus=fetcher_bus, pass_guard=pass_guard)
         self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         # Get current account
         keyring_account = CONFIG.current_keyring_account
-        keyring_password = keyring.get_password(
-            "plutus-terminal",
-            str(keyring_account.username),
-        )
-        if keyring_password is None:
-            msg = "Keyring password not found"
-            raise KeyringPasswordNotFoundError(msg)
-        web3_account: LocalAccount = Account.from_key(orjson.loads(keyring_password)[0])
+        decrypted_password = self._pass_guard.get_keyring_password(keyring_account)
+        web3_account: LocalAccount = Account.from_key(orjson.loads(decrypted_password)[0])
 
         self.web3_account = web3_account
         self._pair_prefix = "Crypto."
@@ -81,16 +75,21 @@ class FoxifyExchange(ExchangeBase):
         self._inverted_pair_map = {v: k for k, v in self._pair_map.items()}
 
     @classmethod
-    async def create(cls, fetcher_bus: ExchangeFetcherMessageBus) -> Self:
+    async def create(
+        cls,
+        fetcher_bus: ExchangeFetcherMessageBus,
+        pass_guard: PasswordGuard,
+    ) -> Self:
         """Create class instance and init_async.
 
         Args:
             fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
+            pass_guard (PasswordGuard): PasswordGuard.
 
         Returns:
             FoxifyExchange: Instance of FoxifyExchange.
         """
-        instance = cls(fetcher_bus)
+        instance = cls(fetcher_bus, pass_guard)
         await instance.init_async()
         return instance
 

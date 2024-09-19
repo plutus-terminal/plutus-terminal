@@ -432,3 +432,7 @@ QMenu#floating {
     border: 2px solid;
     border-color: #767676;
 }
+
+QStatusBar {
+    border: 1px solid;
+}
