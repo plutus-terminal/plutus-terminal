@@ -16,10 +16,15 @@ from PySide6.QtWidgets import (
 from qasync import QEventLoop, asyncSlot
 
 from plutus_terminal.core.config import CONFIG, AppConfig
+from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.log_utils import setup_logging
 from plutus_terminal.ui import resources
 from plutus_terminal.ui.main_window import PlutusTerminal
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
+from plutus_terminal.ui.widgets.password_dialog import (
+    CreatePasswordDialog,
+    UnlockPasswordDialog,
+)
 
 
 class PlutusSystemTrayApp(QApplication):
@@ -28,12 +33,16 @@ class PlutusSystemTrayApp(QApplication):
     def __init__(self, argv: list[str]) -> None:
         """Initialize."""
         super().__init__(argv)
+        relative_path = Path(__file__).parent
+        with Path.open(relative_path.joinpath("ui/style.qss")) as f:
+            self.setStyleSheet(f.read())
         self.splash_screen = QSplashScreen()
         self.splash_screen.setPixmap(QPixmap(":/general/splash_screen"))
         self.splash_screen.show()
         self.processEvents()
 
-        self.main_window = PlutusTerminal()
+        self.pass_guard = self.input_password()
+        self.main_window = PlutusTerminal(self.pass_guard)
 
         self._tray_icon = QSystemTrayIcon()
         self._tray_icon.setIcon(QPixmap(":/icons/plutus_icon"))
@@ -70,9 +79,24 @@ class PlutusSystemTrayApp(QApplication):
         If no account is found a new account dialog will be shown.
         """
         if not AppConfig.get_all_keyring_accounts():
-            new_account_dialog = NewAccountDialog()
+            new_account_dialog = NewAccountDialog(self.pass_guard)
             if not new_account_dialog.exec():
                 sys.exit()
+
+    def input_password(self) -> PasswordGuard:
+        """Input password."""
+        pass_guard = PasswordGuard()
+        if CONFIG.get_gui_settings("first_run"):
+            dialog = CreatePasswordDialog(pass_guard)
+            if not dialog.exec():
+                sys.exit()
+        else:
+            dialog = UnlockPasswordDialog(pass_guard)
+            if not dialog.exec():
+                sys.exit()
+        if not pass_guard.password:
+            sys.exit()
+        return pass_guard
 
     @asyncSlot()
     async def cleanup(self) -> None:
@@ -97,9 +121,6 @@ def run() -> None:
 
     setup_logging()
     app = PlutusSystemTrayApp([])
-    relative_path = Path(__file__).parent
-    with Path.open(relative_path.joinpath("ui/style.qss")) as f:
-        app.setStyleSheet(f.read())
 
     event_loop = QEventLoop(app)
     asyncio.set_event_loop(event_loop)

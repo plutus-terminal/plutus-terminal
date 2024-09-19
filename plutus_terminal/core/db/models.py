@@ -109,16 +109,3 @@ def create_database() -> None:
                 Web3RPC,
             ],
         )
-
-        # Create default GUI settings
-        GUISettings.create(key="current_account_id", value=1)
-
-        GUISettings.create(key="news_show_images", value=orjson.dumps(True))
-        GUISettings.create(key="news_desktop_notifications", value=orjson.dumps(True))
-
-        GUISettings.create(key="options_show_preview", value=orjson.dumps(False))
-
-        GUISettings.create(key="minimize_to_tray", value=orjson.dumps(True))
-        GUISettings.create(key="window_geometry", value=orjson.dumps({}))
-
-        GUISettings.create(key="toast_position", value=orjson.dumps("bottom_left"))
