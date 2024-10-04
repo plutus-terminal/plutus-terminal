@@ -24,6 +24,8 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 class NewsConfig(QtWidgets.QWidget):
     """Widget to control news configuration."""
 
+    update_filters = QtCore.Signal()
+
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -274,7 +276,7 @@ class NewsConfig(QtWidgets.QWidget):
             if isinstance(widget, DataMatchingWidget):
                 widget.write_to_db()
 
-        Toast.show_message("Filters updated", type_=ToastType.SUCCESS)
+        self.update_filters.emit()
 
 
 class ColorButton(QtWidgets.QPushButton):

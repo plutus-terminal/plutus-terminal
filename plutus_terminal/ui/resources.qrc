@@ -39,6 +39,7 @@
         <file alias="disable">images/disable_icon.svg</file>
         <file alias="music">images/music.svg</file>
         <file alias="account_info">images/account_info.svg</file>
+        <file alias="lock_icon">images/lock_icon.svg</file>
     </qresource>
 
     <qresource prefix="general">
@@ -48,7 +49,6 @@
     <qresource prefix="exchanges">
         <file alias="foxify">images/exchanges/foxify.svg</file>
         <file alias="foxify_funded">images/exchanges/foxify_funded.png</file>
-        <file alias="bitget">images/exchanges/bitget.png</file>
     </qresource>
 
     <qresource prefix="sfx">

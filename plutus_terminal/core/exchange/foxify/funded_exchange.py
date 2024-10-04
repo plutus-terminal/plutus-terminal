@@ -12,19 +12,21 @@ from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.foxify.exchange import FoxifyExchange
 from plutus_terminal.core.exchange.foxify.funded_fetcher import FoxifyFundedFetcher
 from plutus_terminal.core.exchange.foxify.funded_trader import FoxifyFundedTrader
+from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 
 class FoxifyFundedExchange(FoxifyExchange):
     """Foxify Funded Exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus) -> None:
+    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
         """Initialize shared attributes.
 
         Args:
             fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
+            pass_guard (PasswordGuard): PasswordGuard.
         """
-        super().__init__(fetcher_bus=fetcher_bus)
+        super().__init__(fetcher_bus=fetcher_bus, pass_guard=pass_guard)
 
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
@@ -49,9 +51,16 @@ class FoxifyFundedExchange(FoxifyExchange):
             trader_challenge,
         ).call()
 
-        min_deposit_stable = chanllenge_configs[14] / 10**foxify_utils.USDC_DECIMAL_PLACES
         self._min_leverage = chanllenge_configs[11] / basis_point
         self._max_leverage = chanllenge_configs[12] / basis_point
+
+        # If trader is on challenge get min deposit from min_deposit_stable
+        # Otherwise get it from funding value
+        if trader_challenge == 1:
+            min_deposit_stable = chanllenge_configs[14] / 10**foxify_utils.USDC_DECIMAL_PLACES
+        else:
+            min_deposit_stable = chanllenge_configs[13] / 10**foxify_utils.USDC_DECIMAL_PLACES
+
         self._min_order_size = Decimal(chanllenge_configs[9] / basis_point) * Decimal(
             min_deposit_stable,
         )

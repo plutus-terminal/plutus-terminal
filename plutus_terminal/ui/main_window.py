@@ -29,6 +29,7 @@ from plutus_terminal.core.exchange.base import (
 )
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.base import NewsMessageBus
+from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.account_info import AccountInfo
@@ -43,6 +44,7 @@ from plutus_terminal.ui.widgets.user_top_bar import UserTopBar
 
 if TYPE_CHECKING:
     from plutus_terminal.core.db.models import KeyringAccount
+    from plutus_terminal.core.password_guard import PasswordGuard
 
 
 # TODO: To remove later
@@ -55,9 +57,10 @@ def reload_style() -> None:  # noqa: D103
 class PlutusTerminal(QMainWindow):
     """Plutus terminal main window."""
 
-    def __init__(self) -> None:
+    def __init__(self, pass_guard: PasswordGuard) -> None:
         """Initialize shared variables."""
         super().__init__()
+        self._pass_guard = pass_guard
         self._fetcher_message_bus = ExchangeFetcherMessageBus()
         self._news_message_bus = NewsMessageBus()
         self._async_tasks = []
@@ -79,6 +82,7 @@ class PlutusTerminal(QMainWindow):
         self._config_dialog: ConfigDialog
         self._user_top_bar: UserTopBar
         self._news_manager: NewsManager
+        self._filter_manager: FilterManager
         self._news_list: NewsList
         self._options_widget: OptionsWidget
 
@@ -88,15 +92,16 @@ class PlutusTerminal(QMainWindow):
 
     async def init_async(self) -> None:
         """Initialize async shared variables."""
-        self._config_dialog = ConfigDialog(self)
+        self._config_dialog = ConfigDialog(self._pass_guard, parent=self)
 
-        self._user_top_bar = UserTopBar(self._config_dialog)
+        self._user_top_bar = UserTopBar(self._config_dialog, self._pass_guard)
         self._user_top_bar.account_picker.account_changed.connect(self.change_account)
 
         # Start current exchange loops
         keyring_account: KeyringAccount = self._user_top_bar.account_picker.currentData()
         self._current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
             self._fetcher_message_bus,
+            self._pass_guard,
         )
         self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
@@ -120,8 +125,11 @@ class PlutusTerminal(QMainWindow):
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._current_exchange)
 
+        # Init filter manager
+        self._filter_manager = FilterManager()
+
         # Init news manager
-        self._news_manager = NewsManager(self._news_message_bus)
+        self._news_manager = NewsManager(self._news_message_bus, self._filter_manager)
         self._async_tasks.append(asyncio.create_task(self._news_manager.fetch_news()))
         self._news_list = NewsList(self._current_exchange)
 
@@ -166,6 +174,11 @@ class PlutusTerminal(QMainWindow):
         )
         self._config_dialog.leverage_changed.connect(
             self._current_exchange.set_all_leverage,
+        )
+        self._config_dialog.update_filters.connect(self._update_news_filters)
+        self._config_dialog.show_images_toggled.connect(self._news_list.show_images_toggled)
+        self._config_dialog.desktop_notifications_toggled.connect(
+            self._news_list.notifications_toggled,
         )
 
         # Configure account info
@@ -336,9 +349,7 @@ class PlutusTerminal(QMainWindow):
             timeout=20000,
         )
         self.setEnabled(False)
-        new_exchange = await VALID_EXCHANGES[str(account.exchange_name)].create(
-            self._fetcher_message_bus,
-        )
+        new_exchange = VALID_EXCHANGES[str(account.exchange_name)]
         await self.on_new_exchange(new_exchange)
         self.setEnabled(True)
         Toast.update_message(
@@ -353,6 +364,11 @@ class PlutusTerminal(QMainWindow):
         self._perps_trade.update_trade_buttons()
         Toast.show_message("Trade values updated!", type_=ToastType.SUCCESS)
 
+    def _update_news_filters(self) -> None:
+        """Update news filters."""
+        self._filter_manager.update_filters()
+        Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)
+
     async def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
         """Update exchangeBase on all modules of the list exchange_update_affected."""
         await self._current_exchange.stop_async()
@@ -360,17 +376,20 @@ class PlutusTerminal(QMainWindow):
         self._news_message_bus.blockSignals(True)
         self._fetcher_message_bus.blockSignals(True)
 
-        self._current_exchange = await new_exchange.create(self._fetcher_message_bus)
+        self._current_exchange = await new_exchange.create(
+            self._fetcher_message_bus,
+            self._pass_guard,
+        )
 
         # Init price fetching loops
-        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
         self._current_pair = self._current_exchange.default_pair
+        self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
 
         # Update modules with new exchange
         for module in self._exchange_update_affected:
             LOGGER.debug("Setting up new exchange: %s", module)
             module.blockSignals(True)
-            module.on_new_exchange(new_exchange)  # type: ignore
+            module.on_new_exchange(self._current_exchange)  # type: ignore
             module.blockSignals(False)
 
         # Enable options if available
@@ -381,7 +400,7 @@ class PlutusTerminal(QMainWindow):
         await self._fill_news_list()
 
         # Update chart
-        await self._set_chart_timeframe("1")
+        await self._set_chart_timeframe(self._chart.current_timeframe)
 
         # reload config from database
         CONFIG.load_config()

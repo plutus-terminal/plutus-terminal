@@ -1,0 +1,174 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - unstable
+
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_tag.outputs.version }}
+
+    steps:
+      # Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Setup Python and Poetry
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+
+          python-version: 3.12
+
+      - name: Setup poetry
+        uses: Gr1N/setup-poetry@v9
+
+      # Install dependencies
+      - name: Install dependencies with Poetry
+        run: poetry install
+
+      # Set Git user information
+      - name: Set Git identity
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+      # Generate version tag
+      - name: Tag the current version
+        id: version_tag
+
+        run: |
+          app_version=$(poetry version -s)
+          echo "Version: $app_version"
+          echo "version=$app_version" >> "$GITHUB_OUTPUT"
+          git tag -a v$app_version -m "Version $app_version"
+          git push origin v$app_version
+      # Publish to PyPi
+      - name: Publish to PyPi
+        run: |
+          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+          poetry publish --build
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+  build_pyapp:
+    needs: build_and_release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      # Install Rust
+      - name: Instal Rust
+
+        uses: dtolnay/rust-toolchain@stable
+
+
+      - name:  Build PyApp
+        shell: bash
+        run: |
+          version=${{ needs.build_and_release.outputs.version }}
+
+          curl https://github.com/ofek/pyapp/releases/latest/download/source.tar.gz -Lo pyapp-source.tar.gz
+
+          tar -xzf pyapp-source.tar.gz
+          mv pyapp-v* pyapp-latest
+          cd pyapp-latest
+          if [[ "${{ github.ref }}" == "refs/heads/unstable" ]]; then
+            echo "Building unstable release v$version"
+            echo "git+https://github.com/plutus-terminal/plutus-terminal.git@unstable" >> plutus_terminal_requirements.txt
+            output_file="plutus_terminal_unstable"
+          else
+            echo "Building stable release v$version"
+            echo "git+https://github.com/plutus-terminal/plutus-terminal.git@main" >> plutus_terminal_requirements.txt
+            output_file="plutus_terminal_main"
+          fi
+          export PYAPP_PROJECT_NAME="plutus-terminal"
+
+          export PYAPP_PROJECT_VERSION="v$version"
+          export PYAPP_EXEC_SPEC="plutus_terminal.run:run"
+          export PYAPP_PROJECT_DEPENDENCY_FILE="./plutus_terminal_requirements.txt"
+          echo "Running cargo build --release..."
+          cargo build --release
+          echo "Moving the executable to the desired location..."
+          cd ..
+          if [[ "${{ matrix.os }}" == 'ubuntu-latest' ]]; then
+            mv pyapp-latest/target/release/pyapp $output_file
+            tar -czvf PlutusTerminal-Linux.tar.gz $output_file
+          elif [[ "${{ matrix.os }}" == 'windows-latest' ]]; then
+            mv pyapp-latest\\target\\release\\pyapp.exe $output_file.exe
+            powershell Compress-Archive -Path $output_file.exe -DestinationPath PlutusTerminal-Windows.zip
+          fi
+          echo "Build and move completed successfully."
+        # Upload artifacts
+
+      - name: Upload build artifacts (Linux)
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: ${{ matrix.os }}-build
+          path: PlutusTerminal-Linux.tar.gz
+
+      - name: Upload build artifacts (Windows)
+
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          name: ${{ matrix.os }}-build
+          path: PlutusTerminal-Windows.zip
+
+  create_release:
+    needs:
+      - build_and_release
+      - build_pyapp
+
+    runs-on: ubuntu-latest
+    steps:
+       # Download the build artifacts from the previous jobs
+      - name: Download build artifacts (Linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: ubuntu-latest-build
+          path: ./  # Download to the current workspace
+
+      - name: Download build artifacts (Windows)
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-latest-build
+          path: ./  # Download to the current workspace
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+
+        with:
+          tag_name: v${{ needs.build_and_release.outputs.version }}
+
+          name: Release v${{ needs.build_and_release.outputs.version }}
+          body: |
+            # Changelog
+
+            --
+
+            # Install
+
+            ## Windows
+
+            1. Download PlutusTerminal-Windows.zip
+            2. Extract the zip file
+            3. Run the executable
+
+
+            ## Linux
+
+            1. Download PlutusTerminal-Linux.tar.gz
+            2. Extract the tar file
+            3. Run the executable
+          files: |
+            PlutusTerminal-Linux.tar.gz
+            PlutusTerminal-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

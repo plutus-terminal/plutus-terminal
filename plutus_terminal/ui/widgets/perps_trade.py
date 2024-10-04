@@ -137,7 +137,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 ),
             )
 
-        self._set_from_exchange()
+        self._set_data_from_exchange()
         self._pair_combo_box.currentTextChanged.connect(
             lambda pair: self.pair_changed.emit(
                 f"{self._exchange.pair_prefix}{pair}{self._exchange.pair_suffix}",
@@ -158,7 +158,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(50)
         self._leverage_spin.setValue(CONFIG.leverage)
-        self._leverage_spin.valueChanged.connect(self._set_leverage_spin)
+        self._leverage_spin.editingFinished.connect(
+            lambda: self._set_leverage_spin(
+                self._leverage_spin.value(),
+            ),
+        )
         self._update_leverage_buttons(self._leverage_spin.value())
 
         self._trade_tab.setObjectName("tradeType")
@@ -258,7 +262,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             alignment=QtCore.Qt.AlignmentFlag.AlignBottom,
         )
 
-    def _set_from_exchange(self) -> None:
+    def _set_data_from_exchange(self) -> None:
         """Set data from exchange."""
         # Fill combo box with available pairs
         self._pair_combo_box.clear()
@@ -538,7 +542,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             new_exchange (ExchangeBase): New exchangeBase.
         """
         self._exchange = new_exchange
-        self._set_from_exchange()
+        self._set_data_from_exchange()
 
     def on_new_account(self) -> None:
         """Update info based on new account."""

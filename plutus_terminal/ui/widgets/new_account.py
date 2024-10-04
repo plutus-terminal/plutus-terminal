@@ -17,15 +17,21 @@ from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
     from plutus_terminal.core.db.models import KeyringAccount
+    from plutus_terminal.core.password_guard import PasswordGuard
 
 
 class NewAccountDialog(QtWidgets.QDialog):
     """Dialog for creating new account."""
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        pass_guard: PasswordGuard,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
 
+        self._pass_guard = pass_guard
         self.main_layout = QtWidgets.QVBoxLayout(self)
         self.new_account: Optional[KeyringAccount] = None
 
@@ -199,11 +205,15 @@ class NewAccountDialog(QtWidgets.QDialog):
         )
         CONFIG.current_keyring_account = self.new_account
 
+        encrypted_secrets = self._pass_guard.encrypt(
+            orjson.dumps(secrets).decode("utf-8"),
+        )
+
         # Save secrets to keyring
         keyring.set_password(
             "plutus-terminal",
             str(account_name),
-            orjson.dumps(secrets).decode("utf-8"),
+            encrypted_secrets,
         )
 
         self._log_label.setText("Account created successfully!")

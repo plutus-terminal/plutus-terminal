@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     import pandas
 
     from plutus_terminal.core.exchange.types import OrderData, TradeResults
+    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import (
         PerpsTradeDirection,
     )
@@ -323,12 +324,13 @@ class ExchangeOptions(Protocol):
 class ExchangeBase(ABC):
     """Base class to interact with exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus) -> None:
+    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
         """Initialize shared variables."""
         self.fetcher_bus = fetcher_bus
         self._is_price_synced = True
         self._watched_positions: list[PerpsPosition] = []
         self._async_tasks: list[asyncio.Task] = []
+        self._pass_guard = pass_guard
 
     @property
     @abstractmethod
@@ -384,7 +386,11 @@ class ExchangeBase(ABC):
 
     @classmethod
     @abstractmethod
-    async def create(cls, fetcher_bus: ExchangeFetcherMessageBus) -> Self:
+    async def create(
+        cls,
+        fetcher_bus: ExchangeFetcherMessageBus,
+        pass_guard: PasswordGuard,
+    ) -> Self:
         """Create class instance and init_async."""
 
     @property

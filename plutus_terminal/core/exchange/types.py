@@ -20,7 +20,6 @@ class ExchangeType(IntEnum):
     """Exchange type."""
 
     DEX = 0
-    # CEX = 1
 
 
 class PerpsTradeType(IntEnum):

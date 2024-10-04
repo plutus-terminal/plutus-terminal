@@ -49,6 +49,11 @@ class AppConfig:
 
         self._validate_database()
 
+        # create default GUI settings
+        self.create_default_gui_settings()
+        # create default web3
+        self.create_default_rpcs()
+
     @property
     def current_keyring_account(self) -> KeyringAccount:
         """Returns current account set in the terminal."""
@@ -394,8 +399,45 @@ class AppConfig:
         self._options_duration_max = options_config.duration_max
         self._options_risk = options_config.risk
 
-        # create default web3
-        self.create_default_rpcs()
+    def create_default_gui_settings(self) -> None:
+        """Get or create default GUI settings."""
+        with DATABASE.atomic():
+            GUISettings.get_or_create(
+                key="first_run",
+                defaults={"value": orjson.dumps(True)},
+            )
+            GUISettings.get_or_create(
+                key="password_validation",
+                defaults={"value": orjson.dumps("")},
+            )
+            GUISettings.get_or_create(
+                key="current_account_id",
+                defaults={"value": orjson.dumps(1)},
+            )
+            GUISettings.get_or_create(
+                key="news_show_images",
+                defaults={"value": orjson.dumps(True)},
+            )
+            GUISettings.get_or_create(
+                key="news_desktop_notifications",
+                defaults={"value": orjson.dumps(True)},
+            )
+            GUISettings.get_or_create(
+                key="options_show_preview",
+                defaults={"value": orjson.dumps(False)},
+            )
+            GUISettings.get_or_create(
+                key="minimize_to_tray",
+                defaults={"value": orjson.dumps(True)},
+            )
+            GUISettings.get_or_create(
+                key="window_geometry",
+                defaults={"value": orjson.dumps({})},
+            )
+            GUISettings.get_or_create(
+                key="toast_position",
+                defaults={"value": orjson.dumps("bottom_left")},
+            )
 
     def get_gui_settings(self, key: str) -> Any:  # noqa: ANN401
         """Get GUI settings value for key."""
