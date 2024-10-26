@@ -382,7 +382,6 @@ class PlutusTerminal(QMainWindow):
         )
 
         # Init price fetching loops
-        self._current_pair = self._current_exchange.default_pair
         self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
 
         # Update modules with new exchange
@@ -401,6 +400,7 @@ class PlutusTerminal(QMainWindow):
 
         # Update chart
         await self._set_chart_timeframe(self._chart.current_timeframe)
+        await self._change_current_pair(self._current_exchange.default_pair)
 
         # reload config from database
         CONFIG.load_config()
