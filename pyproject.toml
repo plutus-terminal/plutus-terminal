@@ -50,7 +50,6 @@ line-length = 100
 
 [tool.ruff.lint]
 extend-select = ["ALL"]
-ignore-init-module-imports = false
 logger-objects = ["log_utils.setup_logging"]
 ignore = [
     "UP017",
