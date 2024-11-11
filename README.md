@@ -61,10 +61,6 @@ Plutus Terminal is for educational and informational purposes only and does not 
 Plutus Terminal is a Python package with multiple dependencies. You can install
 it by downloading the PyApp executable, using pipx, or building it with Poetry.
 
-> [!WARNING]
-> The following instructions will show how to install Plutus Terminal unstable version!
-> Unstable version is more likely to break.
-
 <details>
 <summary>
 <strong>Installation using <code>PyApp executable</code>:</strong>
@@ -109,7 +105,7 @@ From the terminal run:
 #### To install
 
 ```bash
-pipx install git+https://github.com/plutus-terminal/plutus-terminal.git@unstable
+pipx install plutus-terminal
 ```
 
 Run with:
@@ -149,10 +145,10 @@ Navigate to the cloned repository:
 cd plutus-terminal
 ```
 
-Checkout the `unstable` branch:
+Checkout the `main` branch:
 
 ```bash
-git checkout unstable
+git checkout main
 ```
 
 Then, install the package:
@@ -326,10 +322,10 @@ This filter will play the `powerup` sound if the title of the news is `Tree News
 Current supported exchanges are:
 
 * <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify](https://perp.foxify.trade/#/trade/?ref=plutus_terminal)
+* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 
 Planned support:
 
-* <img src="./assets/foxify.svg" height="25px" alt="Foxify Logo"/> [Foxify FUNDED](https://foxify-1.gitbook.io/foxify-funded-litepaper)
 * <img src="./assets/gmx.svg" height="25px" alt="Foxify Logo"/> [GMX](https://app.gmx.io/#/trade/?ref=plutus_terminal)
 
 ## ❤️  Support

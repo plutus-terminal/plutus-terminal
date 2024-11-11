@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-import orjson
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Signal
 
 from plutus_terminal.core.config import CONFIG
+from plutus_terminal.ui.widgets.log_viewer import LogViewer
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
@@ -28,7 +28,7 @@ class TerminalConfig(QtWidgets.QWidget):
 
         self._main_layout = QtWidgets.QGridLayout()
 
-        self._top_bar = TopBar("Terminal Settings")
+        self._top_bar_settings = TopBar("Terminal Settings")
 
         self._show_images_checkbox = QtWidgets.QCheckBox("Show images on news cards")
         self._show_desktop_news_checkbox = QtWidgets.QCheckBox(
@@ -39,6 +39,12 @@ class TerminalConfig(QtWidgets.QWidget):
         )
         self._toast_position_label = QtWidgets.QLabel("Toast Notification Position:")
         self._toast_position_combobox = QtWidgets.QComboBox()
+
+        self._top_bar_debugging = TopBar("Debugging")
+
+        self._open_log_label = QtWidgets.QLabel("Open session log:")
+        self._open_log_button = QtWidgets.QPushButton("Open Log")
+        self._log_viewer = LogViewer()
 
         self._setup_widgets()
         self._setup_layout()
@@ -70,17 +76,25 @@ class TerminalConfig(QtWidgets.QWidget):
             CONFIG.get_gui_settings("toast_position"),
             flags=QtCore.Qt.MatchFlag.MatchFixedString,
         )
+
+        self._open_log_button.setMinimumHeight(30)
+        self._open_log_button.setToolTip("Open log file")
+        self._open_log_button.clicked.connect(self._log_viewer.show)
+
         self._toast_position_combobox.setCurrentIndex(current_index)
         self._toast_position_combobox.currentIndexChanged.connect(self._set_toast_position)
 
     def _setup_layout(self) -> None:
         """Config layout."""
-        self._main_layout.addWidget(self._top_bar, 0, 0, 1, 2)
+        self._main_layout.addWidget(self._top_bar_settings, 0, 0, 1, 2)
         self._main_layout.addWidget(self._show_images_checkbox, 1, 0, 1, 2)
         self._main_layout.addWidget(self._show_desktop_news_checkbox, 2, 0, 1, 2)
         self._main_layout.addWidget(self._minimize_on_close_checkbox, 3, 0, 1, 2)
         self._main_layout.addWidget(self._toast_position_label, 4, 0)
         self._main_layout.addWidget(self._toast_position_combobox, 4, 1)
+        self._main_layout.addWidget(self._top_bar_debugging, 5, 0, 1, 2)
+        self._main_layout.addWidget(self._open_log_label, 6, 0)
+        self._main_layout.addWidget(self._open_log_button, 6, 1)
         self._main_layout.setRowStretch(self._main_layout.rowCount(), 1)
 
         self.setLayout(self._main_layout)

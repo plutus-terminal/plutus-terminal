@@ -11,7 +11,13 @@ from typing import Any
 from tenacity import RetryCallState
 
 CURRENT_DIR = Path(__file__).parent
-CONFIG_PATH = CURRENT_DIR.parent.joinpath("log_config.ini")
+CONFIG_PATH = CURRENT_DIR.joinpath("log_config.ini")
+LOGS_FOLDER_PATH = CURRENT_DIR.joinpath("logs")
+LOG_PATH = Path(
+    LOGS_FOLDER_PATH.joinpath(
+        datetime.now(tz=timezone.utc).strftime("%Y-%m-%d_%H-%M-%S.log"),
+    ),
+)
 
 
 def setup_logging() -> None:
@@ -19,15 +25,10 @@ def setup_logging() -> None:
     if not CONFIG_PATH.exists():
         create_default_config()
 
-    log_path = Path(
-        CONFIG_PATH.parent.joinpath("logs").joinpath(
-            datetime.now(tz=timezone.utc).strftime("%Y-%m-%d_%H-%M-%S.log"),
-        ),
-    )
     logging.config.fileConfig(
         CONFIG_PATH,
         defaults={
-            "log_path": f"{log_path.absolute()}",
+            "log_path": f"{LOG_PATH.absolute()}",
         },
         disable_existing_loggers=False,
     )
@@ -79,8 +80,8 @@ format=%(asctime)s - %(name)s - %(levelname)s - %(message)s
     with Path.open(CONFIG_PATH, "w") as f:
         f.write(config_content)
 
-    if not CONFIG_PATH.parent.joinpath("logs").exists():
-        Path.mkdir(CONFIG_PATH.parent.joinpath("logs"), parents=True)
+    if not LOGS_FOLDER_PATH.exists():
+        Path.mkdir(LOGS_FOLDER_PATH, parents=True)
 
 
 def log_uncaught_exceptions(

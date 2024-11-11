@@ -266,16 +266,17 @@ class PlutusTerminal(QMainWindow):
             self.restoreGeometry(bytes.fromhex(geometry))
 
     @asyncSlot()
-    async def _change_current_pair(self, pair: str) -> None:
+    async def _change_current_pair(self, pair: str, force: bool = False) -> None:
         """Change current pair.
 
         Unsubscribe from current pair and subscribe to new pair. Update chart.
 
         Args:
             pair (str): Pair name e.g Crypto.BTC/USD.
+            force (bool, optional): Force change. Defaults to False.
         """
         # Do nothing if pair is same as current
-        if pair == self._current_pair:
+        if pair == self._current_pair and not force:
             return
 
         # Disconnect signal to avoid visual glitch
@@ -382,7 +383,6 @@ class PlutusTerminal(QMainWindow):
         )
 
         # Init price fetching loops
-        self._current_pair = self._current_exchange.default_pair
         self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
 
         # Update modules with new exchange
@@ -401,6 +401,11 @@ class PlutusTerminal(QMainWindow):
 
         # Update chart
         await self._set_chart_timeframe(self._chart.current_timeframe)
+        # Preserve current pair if available
+        if self._current_pair in self._current_exchange.available_pairs:
+            await self._change_current_pair(self._current_pair, force=True)
+        else:
+            await self._change_current_pair(self._current_exchange.default_pair)
 
         # reload config from database
         CONFIG.load_config()

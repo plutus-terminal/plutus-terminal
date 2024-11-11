@@ -39,6 +39,7 @@ class PlutusSystemTrayApp(QApplication):
         self.splash_screen = QSplashScreen()
         self.splash_screen.setPixmap(QPixmap(":/general/splash_screen"))
         self.splash_screen.show()
+        self.splash_screen.raise_()
         self.processEvents()
 
         self.pass_guard = self.input_password()
