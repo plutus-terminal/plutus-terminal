@@ -45,6 +45,7 @@ class BasePasswordDialog(QtWidgets.QDialog):
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self.setWindowIcon(QPixmap(":/icons/plutus_icon"))
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint)
         self.setMinimumSize(300, 300)
         self._info_layout.setSpacing(10)
 
