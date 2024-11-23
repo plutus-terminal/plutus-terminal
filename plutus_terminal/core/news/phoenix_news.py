@@ -37,7 +37,9 @@ class PhoenixNews(NewsFetcher):
         """Initialize shared variables."""
         self.wss = "wss://wss.phoenixnews.io/"
         self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
-        self._compiled_pattern = re2.compile(r"&gt;&gt;QUOTE\s+.+?\s*[^\(@]*\((@\w+)\)")
+        self._compiled_pattern_quote = re2.compile(r"&gt;&gt;QUOTE\s+.+?\s*[^\(@]*\((@\w+)\)")
+        self._compiled_pattern_reply = re2.compile(r"&gt;&gt;REPLY\s+.+?\s*[^\(@]*\((@\w+)\)")
+        self._compiled_pattern_retweet = re2.compile(r"&gt;&gt;RT\s+.+?\s*[^\(@]*\((@\w+)\)")
 
     async def websocket_connect(self) -> WebSocketClientProtocol:
         """Connect to websocket to fetch prices.
@@ -130,7 +132,7 @@ class PhoenixNews(NewsFetcher):
         list_news = [self.format_news(news) for news in data]
         return list_news[::-1]
 
-    def format_news(self, news_message: dict) -> NewsData:
+    def format_news(self, news_message: dict) -> NewsData:  # noqa: C901
         """Format given news.
 
         Args:
@@ -143,20 +145,44 @@ class PhoenixNews(NewsFetcher):
         image = news_message.get("image", "")
 
         is_quote = news_message.get("isQuote", False)
-        quote = ""
-        quoter = ""
+        quote_message = ""
+        quote_user = ""
         quote_image = news_message.get("imageQuote", "")
+
+        is_reply = news_message.get("isReply", False)
+        is_self_reply = news_message.get("isSelfReply", False)
+        reply_message = ""
+        reply_user = ""
+        reply_image = ""
+
+        is_retweet = news_message.get("isRetweet", False)
+        retweet_user = ""
 
         if source == "Twitter":
             title = f'@{news_message.get("username")}'
             body = news_message.get("body", "")
 
             if is_quote:
-                match = self._compiled_pattern.search(body)
+                match = self._compiled_pattern_quote.search(body)
                 if match:
-                    quote = body[match.end() :].strip()
+                    quote_message = body[match.end() :].strip()
                     body = body[: match.start()].strip()
-                    quoter = str(match.group(1)).strip()
+                    quote_user = str(match.group(1)).strip()
+            elif is_reply:
+                match = self._compiled_pattern_reply.search(body)
+                if match:
+                    body = body[match.end() :].strip()
+                    reply_user = str(match.group(1)).strip()
+            elif is_self_reply:
+                match = self._compiled_pattern_reply.search(body)
+                if match:
+                    body = body[match.end() :].strip()
+                    reply_user = title
+            elif is_retweet:
+                match = self._compiled_pattern_retweet.search(body)
+                if match:
+                    body = body[match.end() :].strip()
+                    retweet_user = str(match.group(1)).strip()
         else:
             title = news_message.get("sourceName", "")
             body = news_message.get("title", "")
@@ -179,9 +205,16 @@ class PhoenixNews(NewsFetcher):
             body=body,
             image=image,
             is_quote=is_quote,
-            quote=quote,
-            quoter=quoter,
+            quote_message=quote_message,
+            quote_user=quote_user,
             quote_image=quote_image,
+            is_reply=is_reply,
+            is_self_reply=is_self_reply,
+            reply_user=reply_user,
+            reply_message=reply_message,
+            reply_image=reply_image,
+            is_retweet=is_retweet,
+            retweet_user=retweet_user,
             icon=icon,
             source=source,
             time=time,

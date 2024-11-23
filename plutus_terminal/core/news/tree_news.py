@@ -37,7 +37,8 @@ class TreeNews(NewsFetcher):
         """Initialize shared variables."""
         self.wss = "wss://news.treeofalpha.com/ws"
         self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
-        self._compiled_pattern = re2.compile(r"\bQuote\s+\[(@\w+)\]\([^)]*\)")
+        self._compiled_pattern_quote = re2.compile(r"\bQuote\s+\[(@\w+)\]\([^)]*\)")
+        self._compiled_pattern_tweet_title = re2.compile(r"\(@([a-zA-Z0-9_]+)\)")
 
     async def websocket_connect(self) -> WebSocketClientProtocol:
         """Connect to websocket to fetch prices.
@@ -130,7 +131,7 @@ class TreeNews(NewsFetcher):
         list_news = [self.format_news(news) for news in data]
         return list_news[::-1]
 
-    def format_news(self, news_message: dict) -> NewsData:
+    def format_news(self, news_message: dict) -> NewsData:  # noqa: C901, PLR0915
         """Format given news.
 
         Args:
@@ -150,9 +151,18 @@ class TreeNews(NewsFetcher):
         image = news_message.get("image", "")
 
         is_quote = False
-        quote = ""
-        quoter = ""
+        quote_message = ""
+        quote_user = ""
         quote_image = ""
+
+        is_reply = False
+        is_self_reply = False
+        reply_message = ""
+        reply_user = ""
+        reply_image = ""
+
+        is_retweet = False
+        retweet_user = ""
 
         if suggestions:
             for item in suggestions:
@@ -167,14 +177,30 @@ class TreeNews(NewsFetcher):
             source = "Twitter"
 
         if source == "Twitter":
+            match = self._compiled_pattern_tweet_title.search(title)
+            if match:
+                title = f"@{match.group(1)}"
             is_quote = news_message["info"]["isQuote"]
+            is_reply = news_message["info"]["isReply"]
+            is_self_reply = news_message["info"]["isSelfReply"]
+            is_retweet = news_message["info"]["isRetweet"]
 
         if is_quote:
-            match = self._compiled_pattern.search(body)
+            match = self._compiled_pattern_quote.search(body)
             if match:
-                quote = body[match.end() :].strip()
+                quote_message = body[match.end() :].strip()
                 body = body[: match.start()].strip()
-                quoter = str(match.group(1)).strip()
+                quote_user = str(match.group(1)).strip()
+                quote_image = news_message["info"]["quotedUser"]["image"]
+        elif is_self_reply:
+            reply_user = f'@{news_message["info"]["replyUser"]["screen_name"]}'
+            reply_message = news_message["info"]["replyUser"]["text"]
+            reply_image = news_message["info"]["quotedUser"]["image"]
+        elif is_retweet:
+            match = self._compiled_pattern_quote.search(body)
+            if match:
+                body = body[: match.end()].strip()
+                retweet_user = f'@{news_message["info"]["quotedUser"]["screen_name"]}'
 
         return NewsData(
             title=title,
@@ -182,9 +208,16 @@ class TreeNews(NewsFetcher):
             body=body,
             image=image,
             is_quote=is_quote,
-            quote=quote,
-            quoter=quoter,
+            quote_message=quote_message,
+            quote_user=quote_user,
             quote_image=quote_image,
+            is_reply=is_reply,
+            is_self_reply=is_self_reply,
+            reply_user=reply_user,
+            reply_message=reply_message,
+            reply_image=reply_image,
+            is_retweet=is_retweet,
+            retweet_user=retweet_user,
             icon=icon,
             source=source,
             time=time,
