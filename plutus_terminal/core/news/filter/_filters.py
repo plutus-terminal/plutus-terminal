@@ -66,7 +66,7 @@ class KeywordMatchingFilter(FilterBase):
 
     def execute(self, news_data: NewsData) -> NewsData:
         """Execute filter on newsData."""
-        for part in ("body", "quote"):
+        for part in ("body", "quote_message"):
             search_result = self.text_search.findall(news_data[part])  # type: ignore
             # Inverse to start from the end of text to preserve index
             for result in search_result[::-1]:
