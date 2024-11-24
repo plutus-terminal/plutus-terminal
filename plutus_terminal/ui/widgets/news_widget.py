@@ -58,7 +58,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         news_data: NewsData,
         format_to_pair: Callable,
         available_pairs: set,
-        display_delay: bool = False,
+        display_delay: bool,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared variables."""

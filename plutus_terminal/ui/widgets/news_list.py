@@ -222,7 +222,7 @@ class NewsList(QtWidgets.QWidget):
                 desktop=True,
             )
 
-        self._add_news_to_list(news_data)
+        self._add_news_to_list(news_data, display_delay=True)
 
     def fill_old_news(self, list_news: list[NewsData]) -> None:
         """Clear and fill list with given data."""
@@ -238,7 +238,7 @@ class NewsList(QtWidgets.QWidget):
         self._scroll_area.blockSignals(False)
         self.setDisabled(False)
 
-    def _add_news_to_list(self, news_data: NewsData, display_delay: bool = False) -> NewsWidget:
+    def _add_news_to_list(self, news_data: NewsData, display_delay: bool) -> NewsWidget:
         """Add news to list respecting the limit.
 
         Args:
@@ -281,7 +281,7 @@ class NewsList(QtWidgets.QWidget):
             news_data,
             self._exchange.format_pair_from_coin,
             self._exchange.available_pairs,
-            display_delay,
+            display_delay=display_delay,
         )
         news_widget.show_images = CONFIG.get_gui_settings("news_show_images")
         news_widget.create_interactions(self._exchange)
