@@ -8,7 +8,7 @@ from PySide6 import QtWidgets
 from PySide6.QtGui import QPixmap
 
 from plutus_terminal.ui.widgets.account_picker import AccountPicker
-from plutus_terminal.ui.widgets.clock import WebClock
+from plutus_terminal.ui.widgets.clock import Clock
 
 if TYPE_CHECKING:
     from plutus_terminal.core.password_guard import PasswordGuard
@@ -31,7 +31,7 @@ class UserTopBar(QtWidgets.QWidget):
         self._bar_layout = QtWidgets.QHBoxLayout()
 
         self.account_picker = AccountPicker(pass_guard)
-        self._clock = WebClock()
+        self._clock = Clock()
         self._config_dialog = config_dialog
         self._config_button = QtWidgets.QPushButton()
         self._config_button.setIcon(QPixmap(":/icons/config_icon"))

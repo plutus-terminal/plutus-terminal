@@ -151,6 +151,8 @@ class TradingChart(QWidget):
             ohlcv (pandas.DataFrame): Open, high, low, close, volume data.
             reset (bool, optional): Reset chart for new symbol. Defaults to False.
         """
+        # Convert to local timezone
+        ohlcv["date"] = ohlcv["date"].apply(ui_utils.convert_timestamp_to_local_timezone)
         self._main_chart.set(ohlcv)
         self._main_chart.price_scale()
         self._main_chart.fit()
@@ -183,6 +185,8 @@ class TradingChart(QWidget):
         tick = pandas.Series(price)
         # Convert decimal to float
         tick["price"] = float(tick["price"])
+        # Convert to local timezone
+        tick["date"] = ui_utils.convert_timestamp_to_local_timezone(tick["date"])
         self._main_chart.update_from_tick(tick)
 
         minimal_digits = ui_utils.get_minimal_digits(tick["price"], 4)

@@ -1,67 +1,57 @@
-"""Clock widget with time from the web."""
+"""Clock widget with timezone support."""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 from typing import Optional
+from zoneinfo import ZoneInfo
 
-from httpx import AsyncClient, ConnectError, HTTPStatusError, ReadTimeout
 from PySide6 import QtWidgets
-from tenacity import before_sleep_log, retry, retry_if_exception_type, wait_exponential
 
 LOGGER = logging.getLogger(__name__)
 
 
-class WebClock(QtWidgets.QLabel):
-    """Clock widget with time from the web."""
+class Clock(QtWidgets.QLabel):
+    """Clock widget with timezone support."""
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        """Initialize widget."""
+    def __init__(
+        self,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        """Initialize widget.
+
+        Args:
+            parent: Parent widget
+        """
         super().__init__(parent)
         self.setObjectName("clock")
-        self.async_client = AsyncClient()
-        self._last_sync = datetime.now(timezone.utc)
+        self._timezone = datetime.now().astimezone().tzinfo
         self._async_tasks: list[asyncio.Task] = []
-        self._sync_interval = 60
-
         self._async_tasks.append(asyncio.create_task(self._update_time()))
 
-    @retry(
-        retry=(
-            retry_if_exception_type(HTTPStatusError)
-            | retry_if_exception_type(ReadTimeout)
-            | retry_if_exception_type(ConnectError)
-        ),
-        wait=wait_exponential(multiplier=1, min=0.15, max=2),
-        before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
-    )
+    def set_timezone(self, timezone_name: str) -> None:
+        """Set the timezone for the clock.
+
+        Args:
+            timezone_name: Timezone name (from zoneinfo database)
+        """
+        try:
+            self._timezone = ZoneInfo(timezone_name)
+            LOGGER.debug("Changed timezone to %s", timezone_name)
+        except KeyError:
+            LOGGER.exception("Invalid timezone: %s", timezone_name)
+            msg = f"Invalid timezone: {timezone_name}"
+            raise ValueError(msg) from None
+
     async def _update_time(self) -> None:
-        """Update time."""
-        self._last_sync, offset = await self._get_time_offset()
+        """Update time display."""
         while True:
-            current_time = datetime.now(timezone.utc)
-
-            if (current_time - self._last_sync).total_seconds() > self._sync_interval:
-                self._last_sync, offset = await self._get_time_offset()
-
-            formated_time = (current_time - timedelta(seconds=offset)).strftime(
-                "%H:%M:%S",
-            )
-            self.setText(f"{formated_time} UTC")
-
-            await asyncio.sleep(1)
-
-    async def _get_time_offset(self) -> tuple[datetime, float]:
-        """Get time."""
-        response = await self.async_client.get(
-            "http://worldtimeapi.org/api/timezone/Etc/UTC",
-        )
-        response.raise_for_status()
-        data = response.json()
-        api_time = datetime.fromisoformat(data["datetime"])
-        local_time = datetime.now(timezone.utc)
-        offset = (local_time - api_time).total_seconds()
-        LOGGER.debug("Synced time from web, current offest %s", offset)
-        return local_time, offset
+            # Get current UTC time first
+            utc_time = datetime.now(timezone.utc)
+            # Convert to target timezone
+            local_time = utc_time.astimezone(self._timezone)
+            formatted_time = local_time.strftime("%H:%M:%S.%f")[:-3]
+            self.setText(formatted_time)
+            await asyncio.sleep(0.1)

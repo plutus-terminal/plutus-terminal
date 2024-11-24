@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 from functools import partial
 import time
 from typing import TYPE_CHECKING, Optional
@@ -57,6 +58,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         news_data: NewsData,
         format_to_pair: Callable,
         available_pairs: set,
+        display_delay: bool = False,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared variables."""
@@ -65,6 +67,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.format_to_pair = format_to_pair
         self._available_pairs = available_pairs
         self._show_images = True
+        self._display_delay = display_delay
         self._re_percent_complied = re2.compile(r"\(([^)]+)%\)")
         self._async_tasks: list[asyncio.Task] = []
 
@@ -105,7 +108,9 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.quote_label = QtWidgets.QLabel()
         self.quote_image = ImageWebViewer()
         self.metadata_layout = QtWidgets.QHBoxLayout()
+        self.time_layout = QtWidgets.QVBoxLayout()
         self.time_label = QtWidgets.QLabel()
+        self.time_delay = QtWidgets.QLabel()
         self.feed_label = QtWidgets.QLabel()
         self.source_label = QtWidgets.QLabel()
         self.link_button = QtWidgets.QPushButton()
@@ -174,6 +179,7 @@ class NewsWidget(QtWidgets.QGroupBox):
                 repost_pixmap = QPixmap(":/icons/repost")
                 QPixmapCache.insert("repost", repost_pixmap)
             self.retweet_icon.setPixmap(repost_pixmap)
+            self.retweet_icon.setMaximumSize(30, 30)
             self.retweet_icon.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
             self.retweet_title.setObjectName("subTitle")
@@ -285,8 +291,12 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.link_button.clicked.connect(self.open_link)
 
         self.time_label.setObjectName("newsTime")
+        # Convert to local timezone
+        converted_time = self.news_data["time"].astimezone(
+            ui_utils.LOCAL_TIMEZONE,
+        )
         self.time_label.setText(
-            f'Source Time: {self.news_data["time"].strftime("%H:%M:%S:%f")}',
+            f'Source Time: {converted_time.strftime("%H:%M:%S:%f")[:-3]}',
         )
         self.time_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
@@ -294,6 +304,23 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.time_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
+
+        if self._display_delay:
+            self.time_delay.setObjectName("newsTime")
+            delay_time = datetime.now().astimezone(ui_utils.LOCAL_TIMEZONE) - converted_time
+            delay_time = delay_time.total_seconds() * 1000
+            self.time_delay.setText(
+                f"Delay: {delay_time:.2f} ms",
+            )
+            self.time_delay.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+            )
+            self.time_delay.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
+        else:
+            self.time_delay.hide()
+            self.time_delay.deleteLater()
 
         self.feed_label.setObjectName("newsFeed")
         self.feed_label.setText(f"Feed: {self.news_data['feed']}")
@@ -362,8 +389,11 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.icon_layout.addWidget(self.stop_watch_label)
         self.icon_layout.addStretch()
 
+        self.time_layout.addWidget(self.time_label)
+        self.time_layout.addWidget(self.time_delay)
+
         self.title_layout.addWidget(self.title_label)
-        self.title_layout.addWidget(self.time_label)
+        self.title_layout.addLayout(self.time_layout)
         self.info_layout.addLayout(self.title_layout)
 
         self.retweet_frame.setLayout(self.retweet_layout)
