@@ -180,10 +180,10 @@ class TreeNews(NewsFetcher):
             match = self._compiled_pattern_tweet_title.search(title)
             if match:
                 title = f"@{match.group(1)}"
-            is_quote = news_message["info"]["isQuote"]
-            is_reply = news_message["info"]["isReply"]
-            is_self_reply = news_message["info"]["isSelfReply"]
-            is_retweet = news_message["info"]["isRetweet"]
+            is_quote = news_message["info"].get("isQuote", False)
+            is_reply = news_message["info"].get("isReply", False)
+            is_self_reply = news_message["info"].get("isSelfReply", False)
+            is_retweet = news_message["info"].get("isRetweet", False)
 
         if is_quote:
             match = self._compiled_pattern_quote.search(body)

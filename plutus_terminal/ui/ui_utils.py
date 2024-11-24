@@ -1,9 +1,10 @@
 """Utilities for UI."""
 
-from functools import partial
+from datetime import datetime
 import math
 from typing import Any, Optional, TypeVar
 
+import pandas
 from PySide6.QtCore import QDir
 from PySide6.QtWidgets import QWidget
 from qasync import contextlib
@@ -11,6 +12,8 @@ from qasync import contextlib
 from plutus_terminal.core.exchange.types import PerpsTradeDirection
 
 T = TypeVar("T", bound=QWidget)
+
+LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 
 
 def get_minimal_digits(number: float, figures: int) -> int:
@@ -117,3 +120,23 @@ def get_or_create_stored_widget(
             **kwargs,
         )
     return stored_widget
+
+
+def convert_timestamp_to_local_timezone(
+    timestamp: pandas.Timestamp,
+) -> pandas.Timestamp:
+    """Convert pandas Timestamp target timeonze.
+
+    The given Timestamp unit is seconds and it's UTC.
+
+    Args:
+        timestamp (pandas.Timestamp): Timestamp to convert.
+        target_timezone (tzinfo): Target timezone.
+
+    Returns :
+        pandas.Timestamp: Converted timestamp.
+    """
+    utc_timestamp = pandas.to_datetime(timestamp, unit="s", utc=True)
+    # Convert to local timezone and stripping timezone information
+    # because of lightweight charts
+    return utc_timestamp.tz_convert(LOCAL_TIMEZONE).tz_localize(None)
