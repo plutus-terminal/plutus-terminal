@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 from qasync import asyncSlot
 
+from plutus_terminal import __version__
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.base import (
     LOGGER,
@@ -152,7 +153,7 @@ class PlutusTerminal(QMainWindow):
     async def _setup_widgets(self) -> None:
         """Configure widgets."""
         self.main_widget.setLayout(self.main_layout)
-        self.setWindowTitle("Plutus Terminal")
+        self.setWindowTitle(f"Plutus Terminal - {__version__}")
         self.setWindowIcon(QPixmap(":/icons/plutus_icon"))
 
         # Set chart data and connect signals

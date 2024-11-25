@@ -40,6 +40,8 @@
         <file alias="music">images/music.svg</file>
         <file alias="account_info">images/account_info.svg</file>
         <file alias="lock_icon">images/lock_icon.svg</file>
+        <file alias="repost">images/repost_icon.svg</file>
+        <file alias="reply">images/reply_icon.svg</file>
     </qresource>
 
     <qresource prefix="general">

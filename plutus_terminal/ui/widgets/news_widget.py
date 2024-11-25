@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 from functools import partial
 import time
 from typing import TYPE_CHECKING, Optional
@@ -52,11 +53,12 @@ class NewsWidget(QtWidgets.QGroupBox):
     pair_clicked = Signal(str)
     timer_end = Signal()
 
-    def __init__(
+    def __init__(  # noqa: PLR0915
         self,
         news_data: NewsData,
         format_to_pair: Callable,
         available_pairs: set,
+        display_delay: bool,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared variables."""
@@ -65,6 +67,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.format_to_pair = format_to_pair
         self._available_pairs = available_pairs
         self._show_images = True
+        self._display_delay = display_delay
         self._re_percent_complied = re2.compile(r"\(([^)]+)%\)")
         self._async_tasks: list[asyncio.Task] = []
 
@@ -83,6 +86,17 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.timer = QTimer(self)
         self.stop_watch_label = QtWidgets.QLabel()
         self.body_frame = QtWidgets.QFrame()
+        self.retweet_frame = QtWidgets.QFrame()
+        self.retweet_layout = QtWidgets.QHBoxLayout()
+        self.retweet_icon = QtWidgets.QLabel()
+        self.retweet_title = QtWidgets.QLabel()
+        self.reply_frame = QtWidgets.QFrame()
+        self.reply_layout = QtWidgets.QVBoxLayout()
+        self.reply_title_layout = QtWidgets.QHBoxLayout()
+        self.reply_icon = QtWidgets.QLabel()
+        self.reply_title = QtWidgets.QLabel()
+        self.reply_body = QtWidgets.QLabel()
+        self.reply_image = ImageWebViewer()
         self.body_layout = QtWidgets.QVBoxLayout()
         self.body_label = QtWidgets.QLabel()
         self.body_image = ImageWebViewer()
@@ -94,7 +108,9 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.quote_label = QtWidgets.QLabel()
         self.quote_image = ImageWebViewer()
         self.metadata_layout = QtWidgets.QHBoxLayout()
+        self.time_layout = QtWidgets.QVBoxLayout()
         self.time_label = QtWidgets.QLabel()
+        self.time_delay = QtWidgets.QLabel()
         self.feed_label = QtWidgets.QLabel()
         self.source_label = QtWidgets.QLabel()
         self.link_button = QtWidgets.QPushButton()
@@ -121,8 +137,10 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.body_image.setVisible(value)
         if self.news_data["quote_image"]:
             self.quote_image.setVisible(value)
+        if self.news_data["reply_image"]:
+            self.reply_image.setVisible(value)
 
-    def _setup_widgets(self) -> None:  # noqa: PLR0915
+    def _setup_widgets(self) -> None:  # noqa: C901, PLR0912, PLR0915
         """Create internal widgets."""
         self.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -151,6 +169,67 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.body_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
         self.body_frame.setObjectName("newsFrameBody")
 
+        if self.news_data["is_retweet"]:
+            self.retweet_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
+            self.retweet_frame.setObjectName("newsFrameQuote")
+
+            repost_pixmap = QPixmap()
+            QPixmapCache.find("repost", repost_pixmap)
+            if not repost_pixmap:
+                repost_pixmap = QPixmap(":/icons/repost")
+                QPixmapCache.insert("repost", repost_pixmap)
+            self.retweet_icon.setPixmap(repost_pixmap)
+            self.retweet_icon.setMaximumSize(30, 30)
+            self.retweet_icon.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+            self.retweet_title.setObjectName("subTitle")
+            self.retweet_title.setTextFormat(Qt.TextFormat.RichText)
+            self.retweet_title.setText(f"Reposted: {self.news_data["retweet_user"]}")
+            self.retweet_title.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
+        else:
+            self.retweet_frame.hide()
+
+        if self.news_data["is_reply"] or self.news_data["is_self_reply"]:
+            self.reply_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
+            self.reply_frame.setObjectName("newsFrameQuote")
+
+            if self.news_data["reply_message"]:
+                self.reply_body.setTextFormat(Qt.TextFormat.RichText)
+                self.reply_body.setText(self.news_data["reply_message"])
+                self.reply_body.setWordWrap(True)
+                self.reply_body.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse,
+                )
+            else:
+                self.reply_body.hide()
+
+            if self.news_data["reply_image"]:
+                self.reply_image.set_image(self.news_data["reply_image"])
+            else:
+                self.reply_image.deleteLater()
+
+            self.reply_title_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            reply_pixmap = QPixmap()
+            QPixmapCache.find("reply", reply_pixmap)
+            if not reply_pixmap:
+                reply_pixmap = QPixmap(":/icons/reply")
+                QPixmapCache.insert("reply", reply_pixmap)
+            self.reply_icon.setPixmap(reply_pixmap)
+            self.reply_icon.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+            self.reply_title.setObjectName("subTitle")
+            self.reply_title.setTextFormat(Qt.TextFormat.RichText)
+            self.reply_title.setText(
+                f"Replied to: {self.news_data["reply_user"]} 👇",
+            )
+            self.reply_title.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
+        else:
+            self.reply_frame.hide()
+
         if self.news_data["body"] or self.news_data["image"]:
             self.body_label.setObjectName("newsBody")
             self.body_label.setTextFormat(Qt.TextFormat.RichText)
@@ -169,12 +248,13 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.body_label.hide()
 
         if self.news_data["is_quote"] and any(
-            (self.news_data["quote"], self.news_data["quote_image"]),
+            (self.news_data["quote_message"], self.news_data["quote_image"]),
         ):
+            self.quote_title_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             quote_up_pixmap = QPixmap()
             QPixmapCache.find("quotes_up", quote_up_pixmap)
             if not quote_up_pixmap:
-                quote_up_pixmap = QPixmap(":/icons/double_quote_up")
+                quote_up_pixmap = QPixmap(":/icons/double_quotes_up")
                 QPixmapCache.insert("quotes_up", quote_up_pixmap)
             self.quote_icon_up.setPixmap(quote_up_pixmap)
             self.quote_icon_up.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -182,13 +262,15 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.quote_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
             self.quote_frame.setObjectName("newsFrameQuote")
 
-            self.quote_title_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.quote_title.setObjectName("subTitle")
-            self.quote_title.setText(self.news_data["quoter"])
+            self.quote_title.setText(self.news_data["quote_user"])
+            self.quote_title.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
 
             self.quote_label.setObjectName("newsQuote")
             self.quote_label.setTextFormat(Qt.TextFormat.RichText)
-            self.quote_label.setText(self.news_data["quote"])
+            self.quote_label.setText(self.news_data["quote_message"])
             self.quote_label.setWordWrap(True)
             self.quote_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
@@ -209,8 +291,12 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.link_button.clicked.connect(self.open_link)
 
         self.time_label.setObjectName("newsTime")
+        # Convert to local timezone
+        converted_time = self.news_data["time"].astimezone(
+            ui_utils.LOCAL_TIMEZONE,
+        )
         self.time_label.setText(
-            f'Source Time: {self.news_data["time"].strftime("%H:%M:%S:%f")}',
+            f'Source Time: {converted_time.strftime("%H:%M:%S:%f")[:-3]}',
         )
         self.time_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
@@ -218,6 +304,23 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.time_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
+
+        if self._display_delay:
+            self.time_delay.setObjectName("newsTime")
+            delay_time = datetime.now().astimezone(ui_utils.LOCAL_TIMEZONE) - converted_time
+            delay_time = delay_time.total_seconds() * 1000
+            self.time_delay.setText(
+                f"Delay: {delay_time:.2f} ms",
+            )
+            self.time_delay.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+            )
+            self.time_delay.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
+        else:
+            self.time_delay.hide()
+            self.time_delay.deleteLater()
 
         self.feed_label.setObjectName("newsFeed")
         self.feed_label.setText(f"Feed: {self.news_data['feed']}")
@@ -282,21 +385,20 @@ class NewsWidget(QtWidgets.QGroupBox):
 
     def _setup_layout(self) -> None:
         """Connect widgets to layouts."""
-        self.main_layout.addLayout(self.icon_layout)
         self.icon_layout.addWidget(self.icon_label)
         self.icon_layout.addWidget(self.stop_watch_label)
         self.icon_layout.addStretch()
 
-        self.main_layout.addLayout(self.info_layout)
+        self.time_layout.addWidget(self.time_label)
+        self.time_layout.addWidget(self.time_delay)
+
         self.title_layout.addWidget(self.title_label)
-        self.title_layout.addWidget(self.time_label)
+        self.title_layout.addLayout(self.time_layout)
         self.info_layout.addLayout(self.title_layout)
 
-        self.body_frame.setLayout(self.body_layout)
-        self.body_layout.addWidget(self.body_label)
-        self.body_layout.addWidget(self.body_image)
-        self.body_layout.addWidget(self.quote_label)
-        self.body_layout.addWidget(self.quote_frame)
+        self.retweet_frame.setLayout(self.retweet_layout)
+        self.retweet_layout.addWidget(self.retweet_icon)
+        self.retweet_layout.addWidget(self.retweet_title)
 
         self.quote_frame.setLayout(self.quote_layout)
         self.quote_title_layout.addWidget(self.quote_icon_up)
@@ -304,6 +406,20 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.quote_layout.addLayout(self.quote_title_layout)
         self.quote_layout.addWidget(self.quote_label)
         self.quote_layout.addWidget(self.quote_image)
+
+        self.reply_frame.setLayout(self.reply_layout)
+        self.reply_layout.addWidget(self.reply_body)
+        self.reply_layout.addWidget(self.reply_image)
+        self.reply_title_layout.addWidget(self.reply_icon)
+        self.reply_title_layout.addWidget(self.reply_title)
+        self.reply_layout.addLayout(self.reply_title_layout)
+
+        self.body_frame.setLayout(self.body_layout)
+        self.body_layout.addWidget(self.retweet_frame)
+        self.body_layout.addWidget(self.reply_frame)
+        self.body_layout.addWidget(self.body_label)
+        self.body_layout.addWidget(self.body_image)
+        self.body_layout.addWidget(self.quote_frame)
 
         self.info_layout.addWidget(self.body_frame)
         self.metadata_layout.addWidget(self.feed_label)
@@ -313,6 +429,9 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.info_layout.addWidget(self.coin_label)
 
         self.info_layout.addLayout(self.interactions_layout)
+
+        self.main_layout.addLayout(self.icon_layout)
+        self.main_layout.addLayout(self.info_layout)
 
         self.setLayout(self.main_layout)
 

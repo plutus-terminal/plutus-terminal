@@ -58,7 +58,7 @@ class NewsList(QtWidgets.QWidget):
         self._load_sfxs()
         self._setup_widgets()
         self._setup_layout()
-        self._setup_shorcust()
+        self._setup_shorcuts()
         self._show_widget_index_at_top(0)
 
     def _load_sfxs(self) -> None:
@@ -124,7 +124,7 @@ class NewsList(QtWidgets.QWidget):
 
         self.setLayout(self._main_layout)
 
-    def _setup_shorcust(self) -> None:
+    def _setup_shorcuts(self) -> None:
         """Configure shortcuts."""
         self._reset_scroll_shortcut = QShortcut(QKeySequence("q"), self)
         self._reset_scroll_shortcut.activated.connect(self._reset_scroll_to_top)
@@ -215,14 +215,14 @@ class NewsList(QtWidgets.QWidget):
 
         self._sfxs[news_data["sfx"]].play()
         if CONFIG.get_gui_settings("news_desktop_notifications"):
-            desktop_news = self._create_news_widget(news_data)
+            desktop_news = self._create_news_widget(news_data, display_delay=True)
             Toast.show_widget(
                 desktop_news,
                 timeout=35000,
                 desktop=True,
             )
 
-        self._add_news_to_list(news_data)
+        self._add_news_to_list(news_data, display_delay=True)
 
     def fill_old_news(self, list_news: list[NewsData]) -> None:
         """Clear and fill list with given data."""
@@ -234,20 +234,21 @@ class NewsList(QtWidgets.QWidget):
             if news_data["ignored"]:
                 continue
 
-            self._add_news_to_list(news_data)
+            self._add_news_to_list(news_data, display_delay=False)
         self._scroll_area.blockSignals(False)
         self.setDisabled(False)
 
-    def _add_news_to_list(self, news_data: NewsData) -> NewsWidget:
+    def _add_news_to_list(self, news_data: NewsData, display_delay: bool) -> NewsWidget:
         """Add news to list respecting the limit.
 
         Args:
             news_data (NewsData): News data to create new widget.
+            display_delay (bool): Add delay information to the widget..
 
         Returns:
             NewsWidget: Created news widget.
         """
-        news_widget = self._create_news_widget(news_data)
+        news_widget = self._create_news_widget(news_data, display_delay)
 
         # If no news is selected, select the new one
         if self._selected_news_widget is None:
@@ -274,12 +275,13 @@ class NewsList(QtWidgets.QWidget):
 
         return news_widget
 
-    def _create_news_widget(self, news_data: NewsData) -> NewsWidget:
+    def _create_news_widget(self, news_data: NewsData, display_delay: bool = False) -> NewsWidget:
         """Create news widget."""
         news_widget = NewsWidget(
             news_data,
             self._exchange.format_pair_from_coin,
             self._exchange.available_pairs,
+            display_delay=display_delay,
         )
         news_widget.show_images = CONFIG.get_gui_settings("news_show_images")
         news_widget.create_interactions(self._exchange)

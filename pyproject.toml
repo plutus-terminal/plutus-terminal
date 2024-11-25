@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "plutus-terminal"
-version = "0.1.0b3"
+version = "0.1.0b4"
 description = "Plutus Terminal is a powerful open-source crypto news trading terminal with the focus on Perpetuals DEX."
 authors = ["Plutus <plutus-terminal@protonmail.com>"]
 readme = "README.md"
