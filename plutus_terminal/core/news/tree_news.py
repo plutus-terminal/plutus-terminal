@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timezone
 import logging
 from typing import TYPE_CHECKING, Optional
@@ -191,11 +192,13 @@ class TreeNews(NewsFetcher):
                 quote_message = body[match.end() :].strip()
                 body = body[: match.start()].strip()
                 quote_user = str(match.group(1)).strip()
-                quote_image = news_message["info"]["quotedUser"]["image"]
+                quote_image = news_message["info"]["quotedUser"].get("image", "")
         elif is_self_reply:
-            reply_user = f'@{news_message["info"]["replyUser"]["screen_name"]}'
-            reply_message = news_message["info"]["replyUser"]["text"]
-            reply_image = news_message["info"]["quotedUser"]["image"]
+            with contextlib.suppress(KeyError):
+                reply_user = f'@{news_message["info"]["replyUser"]["screen_name"]}'
+                reply_message = news_message["info"]["replyUser"]["text"]
+            with contextlib.suppress(KeyError):
+                reply_image = news_message["info"]["quotedUser"]["image"]
         elif is_retweet:
             match = self._compiled_pattern_quote.search(body)
             if match:
