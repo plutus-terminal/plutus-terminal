@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from functools import partial
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from lightweight_charts.widgets import QtChart
@@ -42,22 +44,38 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 
+class ChartDrawingStorage:
+    """Storage for chart drawing."""
+
+    def __init__(self, tag: str) -> None:
+        """Initialize storage."""
+        self.tag = tag
+
+    @property
+    def value(self) -> str:
+        """Returns: Storage value."""
+        return self.tag
+
+
 class TradingChart(QWidget):
     """Trading Chart Widget."""
 
     timeframe_signal = Signal(str)
     pair_changed = Signal(str)
+    request_more_data = Signal(int)
 
     def __init__(
         self,
         available_pairs: set[str],
         format_simple_pair: Callable[[str], str],
+        infinite_scroll_func: Callable[[Chart, int, int], None],
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._available_pairs = available_pairs
         self._format_simple_pair = format_simple_pair
+        self._infinite_scroll_func = infinite_scroll_func
 
         self._main_layout = QVBoxLayout()
 
@@ -99,6 +117,10 @@ class TradingChart(QWidget):
             default="1min",
             func=self.on_timeframe_selection,
         )
+        self._main_chart.events.range_change += self._infinite_scroll_func
+        self._chart_storage = ChartDrawingStorage(f"{self.current_pair}_{self.current_timeframe}")
+        if self._main_chart.toolbox is not None:
+            self._main_chart.toolbox.save_drawings_under(self._chart_storage)
 
     def _config_layout(self) -> None:
         """Configure layout."""
@@ -107,8 +129,10 @@ class TradingChart(QWidget):
 
     def _config_shortcuts(self) -> None:
         """Configure shortcuts."""
-        self._shortcut = QShortcut(QKeySequence("\\"), self)
-        self._shortcut.activated.connect(self.show_search_pair)
+        self._search_shortcut = QShortcut(QKeySequence("\\"), self)
+        self._search_shortcut.activated.connect(self.show_search_pair)
+        self._fit_chart_shortcut = QShortcut(QKeySequence("f"), self)
+        self._fit_chart_shortcut.activated.connect(partial(self._main_chart.fit))
 
     @property
     def main_chart(self) -> QtChart:
@@ -125,6 +149,7 @@ class TradingChart(QWidget):
         """Set the current pair being displayed."""
         self._current_pair = pair
         self.set_pair_text(pair)
+        self._chart_storage.tag = f"{pair}_{self.current_timeframe}"
 
     @property
     def current_timeframe(self) -> str:
@@ -144,21 +169,36 @@ class TradingChart(QWidget):
         self._main_chart.topbar["pair"].set(pair_text)  # type: ignore
         self.top_bar.title.setText(f"Chart | {pair_text}")
 
-    def set_start_data(self, ohlcv: pandas.DataFrame, reset: bool = False) -> None:
+    def set_start_data(self, ohlcv: pandas.DataFrame) -> None:
         """Clean chart and fill with start data.
 
         Args:
             ohlcv (pandas.DataFrame): Open, high, low, close, volume data.
-            reset (bool, optional): Reset chart for new symbol. Defaults to False.
+            keep_drawings (bool): Keep drawings on chart.
         """
         # Convert to local timezone
         ohlcv["date"] = ohlcv["date"].apply(ui_utils.convert_timestamp_to_local_timezone)
         self._main_chart.set(ohlcv)
         self._main_chart.price_scale()
-        self._main_chart.fit()
-        if reset:
-            # TODO: remove draw_positions
-            pass
+        if self._main_chart.toolbox is None:
+            return
+        self._main_chart.toolbox.load_drawings(self._chart_storage.tag)
+        if self._main_chart.toolbox.drawings is not None:
+            self._main_chart.toolbox.reposition_on_time()
+
+    def update_data(self, ohlcv: pandas.DataFrame) -> None:
+        """Update chart data.
+
+        Args:
+            ohlcv (pandas.DataFrame): Open, high, low, close, volume data.
+        """
+        # Convert to local timezone
+        ohlcv["date"] = ohlcv["date"].apply(ui_utils.convert_timestamp_to_local_timezone)
+        current_data = self._main_chart.candle_data.copy()
+        current_data = current_data.rename(columns={"time": "date"})
+        current_data["date"] = current_data["date"].apply(lambda x: pandas.to_datetime(x, unit="s"))
+        updated_data = pandas.concat([ohlcv, current_data]).drop_duplicates().reset_index(drop=True)
+        self._main_chart.set(updated_data, keep_drawings=True)
 
     def update_chart_ohlcv(self, ohlcv: pandas.DataFrame) -> None:
         """Update the chart with the ohlcv data.
@@ -293,6 +333,7 @@ class TradingChart(QWidget):
             timeframe_value = timeframe_value[:-2]
             timeframe_value = int(timeframe_value) * 60
 
+        self._chart_storage.tag = f"{self.current_pair}_{timeframe_value}"
         self.timeframe_signal.emit(str(timeframe_value))
 
     def show_search_pair(self) -> None:

@@ -59,6 +59,7 @@ class ExchangeFetcher(Protocol):
         self,
         pair: str,
         from_timestamp: int,
+        to_timestamp: int,
         resolution: str,
     ) -> PriceHistory:
         """Fetch the price history of pair for the given start and end time.
@@ -66,6 +67,7 @@ class ExchangeFetcher(Protocol):
         Args:
             pair (str): Pair to fetch.
             from_timestamp (int): Timestamp for the leftmost bar.
+            to_timestamp (int): Timestamp for the rightmost bar.
             resolution (str): Bar resolution in seconds.
 
         Returns:
@@ -502,6 +504,7 @@ class ExchangeBase(ABC):
         pair: str,
         resolution: str,
         bars_num: int = 200,
+        to_timestamp: int | None = None,
     ) -> PriceHistory:
         """Fetch current price history for current pair.
 
@@ -509,25 +512,27 @@ class ExchangeBase(ABC):
             pair (str): Pair to fetch.
             resolution (str): Bar resolution.
             bars_num (int): Number of bars expected for resolution.
+            to_timestamp (int | None): Timestamp to fetch to.
         """
-        now_timestamp = int(time.time())
+        to_timestamp = int(time.time()) if to_timestamp is None else to_timestamp
         match resolution:
             case "5":
-                start_timestamp = now_timestamp - 5 * 60 * bars_num
+                from_timestamp = to_timestamp - 5 * 60 * bars_num
             case "15":
-                start_timestamp = now_timestamp - 15 * 60 * bars_num
+                from_timestamp = to_timestamp - 15 * 60 * bars_num
             case "30":
-                start_timestamp = now_timestamp - 30 * 60 * bars_num
+                from_timestamp = to_timestamp - 30 * 60 * bars_num
             case "60":
-                start_timestamp = now_timestamp - 60 * 60 * bars_num
+                from_timestamp = to_timestamp - 60 * 60 * bars_num
             case "240":
-                start_timestamp = now_timestamp - 240 * 60 * bars_num
+                from_timestamp = to_timestamp - 240 * 60 * bars_num
             case _:
-                start_timestamp = now_timestamp - bars_num * 60
+                from_timestamp = to_timestamp - bars_num * 60
 
         return await self.fetcher.fetch_price_history(
             pair=pair,
-            from_timestamp=start_timestamp,
+            from_timestamp=from_timestamp,
+            to_timestamp=to_timestamp,
             resolution=resolution,
         )
 

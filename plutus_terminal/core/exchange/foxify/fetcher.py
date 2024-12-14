@@ -149,6 +149,7 @@ class FoxifyFetcher(ExchangeFetcher):
         self,
         pair: str,
         from_timestamp: int,
+        to_timestamp: int,
         resolution: str,
     ) -> PriceHistory:
         """Fetch the price history on PYTH Network.
@@ -156,6 +157,7 @@ class FoxifyFetcher(ExchangeFetcher):
         Args:
             pair (str): Pair to fetch price for.
             from_timestamp (int): Timestamp for the leftmost bar.
+            to_timestamp (int): Timestamp for the rightmost bar.
             resolution (str): Bar resolution in seconds.
 
         Returns:
@@ -165,12 +167,11 @@ class FoxifyFetcher(ExchangeFetcher):
             HTTPStatusError: If response is not successful. After tries.
         """
         request_url = "https://benchmarks.pyth.network/v1/shims/tradingview/history"
-        now_timestamp = int(time.time())
         request_params = {
             "symbol": pair,
             "resolution": resolution,
             "from": from_timestamp,
-            "to": now_timestamp,
+            "to": to_timestamp,
         }
 
         response = await self.aclient.get(

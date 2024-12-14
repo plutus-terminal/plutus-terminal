@@ -13,7 +13,7 @@ keywords = ["plutus", "terminal", "crypto", "trading", "trading-bot", "perpetual
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
 keyring = "^24.2.0"
-lightweight-charts = "^2.0.0"
+lightweight-charts = {git = "https://github.com/plutus-terminal/plutus-lightweight-charts-python.git"}
 pyside6 = "^6.5.2"
 httpx = "^0.25.0"
 pandas = "^2.1.1"
