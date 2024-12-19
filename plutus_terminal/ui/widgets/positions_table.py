@@ -376,6 +376,12 @@ class PositionManager(QWidget):
         if self._position["position_size_stable"] == kwargs["size"]:
             await self._exchange.close_position(self._position)
             return
+
+        # Calculate collateral delta based on reduced size
+        kwargs["collateral_delta"] = (kwargs["size"] * self._position["collateral_stable"]) / (
+            self._position["position_size_stable"]
+        )
+
         await self._exchange.create_reduce_order(**kwargs)
 
     def on_tp_sl_clicked(self) -> None:
@@ -406,9 +412,17 @@ class PositionManager(QWidget):
         Args:
             order_data (OrderData): Order to execute.
         """
+        if order_data["size_stable"] == self._position["position_size_stable"]:
+            collateral_delta = Decimal(0)
+        else:
+            collateral_delta = (order_data["size_stable"] * self._position["collateral_stable"]) / (
+                self._position["position_size_stable"]
+            )
+
         await self._exchange.create_reduce_order(
             pair=order_data["pair"],
             size=order_data["size_stable"],
+            collateral_delta=collateral_delta,
             trade_direction=order_data["trade_direction"],
             trade_type=order_data["order_type"],
             execution_price=order_data["trigger_price"],

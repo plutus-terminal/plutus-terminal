@@ -255,8 +255,8 @@ class FoxifyExchange(ExchangeBase):
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
         execution_price: Optional[Decimal] = None,
-        take_profit_percent: Optional[float] = None,
-        stop_loss_percent: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        stop_loss: Optional[float] = None,
     ) -> None:
         """Create new order.
 
@@ -268,9 +268,9 @@ class FoxifyExchange(ExchangeBase):
             trade_type (TradeType): Trade type.
             execution_price (Optional[Decimal], optional): Execution price.
                 If None use current price.
-            take_profit_percent (Optional[float], optional): Take profit price.
+            take_profit (Optional[float], optional): Take profit price.
                 If None use CONFIG.take_profit.
-            stop_loss_percent (Optional[float], optional): Stop loss price.
+            stop_loss (Optional[float], optional): Stop loss price.
                 If None use CONFIG.stop_loss.
 
         Raises:
@@ -308,12 +308,12 @@ class FoxifyExchange(ExchangeBase):
         acceptable_price = execution_price
         take_profit_execution = exchange_helpers.get_take_profit_target(
             execution_price,
-            take_profit_percent,
+            take_profit,
             trade_direction,
         )
         stop_loss_execution = exchange_helpers.get_stop_loss_target(
             execution_price,
-            stop_loss_percent,
+            stop_loss,
             trade_direction,
         )
 
@@ -367,7 +367,7 @@ class FoxifyExchange(ExchangeBase):
             order_data (OrderData): Order to edit.
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
-            new_execution_price (Decimal, optional): Execution price.
+            new_execution_price (Decimal): Execution price.
 
         Raises:
             TransactionFailedError: If transaction failed
@@ -431,6 +431,7 @@ class FoxifyExchange(ExchangeBase):
         self,
         pair: str,
         size: Decimal,
+        collateral_delta: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
         execution_price: Optional[Decimal],
@@ -440,6 +441,7 @@ class FoxifyExchange(ExchangeBase):
         Args:
             pair (str):  Pair to open trade for.
             size (Decimal): Value in stable to reduce trade for.
+            collateral_delta (Decimal): Collateral delta to be reduced.
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.
@@ -459,12 +461,13 @@ class FoxifyExchange(ExchangeBase):
             except KeyError:
                 current_price_data = await self.fetcher.fetch_current_price(pair)
                 execution_price = Decimal(current_price_data["price"])
+
             if trade_direction == PerpsTradeDirection.LONG:
-                execution_price = execution_price + execution_price * Decimal(
+                execution_price = execution_price - execution_price * Decimal(
                     foxify_utils.MAX_SLIPPAGE,
                 )
             else:
-                execution_price = execution_price - execution_price * Decimal(
+                execution_price = execution_price + execution_price * Decimal(
                     foxify_utils.MAX_SLIPPAGE,
                 )
         elif not isinstance(execution_price, Decimal):
@@ -476,6 +479,7 @@ class FoxifyExchange(ExchangeBase):
             {
                 "index_token": self._inverted_pair_map[pair],
                 "size_delta": size,
+                "collateral_delta": collateral_delta,
                 "trade_direction": trade_direction,
                 "acceptable_price": acceptable_price,
                 "trade_type": trade_type,
@@ -567,31 +571,31 @@ class FoxifyExchange(ExchangeBase):
         )
 
     @asyncSlot()
-    async def close_position(self, perp_position: PerpsPosition) -> None:
+    async def close_position(self, perps_position: PerpsPosition) -> None:
         """Close position for pair.
 
         Args:
-            perp_position (PerpPosition): Position to close.
+            perps_position (PerpsPosition): Position to close.
 
         Raises:
             TransactionFailed: If the transaction fails.
         """
         toast_id = Toast.show_message(
-            f"Closing position for {perp_position['pair']}",
+            f"Closing position for {perps_position['pair']}",
             type_=ToastType.WARNING,
         )
 
         # Get cached price if available otherwise fetch it.
         try:
-            current_price = Decimal(self.cached_prices[perp_position["pair"]]["price"])
+            current_price = Decimal(self.cached_prices[perps_position["pair"]]["price"])
         except KeyError:
             current_price_data = await self.fetcher.fetch_current_price(
-                perp_position["pair"],
+                perps_position["pair"],
             )
             current_price = Decimal(current_price_data["price"])
 
         # Calculate execution price with slippage
-        if perp_position["trade_direction"] == PerpsTradeDirection.LONG:
+        if perps_position["trade_direction"] == PerpsTradeDirection.LONG:
             acceptable_price = current_price - current_price * Decimal(
                 foxify_utils.MAX_SLIPPAGE,
             )
@@ -602,9 +606,10 @@ class FoxifyExchange(ExchangeBase):
 
         trade_arguments = foxify_utils.CloseTradingArgs(
             {
-                "index_token": self._inverted_pair_map[perp_position["pair"]],
-                "size_delta": Decimal(perp_position["position_size_stable"]),
-                "trade_direction": perp_position["trade_direction"],
+                "index_token": self._inverted_pair_map[perps_position["pair"]],
+                "size_delta": Decimal(perps_position["position_size_stable"]),
+                "collateral_delta": Decimal(0),
+                "trade_direction": perps_position["trade_direction"],
                 "acceptable_price": acceptable_price,
             },
         )

@@ -585,8 +585,8 @@ class ExchangeBase(ABC):
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
         execution_price: Optional[Decimal] = None,
-        take_profit: Optional[Decimal] = None,
-        stop_loss: Optional[Decimal] = None,
+        take_profit: Optional[float] = None,
+        stop_loss: Optional[float] = None,
     ) -> None:
         """Create new order.
 
@@ -612,7 +612,7 @@ class ExchangeBase(ABC):
         self,
         order_data: OrderData,
         new_size_stable: Decimal,
-        new_execution_price: Optional[Decimal],
+        new_execution_price: Decimal,
     ) -> None:
         """Edit existent order.
 
@@ -620,7 +620,7 @@ class ExchangeBase(ABC):
             order_data (OrderData): Order to edit.
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
-            new_execution_price (Optional[Decimal], optional): Execution price.
+            new_execution_price (Decimal): Execution price.
 
         Raises:
             TransactionFailedError: If transaction failed
@@ -632,6 +632,7 @@ class ExchangeBase(ABC):
         self,
         pair: str,
         size: Decimal,
+        collateral_delta: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
         execution_price: Optional[Decimal],
@@ -640,8 +641,8 @@ class ExchangeBase(ABC):
 
         Args:
             pair (str):  Pair to open trade for.
-            size (Decimal): Value in stable to open trade for, this will be multiplied
-                by de configured leverage.
+            size (Decimal): Value in stable to reduce trade for.
+            collateral_delta (Decimal): Collateral delta to be reduced.
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.
