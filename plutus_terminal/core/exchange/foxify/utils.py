@@ -81,6 +81,7 @@ class CloseTradingArgs(TypedDict):
 
     index_token: str
     size_delta: Decimal
+    collateral_delta: Decimal
     trade_direction: PerpsTradeDirection
     acceptable_price: Decimal
 

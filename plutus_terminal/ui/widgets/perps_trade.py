@@ -467,8 +467,8 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             if isinstance(current_tab, LimitTradeWidget)
             else None
         )
-        stop_loss = Decimal(current_tab.get_stop_loss())
-        take_profit = Decimal(current_tab.get_take_profit())
+        stop_loss = current_tab.get_stop_loss()
+        take_profit = current_tab.get_take_profit()
         try:
             await self._exchange.create_order(
                 pair,
