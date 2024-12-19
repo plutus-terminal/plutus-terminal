@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "plutus-terminal"
-version = "0.1.0b5"
+version = "0.1.0b6"
 description = "Plutus Terminal is a powerful open-source crypto news trading terminal with the focus on Perpetuals DEX."
 authors = ["Plutus <plutus-terminal@protonmail.com>"]
 readme = "README.md"
@@ -13,7 +13,7 @@ keywords = ["plutus", "terminal", "crypto", "trading", "trading-bot", "perpetual
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
 keyring = "^24.2.0"
-lightweight-charts = "^2.0.0"
+lightweight-charts = {git = "https://github.com/plutus-terminal/plutus-lightweight-charts-python.git"}
 pyside6 = "^6.5.2"
 httpx = "^0.25.0"
 pandas = "^2.1.1"

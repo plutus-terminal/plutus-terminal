@@ -44,6 +44,8 @@ from plutus_terminal.ui.widgets.trading_chart import TradingChart
 from plutus_terminal.ui.widgets.user_top_bar import UserTopBar
 
 if TYPE_CHECKING:
+    from lightweight_charts import Chart
+
     from plutus_terminal.core.db.models import KeyringAccount
     from plutus_terminal.core.password_guard import PasswordGuard
 
@@ -65,6 +67,7 @@ class PlutusTerminal(QMainWindow):
         self._fetcher_message_bus = ExchangeFetcherMessageBus()
         self._news_message_bus = NewsMessageBus()
         self._async_tasks = []
+        self._chart_scroll_polling = False
 
         self.main_layout = QVBoxLayout()
         self.main_widget = QWidget()
@@ -110,6 +113,7 @@ class PlutusTerminal(QMainWindow):
         self._chart = TradingChart(
             self._current_exchange.available_pairs,
             self._current_exchange.format_simple_pair_from_pair,
+            self.infinite_chart_scroll,
         )
 
         # Init open trades widget
@@ -298,10 +302,11 @@ class PlutusTerminal(QMainWindow):
         history = await self._current_exchange.fetch_price_history(
             pair,
             self._chart.current_timeframe,
-            bars_num=200,
+            bars_num=ui_utils.DEFAULT_BAR_NUMBERS,
         )
         history_dataframe = pandas.DataFrame(history)
-        self._chart.set_start_data(history_dataframe, reset=True)
+
+        self._chart.set_start_data(history_dataframe)
         minimal_digits = ui_utils.get_minimal_digits(history["low"][0], 4)
         self._chart.main_chart.precision(minimal_digits)
 
@@ -321,10 +326,29 @@ class PlutusTerminal(QMainWindow):
         history = await self._current_exchange.fetch_price_history(
             self._current_pair,
             resolution,
-            bars_num=200,
+            bars_num=ui_utils.DEFAULT_BAR_NUMBERS,
         )
         history_dataframe = pandas.DataFrame(history)
         self._chart.set_start_data(history_dataframe)
+
+    @asyncSlot()
+    async def infinite_chart_scroll(self, chart: Chart, bars_before: int, bars_after: int) -> None:  # noqa: ARG002
+        """Function called when chart is scrolled."""
+        fetch_threshold = 25
+        if bars_before <= fetch_threshold and not self._chart_scroll_polling:
+            LOGGER.debug(f"Infinite chart scrolling: Fetching more data for {self._current_pair}")
+            candle_timestamp = ui_utils.convert_timestamp_from_local_to_utc(
+                chart.candle_data["time"].iloc[0],
+            )
+            self._chart_scroll_polling = True
+            history = await self._current_exchange.fetch_price_history(
+                self._current_pair,
+                self._chart.current_timeframe,
+                bars_num=ui_utils.DEFAULT_BAR_NUMBERS * 3,
+                to_timestamp=int(candle_timestamp.timestamp()),
+            )
+            self._chart.update_data(pandas.DataFrame(history))
+            self._chart_scroll_polling = False
 
     @asyncSlot()
     async def _fill_news_list(self) -> None:

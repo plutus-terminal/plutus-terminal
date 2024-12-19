@@ -59,6 +59,7 @@ class ExchangeFetcher(Protocol):
         self,
         pair: str,
         from_timestamp: int,
+        to_timestamp: int,
         resolution: str,
     ) -> PriceHistory:
         """Fetch the price history of pair for the given start and end time.
@@ -66,6 +67,7 @@ class ExchangeFetcher(Protocol):
         Args:
             pair (str): Pair to fetch.
             from_timestamp (int): Timestamp for the leftmost bar.
+            to_timestamp (int): Timestamp for the rightmost bar.
             resolution (str): Bar resolution in seconds.
 
         Returns:
@@ -502,6 +504,7 @@ class ExchangeBase(ABC):
         pair: str,
         resolution: str,
         bars_num: int = 200,
+        to_timestamp: int | None = None,
     ) -> PriceHistory:
         """Fetch current price history for current pair.
 
@@ -509,25 +512,27 @@ class ExchangeBase(ABC):
             pair (str): Pair to fetch.
             resolution (str): Bar resolution.
             bars_num (int): Number of bars expected for resolution.
+            to_timestamp (int | None): Timestamp to fetch to.
         """
-        now_timestamp = int(time.time())
+        to_timestamp = int(time.time()) if to_timestamp is None else to_timestamp
         match resolution:
             case "5":
-                start_timestamp = now_timestamp - 5 * 60 * bars_num
+                from_timestamp = to_timestamp - 5 * 60 * bars_num
             case "15":
-                start_timestamp = now_timestamp - 15 * 60 * bars_num
+                from_timestamp = to_timestamp - 15 * 60 * bars_num
             case "30":
-                start_timestamp = now_timestamp - 30 * 60 * bars_num
+                from_timestamp = to_timestamp - 30 * 60 * bars_num
             case "60":
-                start_timestamp = now_timestamp - 60 * 60 * bars_num
+                from_timestamp = to_timestamp - 60 * 60 * bars_num
             case "240":
-                start_timestamp = now_timestamp - 240 * 60 * bars_num
+                from_timestamp = to_timestamp - 240 * 60 * bars_num
             case _:
-                start_timestamp = now_timestamp - bars_num * 60
+                from_timestamp = to_timestamp - bars_num * 60
 
         return await self.fetcher.fetch_price_history(
             pair=pair,
-            from_timestamp=start_timestamp,
+            from_timestamp=from_timestamp,
+            to_timestamp=to_timestamp,
             resolution=resolution,
         )
 
@@ -580,8 +585,8 @@ class ExchangeBase(ABC):
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
         execution_price: Optional[Decimal] = None,
-        take_profit: Optional[Decimal] = None,
-        stop_loss: Optional[Decimal] = None,
+        take_profit: Optional[float] = None,
+        stop_loss: Optional[float] = None,
     ) -> None:
         """Create new order.
 
@@ -607,7 +612,7 @@ class ExchangeBase(ABC):
         self,
         order_data: OrderData,
         new_size_stable: Decimal,
-        new_execution_price: Optional[Decimal],
+        new_execution_price: Decimal,
     ) -> None:
         """Edit existent order.
 
@@ -615,7 +620,7 @@ class ExchangeBase(ABC):
             order_data (OrderData): Order to edit.
             new_size_stable (Decimal): Value in stable to open trade for, this will be multiplied
                 by de configured leverage.
-            new_execution_price (Optional[Decimal], optional): Execution price.
+            new_execution_price (Decimal): Execution price.
 
         Raises:
             TransactionFailedError: If transaction failed
@@ -627,6 +632,7 @@ class ExchangeBase(ABC):
         self,
         pair: str,
         size: Decimal,
+        collateral_delta: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
         execution_price: Optional[Decimal],
@@ -635,8 +641,8 @@ class ExchangeBase(ABC):
 
         Args:
             pair (str):  Pair to open trade for.
-            size (Decimal): Value in stable to open trade for, this will be multiplied
-                by de configured leverage.
+            size (Decimal): Value in stable to reduce trade for.
+            collateral_delta (Decimal): Collateral delta to be reduced.
             trade_direction (TradeDirection): Trade direction.
             trade_type (TradeType): Trade type.
             execution_price (Decimal): Execution price.

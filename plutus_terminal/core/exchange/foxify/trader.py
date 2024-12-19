@@ -336,7 +336,7 @@ class FoxifyTrader(ExchangeTrader):
             tx = await self._order_book_contract.functions.createDecreaseOrder(
                 self.web3_provider.to_checksum_address(trade_arguments["index_token"]),
                 int(trade_arguments["size_delta"] * self._price_precision),
-                0,
+                int(trade_arguments["collateral_delta"] * self._price_precision),
                 trade_arguments["trade_direction"].value,
                 int(
                     trade_arguments["acceptable_price"] * self._price_precision,
@@ -386,7 +386,7 @@ class FoxifyTrader(ExchangeTrader):
         try:
             tx = await self._position_router_contract.functions.createDecreasePosition(
                 self.web3_provider.to_checksum_address(trade_arguments["index_token"]),
-                0,  # collateralDelta
+                int(trade_arguments["collateral_delta"] * self._price_precision),
                 int(trade_arguments["size_delta"] * self._price_precision),
                 trade_arguments["trade_direction"].value,
                 self._receiver_address,
