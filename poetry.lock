@@ -1385,25 +1385,6 @@ docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.link
 testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-mypy", "pytest-ruff (>=0.2.1)"]
 
 [[package]]
-name = "lightweight_charts"
-version = "2.1"
-description = "Python framework for TradingView's Lightweight Charts JavaScript library."
-optional = false
-python-versions = ">=3.8"
-files = []
-develop = false
-
-[package.dependencies]
-pandas = "*"
-pywebview = ">=5.0.5"
-
-[package.source]
-type = "git"
-url = "https://github.com/plutus-terminal/plutus-lightweight-charts-python.git"
-reference = "HEAD"
-resolved_reference = "807860793e259b133c8738a47dfc5bf37363c71a"
-
-[[package]]
 name = "lru-dict"
 version = "1.2.0"
 description = "An Dict like LRU container."
@@ -1978,6 +1959,21 @@ files = [
 docs = ["furo (>=2024.8.6)", "proselint (>=0.14)", "sphinx (>=8.0.2)", "sphinx-autodoc-typehints (>=2.4)"]
 test = ["appdirs (==1.4.4)", "covdefaults (>=2.3)", "pytest (>=8.3.2)", "pytest-cov (>=5)", "pytest-mock (>=3.14)"]
 type = ["mypy (>=1.11.2)"]
+
+[[package]]
+name = "plutus-lightweight-charts"
+version = "2.2.0"
+description = "Fork of lightweight-charts-python with Plutus specific enchancements."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "plutus_lightweight_charts-2.2.0-py3-none-any.whl", hash = "sha256:6a444169e7251ee44e7999453e64e1654996cb5bb2c25e9caf154efc21eaeb1d"},
+    {file = "plutus_lightweight_charts-2.2.0.tar.gz", hash = "sha256:ed10f1932280c28dd4537299e294d23b839514ea385bbcc28f13adc75929a98d"},
+]
+
+[package.dependencies]
+pandas = "*"
+pywebview = ">=5.0.5"
 
 [[package]]
 name = "pre-commit"
@@ -3366,4 +3362,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.12,<3.13"
-content-hash = "1ad4f817fa03028ed8df58e3a993710bbb3a3eff5aecf29025b6659db1217d9c"
+content-hash = "33e6c99236996fc3a52ed8d31004188d9fe7f778c2bd909b407ce12604798896"
