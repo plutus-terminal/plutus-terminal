@@ -117,7 +117,7 @@ QRadioButton:hover:!checked, QCheckBox:hover:!checked {
 
 QTableView {
     border: 1px solid #696969;
-    alternate-background-color: red;
+    alternate-background-color: rgba(0, 0, 0, 30);
 }
 
 QTableView::item {
@@ -126,7 +126,7 @@ QTableView::item {
 
 
 QTableView::item:selected, QTableView::item:hover {
-    background: none;
+    background: transparent;
     background-color: transparent;
 }
 
