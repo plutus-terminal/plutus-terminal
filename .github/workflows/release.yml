@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version_tag.outputs.version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
 
     steps:
       # Checkout code
@@ -42,10 +43,21 @@ jobs:
 
         run: |
           app_version=$(poetry version -s)
-          echo "Version: $app_version"
           echo "version=$app_version" >> "$GITHUB_OUTPUT"
           git tag -a v$app_version -m "Version $app_version"
           git push origin v$app_version
+          echo "Version: $app_version"
+
+      - name: Extract Changelog for current version
+        id: changelog
+        run: |
+          current_version=$(poetry version -s)
+          changelog=$(awk "/^## ${current_version}/{flag=1;next}/^##/{flag=0}flag" CHANGELOG.md | sed '$d')
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "${changelog}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Changelog: $changelog"
+
       # Publish to PyPi
       - name: Publish to PyPi
         run: |
@@ -92,8 +104,10 @@ jobs:
           export PYAPP_PROJECT_VERSION="v$version"
           export PYAPP_EXEC_SPEC="plutus_terminal.run:run"
           export PYAPP_PROJECT_DEPENDENCY_FILE="./plutus_terminal_requirements.txt"
+
           echo "Running cargo build --release..."
           cargo build --release
+
           echo "Moving the executable to the desired location..."
           cd ..
           if [[ "${{ matrix.os }}" == 'ubuntu-latest' ]]; then
@@ -141,6 +155,15 @@ jobs:
           name: windows-latest-build
           path: ./  # Download to the current workspace
 
+      - name: Determine Release Type
+        id: release_type
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/unstable" ]; then
+            echo "is_prerelease=true" >> $GITHUB_ENV
+          else
+            echo "is_prerelease=false" >> $GITHUB_ENV
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
 
@@ -151,9 +174,11 @@ jobs:
           body: |
             # Changelog
 
-            --
+            ${{ needs.build_and_release.outputs.changelog }}
 
             # Install
+
+            Detailed documentation can be found [here](https://plutuss-organization.gitbook.io/documentation/quick-start/instalation)
 
             ## Windows
 
@@ -161,12 +186,15 @@ jobs:
             2. Extract the zip file
             3. Run the executable
 
-
             ## Linux
 
             1. Download PlutusTerminal-Linux.tar.gz
             2. Extract the tar file
             3. Run the executable
+
+
+          prerelease: ${{ env.is_prerelease }}
+
           files: |
             PlutusTerminal-Linux.tar.gz
             PlutusTerminal-Windows.zip
