@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0b7 - 31/12/2024
+
+* [feat] Improve CI/DC (#75)
+* [fix] Fix alternate colors on rows positions
+
 ## 0.1.0b6 - 19/12/2024
 
 * [feat] Improve charting tools (#55)
