@@ -18,7 +18,7 @@ OrdersList: TypeAlias = list[OrderData]  # noqa: UP040
 class MessageBus(QObject):
     """Centralized message bus."""
 
-    subscribed_prices: Signal = Signal(SubscribedData)
+    subscribed_prices_fetched: Signal = Signal(SubscribedData)
     """Signal emitted when price data of subscribed pairs is fetched."""
 
     balance_fetched: Signal = Signal(Decimal)

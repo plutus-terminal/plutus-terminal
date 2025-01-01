@@ -6,10 +6,10 @@ import logging
 from eth_typing import ChecksumAddress
 from tenacity import before_sleep_log, retry, wait_exponential
 
-from plutus_terminal.core.exchange.base import ExchangeFetcherMessageBus
 from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.foxify.fetcher import FoxifyFetcher
 from plutus_terminal.log_utils import log_retry
+from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,14 +21,14 @@ class FoxifyFundedFetcher(FoxifyFetcher):
         self,
         pair_map: dict[str, str],
         web3_address: ChecksumAddress,
-        message_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
     ) -> None:
         """Initialize shared attributes.
 
         Args:
             pair_map (dict[str, dict[str, str]]): Dict with adress and pair.
             web3_address (ChecksumAddress): Web3 account address.
-            message_bus (ExchangeFetcherMessageBus): Message bus.
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus.
         """
         super().__init__(pair_map, web3_address, message_bus)
         self._funded_trader_contract = foxify_utils.build_funded_trader_contract(

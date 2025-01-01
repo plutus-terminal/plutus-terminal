@@ -9,7 +9,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, Optional, Protocol, Self
 
-from PySide6.QtCore import QObject, Signal
 from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
@@ -35,17 +34,9 @@ if TYPE_CHECKING:
         PriceData,
         PriceHistory,
     )
+    from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
-
-
-class ExchangeFetcherMessageBus(QObject):
-    """Message Bus for all fetch related events."""
-
-    subscribed_prices_signal = Signal(dict)
-    balance_signal = Signal(Decimal)
-    positions_signal = Signal(list)  # list[PerpsPosition]
-    orders_signal = Signal(list)  # list[OrderData]
 
 
 class ExchangeFetcher(Protocol):
@@ -322,9 +313,14 @@ class ExchangeOptions(Protocol):
 class ExchangeBase(ABC):
     """Base class to interact with exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
-        """Initialize shared variables."""
-        self.fetcher_bus = fetcher_bus
+    def __init__(self, message_bus: MessageBus, pass_guard: PasswordGuard) -> None:
+        """Initialize shared variables.
+
+        Args:
+            message_bus (MessageBus): Message bus to send signals.
+            pass_guard (PasswordGuard): Password guard.
+        """
+        self.message_bus = message_bus
         self._watched_positions: list[PerpsPosition] = []
         self._async_tasks: list[asyncio.Task] = []
         self._pass_guard = pass_guard
@@ -385,7 +381,7 @@ class ExchangeBase(ABC):
     @abstractmethod
     async def create(
         cls,
-        fetcher_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
         pass_guard: PasswordGuard,
     ) -> Self:
         """Create class instance and init_async."""
@@ -464,7 +460,7 @@ class ExchangeBase(ABC):
         )
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_all_orders()))
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_stable_balance()))
-        self.fetcher_bus.positions_signal.connect(self._update_watched_positions)
+        self.message_bus.positions_signal.connect(self._update_watched_positions)
 
     @asyncSlot()
     async def _update_watched_positions(
@@ -683,7 +679,7 @@ class ExchangeBase(ABC):
                 type_=ToastType.ERROR,
             )
         all_positions = await self.fetcher.fetch_all_positions()
-        self.fetcher_bus.positions_signal.emit(all_positions)
+        self.message_bus.positions_signal.emit(all_positions)
         Toast.update_message(toast_id, "Position closed", type_=ToastType.SUCCESS)
 
     def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:

@@ -26,7 +26,6 @@ from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.base import (
     LOGGER,
     ExchangeBase,
-    ExchangeFetcherMessageBus,
 )
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
@@ -64,7 +63,6 @@ class PlutusTerminal(QMainWindow):
         """Initialize shared variables."""
         super().__init__()
         self._pass_guard = pass_guard
-        self._fetcher_message_bus = ExchangeFetcherMessageBus()
         self._message_bus = MessageBus()
         self._async_tasks = []
         self._chart_scroll_polling = False
@@ -104,7 +102,7 @@ class PlutusTerminal(QMainWindow):
         # Start current exchange loops
         keyring_account: KeyringAccount = self._user_top_bar.account_picker.currentData()
         self._current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
-            self._fetcher_message_bus,
+            self._message_bus,
             self._pass_guard,
         )
         self._async_tasks.append(asyncio.create_task(self._current_exchange.fetch_prices()))
@@ -164,14 +162,14 @@ class PlutusTerminal(QMainWindow):
         await self._set_chart_timeframe("1")
         self._chart.current_pair = self._current_pair
         self._chart.timeframe_signal.connect(self._set_chart_timeframe)
-        self._fetcher_message_bus.subscribed_prices_signal.connect(
+        self._message_bus.subscribed_prices_fetched.connect(
             self._chart.update_chart_tick,
         )
         self._chart.pair_changed.connect(self._change_current_pair)
-        self._fetcher_message_bus.positions_signal.connect(
+        self._message_bus.positions_fetched.connect(
             self._chart.draw_positions,
         )
-        self._fetcher_message_bus.orders_signal.connect(self._chart.draw_orders)
+        self._message_bus.orders_feched.connect(self._chart.draw_orders)
 
         # Configure config dialog
         self._config_dialog.updated_trade_values.connect(
@@ -188,20 +186,20 @@ class PlutusTerminal(QMainWindow):
 
         # Configure account info
         await self._account_info.set_approve_btn_visibility()
-        self._fetcher_message_bus.balance_signal.connect(self._account_info.update_balance)
+        self._message_bus.balance_fetched.connect(self._account_info.update_balance)
 
         # Configure Perps Trade
         self._perps_trade.pair_changed.connect(self._change_current_pair)
-        self._fetcher_message_bus.subscribed_prices_signal.connect(
+        self._message_bus.subscribed_prices_fetched.connect(
             self._perps_trade.update_liquidation_info,
         )
 
         # Connect signals for open traders
-        self._fetcher_message_bus.positions_signal.connect(
+        self._message_bus.positions_fetched.connect(
             self._trade_table.update_positions,
         )
-        self._fetcher_message_bus.orders_signal.connect(self._trade_table.update_orders)
-        self._fetcher_message_bus.subscribed_prices_signal.connect(
+        self._message_bus.orders_feched.connect(self._trade_table.update_orders)
+        self._message_bus.subscribed_prices_fetched.connect(
             self._trade_table.update_prices,
         )
         self._trade_table.pair_clicked.connect(self._change_current_pair)
@@ -285,13 +283,13 @@ class PlutusTerminal(QMainWindow):
             return
 
         # Disconnect signal to avoid visual glitch
-        self._fetcher_message_bus.subscribed_prices_signal.disconnect(
+        self._message_bus.subscribed_prices_fetched.disconnect(
             self._chart.update_chart_tick,
         )
-        self._fetcher_message_bus.positions_signal.disconnect(
+        self._message_bus.positions_fetched.disconnect(
             self._chart.draw_positions,
         )
-        self._fetcher_message_bus.orders_signal.disconnect(self._chart.draw_orders)
+        self._message_bus.orders_feched.disconnect(self._chart.draw_orders)
 
         await self._current_exchange.fetcher.unsubscribe_to_price(self._current_pair)
         await self._current_exchange.fetcher.subscribe_to_price(pair)
@@ -312,13 +310,13 @@ class PlutusTerminal(QMainWindow):
 
         await self._perps_trade.update_current_pair(pair)
 
-        self._fetcher_message_bus.subscribed_prices_signal.connect(
+        self._message_bus.subscribed_prices_fetched.connect(
             self._chart.update_chart_tick,
         )
-        self._fetcher_message_bus.positions_signal.connect(
+        self._message_bus.positions_fetched.connect(
             self._chart.draw_positions,
         )
-        self._fetcher_message_bus.orders_signal.connect(self._chart.draw_orders)
+        self._message_bus.orders_feched.connect(self._chart.draw_orders)
 
     @asyncSlot()
     async def _set_chart_timeframe(self, resolution: str) -> None:
@@ -400,10 +398,9 @@ class PlutusTerminal(QMainWindow):
         await self._current_exchange.stop_async()
 
         self._message_bus.blockSignals(True)
-        self._fetcher_message_bus.blockSignals(True)
 
         self._current_exchange = await new_exchange.create(
-            self._fetcher_message_bus,
+            self._message_bus,
             self._pass_guard,
         )
 
@@ -446,7 +443,6 @@ class PlutusTerminal(QMainWindow):
             module.blockSignals(False)
 
         self._message_bus.blockSignals(False)
-        self._fetcher_message_bus.blockSignals(False)
 
         await self._current_exchange.fetcher.resubscribe_on_going_connections()
         self._update_quick_trade_values()

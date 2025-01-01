@@ -43,7 +43,8 @@ from plutus_terminal.log_utils import log_retry
 if TYPE_CHECKING:
     from eth_typing import ChecksumAddress
 
-    from plutus_terminal.core.exchange.base import ExchangeFetcherMessageBus
+    from plutus_terminal.message_bus import MessageBus
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,14 +56,14 @@ class FoxifyFetcher(ExchangeFetcher):
         self,
         pair_map: dict[str, str],
         web3_address: ChecksumAddress,
-        message_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
     ) -> None:
         """Initialize shared attributes.
 
         Args:
             pair_map (dict[str, dict[str, str]]): Dict with adress and pair.
             web3_address (ChecksumAddress): Web3 account address.
-            message_bus (ExchangeFetcherMessageBus): Message bus.
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus.
         """
         LOGGER.info("Initialize FoxifyFetcher")
         self.aclient = AsyncClient()
@@ -93,14 +94,14 @@ class FoxifyFetcher(ExchangeFetcher):
         cls,
         pair_map: dict[str, str],
         web3_address: ChecksumAddress,
-        message_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
     ) -> Self:
         """Create class instance and init_async.
 
         Args:
             pair_map (dict[str, str]): Dict with adress and pair.
             web3_address (ChecksumAddress): Web3 account address.
-            message_bus (ExchangeFetcherMessageBus): Message bus.
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus.
 
         Returns:
             FoxifyFetcher: Instance of FoxifyFetcher.
@@ -317,7 +318,7 @@ class FoxifyFetcher(ExchangeFetcher):
                                 ),
                             },
                         )
-                        self._message_bus.subscribed_prices_signal.emit(
+                        self._message_bus.subscribed_prices_fetched.emit(
                             self._cached_prices,
                         )
             except (ConnectionClosedError, ConnectionAbortedError):
@@ -375,7 +376,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 all_positions = await self.fetch_all_positions()
-                self._message_bus.positions_signal.emit(all_positions)
+                self._message_bus.positions_fetched.emit(all_positions)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
@@ -392,7 +393,7 @@ class FoxifyFetcher(ExchangeFetcher):
         """
         try:
             all_positions = await self.fetch_all_positions()
-            self._message_bus.positions_signal.emit(all_positions)
+            self._message_bus.positions_fetched.emit(all_positions)
         except (HTTPStatusError, ReadTimeout, ConnectError):
             LOGGER.exception("Unexpected error while fetching all positions")
 
@@ -465,7 +466,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 all_orders = await self.fetch_all_orders()
-                self._message_bus.orders_signal.emit(all_orders)
+                self._message_bus.orders_feched.emit(all_orders)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
@@ -482,7 +483,7 @@ class FoxifyFetcher(ExchangeFetcher):
         """
         try:
             all_orders = await self.fetch_all_orders()
-            self._message_bus.orders_signal.emit(all_orders)
+            self._message_bus.orders_feched.emit(all_orders)
         except (HTTPStatusError, ReadTimeout, ConnectError):
             LOGGER.exception("Unexpected error while fetching all positions")
 
@@ -599,7 +600,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 self._cached_stable_balance = await self.fetch_stable_balance()
-                self._message_bus.balance_signal.emit(self._cached_stable_balance)
+                self._message_bus.balance_fetched.emit(self._cached_stable_balance)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching stable balance.")
                 continue
