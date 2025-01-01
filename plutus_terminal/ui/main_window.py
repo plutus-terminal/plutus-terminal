@@ -29,9 +29,9 @@ from plutus_terminal.core.exchange.base import (
     ExchangeFetcherMessageBus,
 )
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
-from plutus_terminal.core.news.base import NewsMessageBus
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
+from plutus_terminal.message_bus import MessageBus
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
@@ -65,7 +65,7 @@ class PlutusTerminal(QMainWindow):
         super().__init__()
         self._pass_guard = pass_guard
         self._fetcher_message_bus = ExchangeFetcherMessageBus()
-        self._news_message_bus = NewsMessageBus()
+        self._message_bus = MessageBus()
         self._async_tasks = []
         self._chart_scroll_polling = False
 
@@ -134,7 +134,7 @@ class PlutusTerminal(QMainWindow):
         self._filter_manager = FilterManager()
 
         # Init news manager
-        self._news_manager = NewsManager(self._news_message_bus, self._filter_manager)
+        self._news_manager = NewsManager(self._message_bus, self._filter_manager)
         self._async_tasks.append(asyncio.create_task(self._news_manager.fetch_news()))
         self._news_list = NewsList(self._current_exchange)
 
@@ -209,7 +209,7 @@ class PlutusTerminal(QMainWindow):
         self._news_list.pair_clicked.connect(self._change_current_pair)
         self._news_list.refresh_news.connect(self._fill_news_list)
         await self._fill_news_list()
-        self._news_message_bus.news_signal.connect(self._news_list.add_news)
+        self._message_bus.formatted_news.connect(self._news_list.add_news)
 
         self._right_scroll.setSizePolicy(
             QSizePolicy.Policy.Fixed,
@@ -399,7 +399,7 @@ class PlutusTerminal(QMainWindow):
         """Update exchangeBase on all modules of the list exchange_update_affected."""
         await self._current_exchange.stop_async()
 
-        self._news_message_bus.blockSignals(True)
+        self._message_bus.blockSignals(True)
         self._fetcher_message_bus.blockSignals(True)
 
         self._current_exchange = await new_exchange.create(
@@ -445,7 +445,7 @@ class PlutusTerminal(QMainWindow):
             module.on_new_account()  # type: ignore
             module.blockSignals(False)
 
-        self._news_message_bus.blockSignals(False)
+        self._message_bus.blockSignals(False)
         self._fetcher_message_bus.blockSignals(False)
 
         await self._current_exchange.fetcher.resubscribe_on_going_connections()

@@ -85,7 +85,6 @@ class FoxifyFetcher(ExchangeFetcher):
         self._cached_stable_balance: Decimal = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_funding_rates: dict[str, dict[bool, int]] = {}
-        self._synced = True
         self._goldsky_url = "https://api.goldsky.com/api/public/project_cllqn805a7tva38uh4n5r9ap6/subgraphs/palmswap-synthetic-stats/arbitrum_mainnet/gn"
         self.async_stop_event = asyncio.Event()
 
@@ -222,7 +221,6 @@ class FoxifyFetcher(ExchangeFetcher):
                 ping_timeout=10,
             )
             LOGGER.info("Connected to hermes.pyth.network for Foxify")
-            self._message_bus.price_synced.emit(True)
         return self._socket
 
     @retry(
@@ -237,7 +235,6 @@ class FoxifyFetcher(ExchangeFetcher):
                 "Websocket disconnected. Attempting to reconnect websocket...",
             )
 
-            self._message_bus.price_synced.emit(False)
             await self.websocket_connect()
             await self.resubscribe_on_going_connections()
 

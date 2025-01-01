@@ -18,15 +18,6 @@ from plutus_terminal.core.exceptions import (
     TransactionFailedError,
 )
 from plutus_terminal.core.exchange.types import PnlDetails
-from plutus_terminal.core.types_ import (
-    ExchangeType,
-    NewAccountInfo,
-    OptionsDirection,
-    PerpsPosition,
-    PerpsTradeType,
-    PriceData,
-    PriceHistory,
-)
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
@@ -35,7 +26,14 @@ if TYPE_CHECKING:
     from plutus_terminal.core.exchange.types import OrderData, TradeResults
     from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import (
+        ExchangeType,
+        NewAccountInfo,
+        OptionsDirection,
+        PerpsPosition,
         PerpsTradeDirection,
+        PerpsTradeType,
+        PriceData,
+        PriceHistory,
     )
 
 LOGGER = logging.getLogger(__name__)
@@ -44,12 +42,10 @@ LOGGER = logging.getLogger(__name__)
 class ExchangeFetcherMessageBus(QObject):
     """Message Bus for all fetch related events."""
 
-    price_history_signal = Signal(PriceHistory)
     subscribed_prices_signal = Signal(dict)
     balance_signal = Signal(Decimal)
     positions_signal = Signal(list)  # list[PerpsPosition]
     orders_signal = Signal(list)  # list[OrderData]
-    price_synced = Signal(bool)
 
 
 class ExchangeFetcher(Protocol):
@@ -329,7 +325,6 @@ class ExchangeBase(ABC):
     def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
         """Initialize shared variables."""
         self.fetcher_bus = fetcher_bus
-        self._is_price_synced = True
         self._watched_positions: list[PerpsPosition] = []
         self._async_tasks: list[asyncio.Task] = []
         self._pass_guard = pass_guard
