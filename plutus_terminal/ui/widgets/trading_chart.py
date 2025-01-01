@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from functools import partial
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from lightweight_charts.widgets import QtChart
@@ -33,7 +32,7 @@ from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from lightweight_charts import Chart
     from lightweight_charts.abstract import HorizontalLine
@@ -68,7 +67,7 @@ class TradingChart(QWidget):
         self,
         available_pairs: set[str],
         format_simple_pair: Callable[[str], str],
-        infinite_scroll_func: Callable[[Chart, int, int], None],
+        infinite_scroll_func: Callable[[Chart, int, int], Awaitable[None]],
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
