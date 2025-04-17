@@ -101,11 +101,6 @@ class TreeNews(NewsFetcher):
         if not self._socket:
             return
         await self._socket.send(f"login {tree_api_key}")
-        login_attempt = await self._socket.recv()
-        login_attempt = json.loads(login_attempt)
-        login_attempt.setdefault("user", {})
-        login_attempt["user"].pop("address", None)
-        LOGGER.info("TreeOfAlpha login result: %s", login_attempt)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.4, max=2),
