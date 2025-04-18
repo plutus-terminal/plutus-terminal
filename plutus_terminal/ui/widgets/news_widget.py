@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import partial
 import time
 from typing import TYPE_CHECKING, Optional
@@ -184,7 +184,7 @@ class NewsWidget(QtWidgets.QGroupBox):
 
             self.retweet_title.setObjectName("subTitle")
             self.retweet_title.setTextFormat(Qt.TextFormat.RichText)
-            self.retweet_title.setText(f"Reposted: {self.news_data["retweet_user"]}")
+            self.retweet_title.setText(f"Reposted: {self.news_data['retweet_user']}")
             self.retweet_title.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
@@ -222,7 +222,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.reply_title.setObjectName("subTitle")
             self.reply_title.setTextFormat(Qt.TextFormat.RichText)
             self.reply_title.setText(
-                f"Replied to: {self.news_data["reply_user"]} 👇",
+                f"Replied to: {self.news_data['reply_user']} 👇",
             )
             self.reply_title.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
@@ -296,7 +296,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             ui_utils.LOCAL_TIMEZONE,
         )
         self.time_label.setText(
-            f'Source Time: {converted_time.strftime("%H:%M:%S:%f")[:-3]}',
+            f"Source Time: {converted_time.strftime('%H:%M:%S:%f')[:-3]}",
         )
         self.time_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
@@ -572,12 +572,12 @@ class NewsWidget(QtWidgets.QGroupBox):
                         asyncio.create_task(exchange.fetcher.subscribe_to_price(pair)),
                     )
 
-                exchange.fetcher_bus.subscribed_prices_signal.connect(
+                exchange.message_bus.subscribed_prices_fetched.connect(
                     self.update_percents,
                 )
                 self.timer_end.connect(
                     partial(
-                        exchange.fetcher_bus.subscribed_prices_signal.disconnect,
+                        exchange.message_bus.subscribed_prices_fetched.disconnect,
                         self.update_percents,
                     ),
                 )

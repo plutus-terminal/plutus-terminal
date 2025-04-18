@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from functools import partial
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import Signal
@@ -14,6 +13,9 @@ from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButto
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
+if TYPE_CHECKING:
+    from plutus_terminal.controller.ui_controller import UIController
+
 
 class PerpsConfig(QtWidgets.QWidget):
     """Widget to control perps configuration."""
@@ -21,9 +23,14 @@ class PerpsConfig(QtWidgets.QWidget):
     updated_trade_values = Signal()
     leverage_changed = Signal(int)
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self,
+        ui_controller: UIController,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
+        self._ui_controller = ui_controller
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
 
@@ -74,6 +81,7 @@ class PerpsConfig(QtWidgets.QWidget):
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
         self.top_bar.icon.setPixmap(QPixmap(":/icons/perps_config_icon"))
 
@@ -212,8 +220,12 @@ class PerpsConfig(QtWidgets.QWidget):
         CONFIG.stop_loss = self._sl_spin.value()
         Toast.show_message("TP/SL values updated", type_=ToastType.SUCCESS)
 
-    def on_new_account(self) -> None:
-        """Update info based on new account."""
+    def _on_new_exchange(self) -> None:
+        """Update widget on new exchange.
+
+        * Update spin box values
+        * Update leverage
+        """
         self.blockSignals(True)
         # Update spin box values
         for spin, attr in self._spin_config_map.items():

@@ -15,11 +15,11 @@ from PySide6.QtWidgets import (
 )
 from qasync import QEventLoop, asyncSlot
 
+from plutus_terminal.controller.plutus_controller import PlutusController
 from plutus_terminal.core.config import CONFIG, AppConfig
 from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.log_utils import setup_logging
 from plutus_terminal.ui import resources
-from plutus_terminal.ui.main_window import PlutusTerminal
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 from plutus_terminal.ui.widgets.password_dialog import (
     CreatePasswordDialog,
@@ -43,7 +43,7 @@ class PlutusSystemTrayApp(QApplication):
         self.processEvents()
 
         self.pass_guard = self.input_password()
-        self.main_window = PlutusTerminal(self.pass_guard)
+        self.plutus_controller = PlutusController(self.pass_guard)
 
         self._tray_icon = QSystemTrayIcon()
         self._tray_icon.setIcon(QPixmap(":/icons/plutus_icon"))
@@ -54,7 +54,7 @@ class PlutusSystemTrayApp(QApplication):
     def _init_tray(self) -> None:
         """Initialize tray icon."""
         menu = QMenu()
-        menu.addAction("Open Terminal", self.main_window.show)
+        menu.addAction("Open Terminal", self.plutus_controller.show_main_window)
         menu.addAction("Exit", self.exit)
 
         self._tray_icon.setContextMenu(menu)
@@ -65,14 +65,14 @@ class PlutusSystemTrayApp(QApplication):
     def _on_tray_activated(self, reason: int) -> None:
         """Handle tray icon activation."""
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.main_window.show()
+            self.plutus_controller.show_main_window()
 
     async def init_and_show(self) -> None:
         """Initialize window and show."""
         CONFIG.load_config()
-        await self.main_window.init_async()
+        await self.plutus_controller.init_async()
         self.splash_screen.hide()
-        self.main_window.show()
+        self.plutus_controller.show_main_window()
 
     def validate_if_account(self) -> None:
         """Validate if there is at least one account.
@@ -102,7 +102,7 @@ class PlutusSystemTrayApp(QApplication):
     @asyncSlot()
     async def cleanup(self) -> None:
         """Clean up async connections before closing."""
-        await self.main_window.stop_async()
+        await self.plutus_controller.stop_async()
 
 
 def run() -> None:

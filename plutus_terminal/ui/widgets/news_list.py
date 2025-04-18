@@ -8,6 +8,7 @@ from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QSoundEffect
+from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.ui_utils import list_resources_from_prefix
@@ -16,7 +17,7 @@ from plutus_terminal.ui.widgets.toast import Toast
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.core.types_ import NewsData
 
 
@@ -26,17 +27,17 @@ class NewsList(QtWidgets.QWidget):
     Acts like a news factory and handles news items.
     """
 
-    pair_clicked = Signal(str)
     refresh_news = Signal()
 
     def __init__(
         self,
-        exchange: ExchangeBase,
+        ui_controller: UIController,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._exchange = exchange
+        self._ui_controller = ui_controller
+        self._exchange = ui_controller.current_exchange
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -77,6 +78,8 @@ class NewsList(QtWidgets.QWidget):
         )
 
         self.top_bar.icon.setPixmap(QPixmap(":/icons/news_feed_icon"))
+
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
         self._top_bar_show_images.setAutoExclusive(False)
         self._top_bar_show_images.setIcon(QPixmap(":/icons/gallery_icon"))
@@ -224,8 +227,9 @@ class NewsList(QtWidgets.QWidget):
 
         self._add_news_to_list(news_data, display_delay=True)
 
-    def fill_old_news(self, list_news: list[NewsData]) -> None:
-        """Clear and fill list with given data."""
+    async def fill_old_news(self) -> None:
+        """Clear and fill list with old news."""
+        list_news = await self._ui_controller.news_manager.fetch_old_news(self.max_news)
         self.setDisabled(True)
         self._scroll_area.blockSignals(True)
         self.clear_list()
@@ -285,7 +289,7 @@ class NewsList(QtWidgets.QWidget):
         )
         news_widget.show_images = CONFIG.get_gui_settings("news_show_images")
         news_widget.create_interactions(self._exchange)
-        news_widget.pair_clicked.connect(self.pair_clicked.emit)
+        news_widget.pair_clicked.connect(self._ui_controller.change_current_pair)
         news_widget.news_clicked.connect(self._show_widget_at_top)
         return news_widget
 
@@ -333,18 +337,22 @@ class NewsList(QtWidgets.QWidget):
         else:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_off"))
 
-    def on_new_exchange(self, exchange: ExchangeBase) -> None:
-        """Update info based on new exchange.
+    @asyncSlot()
+    async def _on_new_exchange(self) -> None:
+        """Update widget on new exchange.
 
-        Args:
-            exchange (ExchangeBase): New exchangeBase.
+        * Update news trade button values
+        * Fetch old news
         """
-        self._exchange = exchange
+        self._exchange = self._ui_controller.current_exchange
         self._selected_news_widget = None
+        self.update_news_trade_buttons()
+        await self.fill_old_news()
 
-    def update_max_news(self, max_news_index: int) -> None:
+    @asyncSlot()
+    async def update_max_news(self, max_news_index: int) -> None:
         """Update max news."""
         max_news_text = self._top_bar_max_news.itemText(max_news_index)
         max_news = int(max_news_text.split(" ")[0])
         self.max_news = max_news
-        self.refresh_news.emit()
+        await self.fill_old_news()

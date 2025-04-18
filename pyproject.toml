@@ -69,6 +69,7 @@ ignore = [
     "FIX002",
     "ISC001",
     "E501",
+    "COM812",
 ]
 
 [tool.ruff.lint.pydocstyle]
