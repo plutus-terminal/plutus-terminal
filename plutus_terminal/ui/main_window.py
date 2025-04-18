@@ -35,7 +35,6 @@ from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
-from plutus_terminal.ui.widgets.options_widget import OptionsWidget
 from plutus_terminal.ui.widgets.perps_trade import PerpsTradeWidget
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.trade_table import TradeTable
@@ -86,7 +85,6 @@ class PlutusTerminal(QMainWindow):
         self._news_manager: NewsManager
         self._filter_manager: FilterManager
         self._news_list: NewsList
-        self._options_widget: OptionsWidget
 
         # TODO: To remove later
         self.shortcut = QShortcut(QKeySequence("F1"), self)
@@ -136,11 +134,6 @@ class PlutusTerminal(QMainWindow):
         self._async_tasks.append(asyncio.create_task(self._news_manager.fetch_news()))
         self._news_list = NewsList(self._current_exchange)
 
-        # Init options Widget
-        self._options_widget = OptionsWidget(self._current_exchange)
-        if not self._current_exchange.has_options():
-            self._options_widget.setEnabled(False)
-            self._options_widget.setVisible(False)
 
         await self._setup_widgets()
         self._setup_layout()
@@ -218,11 +211,6 @@ class PlutusTerminal(QMainWindow):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
 
-        self._options_widget.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Fixed,
-        )
-        self._options_widget.setMinimumWidth(400)
 
     def _setup_layout(self) -> None:
         """Organize layouts."""
@@ -235,7 +223,6 @@ class PlutusTerminal(QMainWindow):
 
         self._right_layout.addWidget(self._account_info)
         self._right_layout.addWidget(self._perps_trade)
-        self._right_layout.addWidget(self._options_widget)
         self._right_layout.addStretch()
         scroll_widget = QWidget()
         scroll_widget.setLayout(self._right_layout)
@@ -414,9 +401,6 @@ class PlutusTerminal(QMainWindow):
             module.on_new_exchange(self._current_exchange)  # type: ignore
             module.blockSignals(False)
 
-        # Enable options if available
-        self._options_widget.setEnabled(self._current_exchange.has_options())
-        self._options_widget.setVisible(self._current_exchange.has_options())
 
         # Rebuild news list
         await self._fill_news_list()

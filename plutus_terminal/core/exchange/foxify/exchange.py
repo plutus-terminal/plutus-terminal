@@ -103,8 +103,6 @@ class FoxifyExchange(ExchangeBase):
             self.web3_account.address,
             self.message_bus,
         )
-        # Options are being rebuild in Foxify. Disable for now
-        # self._options = await FoxifyOptions.create(self.web3_account, Gwei(0))
 
     @property
     def trader(self) -> FoxifyTrader:
@@ -171,11 +169,6 @@ class FoxifyExchange(ExchangeBase):
         # Could not find this from any contracts only on the front end.
         # TODO: Fix this with the value from the contract
         return Decimal(10)
-
-    # @property
-    # def options(self) -> ExchangeOptions:
-    #     """Return exchange options."""
-    #     return self._options
 
     @asyncSlot()
     async def is_ready_to_trade(self) -> bool:
@@ -633,44 +626,6 @@ class FoxifyExchange(ExchangeBase):
             LOGGER,
             toast_id,
         )
-
-    # @asyncSlot()
-    # async def buy_options_with_strategy(
-    #     self, direction: OptionsDirection, value: Decimal, pair: str
-    # ) -> None:
-    #     """Buy options based on strategy.
-    #
-    #     Args:
-    #         direction (OptionsDirection): Direction to buy the option.
-    #         value (Decimal): Max value in stable to spend.
-    #         pair (str): Pair to open options for.
-    #     """
-    #     extracted_data = await self.options.filter_with_strategy(direction, value, pair)
-    #     if extracted_data.empty:
-    #         Toast.show_message(
-    #             "No options avaialble for the given strategy.",
-    #             type_=ToastType.ERROR,
-    #         )
-    #         return
-    #
-    #     # Store orders ids and amount to buy for each order.
-    #     orders_to_buy: OptionsBuyParams = {"orders": {}, "price_id": ""}
-    #     available_to_spend = int(value.scaleb(6))
-    #
-    #     # Set price_id using the first valid oracle priceId
-    #     if not orders_to_buy["price_id"]:
-    #         orders_to_buy["price_id"] = extracted_data["oracle"].iloc[0]["priceId"]
-    #
-    #     # Calculate order amounts
-    #     for _, row in extracted_data[["orderId", "available"]].iterrows():
-    #         if available_to_spend >= row["available"]:
-    #             orders_to_buy["orders"][row["orderId"]] = row["available"]
-    #         else:
-    #             orders_to_buy["orders"][row["orderId"]] = available_to_spend
-    #             break
-    #         available_to_spend -= orders_to_buy["orders"][row["orderId"]]
-    #
-    #     await self._options.buy_options(orders_to_buy)
 
     @staticmethod
     def name() -> str:

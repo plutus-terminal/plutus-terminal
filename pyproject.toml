@@ -88,7 +88,6 @@ max-branches = 15
 "plutus_terminal/ui/resources.py" = ["ALL"]
 "plutus_terminal/ui/widgets/positions_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
 "plutus_terminal/ui/widgets/orders_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
-"plutus_terminal/ui/widgets/options_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
 
 [[tool.mypy.overrides]]
 module = "qasync"

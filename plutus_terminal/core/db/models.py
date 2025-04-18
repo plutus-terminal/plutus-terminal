@@ -44,20 +44,6 @@ class TradeConfig(BaseModel):
     trade_value_high = IntegerField(default=1000)
 
 
-class OptionsConfig(BaseModel):
-    """OptionsConfig model."""
-
-    account = ForeignKeyField(KeyringAccount, backref="options_config")
-    amount = FloatField(default=100)
-    rate_min = FloatField(default=1)
-    available_min = FloatField(default=10)
-    percent_min = CharField(default="0%")
-    percent_max = CharField(default="0%")
-    duration_min = IntegerField(default=900)
-    duration_max = IntegerField(default=900)
-    risk = IntegerField(default=0)
-
-
 class UserFilter(BaseModel):
     """FilterConfig model."""
 
@@ -75,7 +61,6 @@ class GUISettings(BaseModel):
         window_size
         news_show_images
         news_desktop_notifications
-        options_show_preview
     """
 
     key = CharField(unique=True)
@@ -103,7 +88,6 @@ def create_database() -> None:
                 KeyringAccount,
                 TradeConfig,
                 GUISettings,
-                OptionsConfig,
                 UserFilter,
                 Web3RPC,
             ],

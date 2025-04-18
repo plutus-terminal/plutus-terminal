@@ -13,21 +13,17 @@ from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import (
-    OptionsNotAvailableError,
     TransactionFailedError,
 )
 from plutus_terminal.core.exchange.types import PnlDetails
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
-    import pandas
-
     from plutus_terminal.core.exchange.types import OrderData, TradeResults
     from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import (
         ExchangeType,
         NewAccountInfo,
-        OptionsDirection,
         PerpsPosition,
         PerpsTradeDirection,
         PerpsTradeType,
@@ -265,51 +261,6 @@ class ExchangeTraderDex(ExchangeTrader, Protocol):
         ...
 
 
-class ExchangeOptions(Protocol):
-    """Protocol for exchange options actions."""
-
-    async def fetch_orders(self, options_orders_params) -> pandas.DataFrame:  # noqa: ANN001
-        """Fetch options orders based on parameters.
-
-        Args:
-            options_orders_params (OrdersParams): Params for request.
-
-        Returns:
-            pandas.DataFrame: DataFrame with options orders.
-        """
-        ...
-
-    async def buy_options(self, options_buy_params) -> None:  # noqa: ANN001
-        """Buy options.
-
-        Args:
-            options_buy_params: Params to buy options.
-        """
-        ...
-
-    def fetch_available_pairs(self) -> list[str]:
-        """Fetch available pairs for options."""
-        ...
-
-    async def filter_with_strategy(
-        self,
-        direction: OptionsDirection,
-        value: Decimal,
-        pair: str,
-    ) -> pandas.DataFrame:
-        """Filter options based on strategy.
-
-        Args:
-            direction (OptionsDirection): Direction to buy the option.
-            value (Decimal): Max value to spend.
-            pair (str): Pair to open options for.
-
-        Returns:
-            pandas.DataFrame: DataFrame with options orders.
-        """
-        ...
-
-
 class ExchangeBase(ABC):
     """Base class to interact with exchange."""
 
@@ -337,7 +288,7 @@ class ExchangeBase(ABC):
 
     @property
     @abstractmethod
-    def available_pairs(self) -> set:
+    def available_pairs(self) -> set[str]:
         """Returns set with all available pairs."""
 
     @property
@@ -401,18 +352,6 @@ class ExchangeBase(ABC):
         """Return max trade size."""
         return Decimal(100_000_000_000_000_000_000_000)
 
-    @property
-    def options(self) -> ExchangeOptions:
-        """Returns: Exchange Options."""
-        raise OptionsNotAvailableError
-
-    def has_options(self) -> bool:
-        """Return if exchange has options."""
-        try:
-            return self.options is not None
-        except OptionsNotAvailableError:
-            return False
-
     @abstractmethod
     async def is_ready_to_trade(self) -> bool:
         """Check if account is ready to trade.
@@ -451,7 +390,7 @@ class ExchangeBase(ABC):
 
     async def fetch_prices(self) -> None:
         """Fetch prices in an infinite loop."""
-        await self.fetcher.subscribe_to_price(self.default_pair)
+        # await self.fetcher.subscribe_to_price(self.default_pair)
         self._async_tasks.append(
             asyncio.create_task(self.fetcher.receive_subscribed_prices()),
         )
@@ -460,7 +399,7 @@ class ExchangeBase(ABC):
         )
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_all_orders()))
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_stable_balance()))
-        self.message_bus.positions_signal.connect(self._update_watched_positions)
+        self.message_bus.positions_fetched.connect(self._update_watched_positions)
 
     @asyncSlot()
     async def _update_watched_positions(
@@ -564,9 +503,7 @@ class ExchangeBase(ABC):
         Returns:
             bool: True if order size is valid.
         """
-        if order_size < self.min_order_size or order_size > self.max_order_size:
-            return False
-        return True
+        return order_size < self.min_order_size or order_size > self.max_order_size
 
     @abstractmethod
     async def create_order(
@@ -762,21 +699,6 @@ class ExchangeBase(ABC):
                 "pnl_percentage_after_fees": pnl_percentage_after_fees,
             },
         )
-
-    async def buy_options_with_strategy(
-        self,
-        direction: OptionsDirection,  # noqa: ARG002
-        value: Decimal,  # noqa: ARG002
-        pair: str,  # noqa: ARG002
-    ) -> None:
-        """Buy options based on strategy.
-
-        Args:
-            direction (OptionsDirection): Direction to buy the option.
-            value (Decimal): Max value in stable to spend.
-            pair (str): Pair to open options for.
-        """
-        raise OptionsNotAvailableError
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
