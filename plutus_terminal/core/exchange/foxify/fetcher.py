@@ -305,7 +305,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 async for message in self._socket:  # type: ignore
                     data = orjson.loads(message)
                     if data.get("type", "") == "price_update":
-                        pair = self.pyth_id_pair[f'0x{data["price_feed"]["id"]}']
+                        pair = self.pyth_id_pair[f"0x{data['price_feed']['id']}"]
                         self._cached_prices[pair] = PriceData(
                             {
                                 "price": Decimal(

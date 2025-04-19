@@ -41,11 +41,7 @@ class ImageWebViewer(QLabel):
         image_data = reply.readAll()
         pixmap = QPixmap()
         self._pixmap.loadFromData(image_data)
-        height = (
-            self._pixmap.height()
-            if self._pixmap.height() < self._max_img_height
-            else self._max_img_height
-        )
+        height = min(self._max_img_height, self._pixmap.height())
         pixmap = self._pixmap.scaled(
             self.parentWidget().size().width(),
             height,

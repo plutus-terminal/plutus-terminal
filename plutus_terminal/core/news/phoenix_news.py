@@ -159,7 +159,7 @@ class PhoenixNews(NewsFetcher):
         retweet_user = ""
 
         if source == "Twitter":
-            title = f'@{news_message.get("username")}'
+            title = f"@{news_message.get('username')}"
             body = news_message.get("body", "")
 
             if is_quote:

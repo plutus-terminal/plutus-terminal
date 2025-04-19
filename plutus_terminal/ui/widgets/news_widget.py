@@ -459,7 +459,7 @@ class NewsWidget(QtWidgets.QGroupBox):
                 percent_layout = self.group_box_layout[coin].itemAt(0).layout()
                 percent_layout.insertWidget(1, initial_price_label)  # type: ignore
 
-    def create_interactions(self, exchange: ExchangeBase) -> bool:  # noqa: PLR0915
+    def create_interactions(self, exchange: ExchangeBase) -> bool:  # noqa: C901, PLR0915
         """Create buttons for interactions.
 
         Args:

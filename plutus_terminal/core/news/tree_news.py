@@ -190,7 +190,7 @@ class TreeNews(NewsFetcher):
                 quote_image = news_message["info"]["quotedUser"].get("image", "")
         elif is_self_reply:
             with contextlib.suppress(KeyError):
-                reply_user = f'@{news_message["info"]["replyUser"]["screen_name"]}'
+                reply_user = f"@{news_message['info']['replyUser']['screen_name']}"
                 reply_message = news_message["info"]["replyUser"]["text"]
             with contextlib.suppress(KeyError):
                 reply_image = news_message["info"]["quotedUser"]["image"]
@@ -198,7 +198,7 @@ class TreeNews(NewsFetcher):
             match = self._compiled_pattern_quote.search(body)
             if match:
                 body = body[: match.end()].strip()
-                retweet_user = f'@{news_message["info"]["quotedUser"]["screen_name"]}'
+                retweet_user = f"@{news_message['info']['quotedUser']['screen_name']}"
 
         return NewsData(
             title=title,

@@ -376,9 +376,7 @@ async def is_stable_approved(
         spender_address,
     ).call()
     approved_quantity = await stable_contract.functions.balanceOf(wallet_address).call()
-    if int(approved) <= int(approved_quantity):
-        return False
-    return True
+    return not int(approved) <= int(approved_quantity)
 
 
 async def approve_stable(

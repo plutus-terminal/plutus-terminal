@@ -343,11 +343,11 @@ class Toast(QFrame):
 
         # Store toast in memory depending of type
         if desktop:
-            Toast._toasts_desktop[toast._id] = toast  # noqa: SLF001
+            Toast._toasts_desktop[toast._id] = toast
         else:
-            Toast._toasts_win[toast._id] = toast  # noqa: SLF001
+            Toast._toasts_win[toast._id] = toast
 
-        toast._timer.setInterval(timeout)  # noqa: SLF001
+        toast._timer.setInterval(timeout)
 
         # Add message to toast
         toast.add_message_widget(message_widget)
@@ -358,4 +358,4 @@ class Toast(QFrame):
         if desktop:
             toast.setWindowFlag(Qt.WindowType.Tool)
         toast.show()
-        return toast._id  # noqa: SLF001
+        return toast._id

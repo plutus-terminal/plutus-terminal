@@ -529,11 +529,11 @@ class PositionCloseAction(QWidgetAction):
 
     def _update_amount_buttons(self, amount: Decimal) -> None:
         """Update amount buttons if value on spinbox matches."""
-        if amount == self._position["position_size_stable"] * Decimal(0.25):
+        if amount == self._position["position_size_stable"] * Decimal("0.25"):
             self._amount_group.button(25).setChecked(True)
-        elif amount == self._position["position_size_stable"] * Decimal(0.5):
+        elif amount == self._position["position_size_stable"] * Decimal("0.5"):
             self._amount_group.button(50).setChecked(True)
-        elif amount == self._position["position_size_stable"] * Decimal(0.75):
+        elif amount == self._position["position_size_stable"] * Decimal("0.75"):
             self._amount_group.button(75).setChecked(True)
         elif amount == self._position["position_size_stable"]:
             self._amount_group.button(100).setChecked(True)

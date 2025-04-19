@@ -217,7 +217,8 @@ class PlutusMainWindow(QMainWindow):
         fetch_threshold = 25
         if bars_before <= fetch_threshold and not self._chart_scroll_polling:
             LOGGER.debug(
-                f"Infinite chart scrolling: Fetching more data for {self._ui_controller.current_pair}",
+                "Infinite chart scrolling: Fetching more data for %s",
+                self._ui_controller.current_pair,
             )
             candle_timestamp = ui_utils.convert_timestamp_from_local_to_utc(
                 chart.candle_data["time"].iloc[0],

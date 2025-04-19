@@ -111,8 +111,7 @@ async def await_receipt_and_report(
             web3_provider.to_hex(send_txn),
         )
         toast_message = (
-            f"Failed::{message} "
-            f"<a href='{scan_url}{web3_provider.to_hex(send_txn)}'>TX Link</a>"
+            f"Failed::{message} <a href='{scan_url}{web3_provider.to_hex(send_txn)}'>TX Link</a>"
         )
         Toast.update_message(
             toast_id,
