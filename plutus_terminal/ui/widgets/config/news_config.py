@@ -68,7 +68,7 @@ class NewsConfig(QtWidgets.QWidget):
         self._tree_text_label.setText(
             """Add your TreeOfAlpha API key bellow if you are a paid subscriber.<br>"""
             """To get your API key, go to """
-            """<a href="https://news.treeofalpha.com/api/api_key """
+            """<a href="https://news.treeofalpha.com/api/api_key"""
             """style="color:rgb(80, 210, 180)">"""
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
