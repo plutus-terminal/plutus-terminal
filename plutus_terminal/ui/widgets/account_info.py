@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from decimal import Decimal
 
     from plutus_terminal.controller.ui_controller import UIController
-    from plutus_terminal.core.exchange.base import ExchangeBase
 
 
 class AccountInfo(QtWidgets.QWidget):
@@ -41,6 +40,7 @@ class AccountInfo(QtWidgets.QWidget):
         self.approve_btn = QtWidgets.QPushButton("Approve For Trading")
 
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
 
     def _setup_widgets(self) -> None:
@@ -53,12 +53,17 @@ class AccountInfo(QtWidgets.QWidget):
         self._balance_value.setObjectName("subTitle")
         self.approve_btn.setProperty("class", "LONG")
         self.approve_btn.setMinimumHeight(30)
-        self.approve_btn.clicked.connect(self._on_approve_for_trading)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
-
         self.refresh_exchange_account_info()
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self.approve_btn.clicked.connect(self._on_approve_for_trading)
+
+        self._ui_controller.message_bus.balance_fetched.connect(self.update_balance)
+
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
     def refresh_exchange_account_info(self) -> None:
         """Refresh exchange account info."""

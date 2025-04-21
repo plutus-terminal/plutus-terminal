@@ -58,6 +58,7 @@ class NewsList(QtWidgets.QWidget):
 
         self._load_sfxs()
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
         self._setup_shorcuts()
         self._show_widget_index_at_top(0)
@@ -79,15 +80,12 @@ class NewsList(QtWidgets.QWidget):
 
         self.top_bar.icon.setPixmap(QPixmap(":/icons/news_feed_icon"))
 
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
-
         self._top_bar_show_images.setAutoExclusive(False)
         self._top_bar_show_images.setIcon(QPixmap(":/icons/gallery_icon"))
         self._top_bar_show_images.setChecked(
             CONFIG.get_gui_settings("news_show_images"),
         )
         self._top_bar_show_images.setToolTip("Show Images")
-        self._top_bar_show_images.toggled.connect(self.show_images_toggled)
 
         self._top_bar_notifications.setAutoExclusive(False)
         self._top_bar_notifications.setChecked(
@@ -98,12 +96,8 @@ class NewsList(QtWidgets.QWidget):
         else:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_off"))
         self._top_bar_notifications.setToolTip("Enable Desktop Notifications")
-        self._top_bar_notifications.toggled.connect(self.notifications_toggled)
 
         self._top_bar_max_news.addItems(["25 results", "50 results", "100 results", "200 results"])
-        self._top_bar_max_news.currentIndexChanged.connect(
-            self.update_max_news,
-        )
 
         self.top_bar.add_widget(self._top_bar_show_images)
         self.top_bar.add_widget(self._top_bar_notifications)
@@ -114,9 +108,20 @@ class NewsList(QtWidgets.QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
 
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._top_bar_show_images.toggled.connect(self.show_images_toggled)
+        self._top_bar_notifications.toggled.connect(self.notifications_toggled)
+        self._top_bar_max_news.currentIndexChanged.connect(
+            self.update_max_news,
+        )
         self._scroll_area.verticalScrollBar().rangeChanged.connect(
             lambda: self._show_widget_at_top(self._selected_news_widget),
         )
+
+        self._ui_controller.message_bus.formatted_news.connect(self.add_news)
+
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
     def _setup_layout(self) -> None:
         """Configure layouts."""

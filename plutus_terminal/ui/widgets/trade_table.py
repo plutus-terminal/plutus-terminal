@@ -45,6 +45,7 @@ class TradeTable(QtWidgets.QWidget):
         self._orders_table = OrdersTableView(self._exchange)
 
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
 
         # Set minimum height to 10% of the widget height
@@ -53,11 +54,18 @@ class TradeTable(QtWidgets.QWidget):
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self._positions_table.setModel(self._positions_model)
-        self._positions_table.row_clicked.connect(self._ui_controller.change_current_pair)
         self._tab_widget.addTab(self._positions_table, "Positions (0)")
 
         self._orders_table.setModel(self._orders_model)
         self._tab_widget.addTab(self._orders_table, "Orders (0)")
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._positions_table.row_clicked.connect(self._ui_controller.change_current_pair)
+
+        self._ui_controller.message_bus.positions_fetched.connect(self.update_positions)
+        self._ui_controller.message_bus.orders_feched.connect(self.update_orders)
+        self._ui_controller.message_bus.subscribed_prices_fetched.connect(self.update_prices)
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 

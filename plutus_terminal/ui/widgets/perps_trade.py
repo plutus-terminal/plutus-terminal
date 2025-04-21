@@ -264,6 +264,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
     def _connect_signals(self) -> None:
         """Connect signals."""
+        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
+            self.update_liquidation_info
+        )
+
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
         self._ui_controller.pair_changed.connect(self._update_current_pair)
 

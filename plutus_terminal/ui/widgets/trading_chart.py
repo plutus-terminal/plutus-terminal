@@ -33,13 +33,10 @@ from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from lightweight_charts import Chart
     from lightweight_charts.abstract import HorizontalLine
 
     from plutus_terminal.controller.ui_controller import UIController
-    from plutus_terminal.core.exchange.base import ExchangeBase
     from plutus_terminal.core.exchange.types import OrderData, PerpsPosition
 
 LOGGER = logging.getLogger(__name__)
@@ -66,13 +63,12 @@ class TradingChart(QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        infinite_scroll_func: Callable[[Chart, int, int], Awaitable[None]],
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
-        self._infinite_scroll_func = infinite_scroll_func
+        self._chart_scroll_polling = False
 
         self._main_layout = QVBoxLayout()
 
@@ -85,6 +81,7 @@ class TradingChart(QWidget):
         self._order_lines: dict[str, HorizontalLine] = {}
 
         self._config_widgets()
+        self._connect_signals()
         self._config_chart()
         self._config_layout()
         self._config_shortcuts()
@@ -100,6 +97,16 @@ class TradingChart(QWidget):
         self.top_bar.add_widget(self._price_label)
         self._price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._price_label.setObjectName("title")
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
+            self.update_chart_tick,
+        )
+        self._ui_controller.message_bus.positions_fetched.connect(
+            self.draw_positions,
+        )
+        self._ui_controller.message_bus.orders_feched.connect(self.draw_orders)
 
         self._ui_controller.pair_changed.connect(self._on_pair_changed)
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
@@ -117,7 +124,7 @@ class TradingChart(QWidget):
             default="1min",
             func=self.on_timeframe_selection,
         )
-        self._main_chart.events.range_change += self._infinite_scroll_func
+        self._main_chart.events.range_change += self._infinite_chart_scroll
         self._chart_storage = ChartDrawingStorage(
             f"{self._ui_controller.current_pair}_{self.current_timeframe}",
         )
@@ -353,6 +360,28 @@ class TradingChart(QWidget):
             timeframe_value,
         )
         self.set_start_data(history_dataframe)
+
+    @asyncSlot()
+    async def _infinite_chart_scroll(self, chart: Chart, bars_before: int, bars_after: int) -> None:  # noqa: ARG002
+        """Function called when chart is scrolled."""
+        fetch_threshold = 25
+        if bars_before <= fetch_threshold and not self._chart_scroll_polling:
+            LOGGER.debug(
+                "Infinite chart scrolling: Fetching more data for %s",
+                self._ui_controller.current_pair,
+            )
+            candle_timestamp = ui_utils.convert_timestamp_from_local_to_utc(
+                chart.candle_data["time"].iloc[0],
+            )
+            self._chart_scroll_polling = True
+            history = await self._ui_controller.current_exchange.fetch_price_history(
+                self._ui_controller.current_pair,
+                self._ui_controller.current_timeframe,
+                bars_num=ui_utils.DEFAULT_BAR_NUMBERS * 3,
+                to_timestamp=int(candle_timestamp.timestamp()),
+            )
+            self.update_data(pandas.DataFrame(history))
+            self._chart_scroll_polling = False
 
     def show_search_pair(self) -> None:
         """Show search pair modal."""

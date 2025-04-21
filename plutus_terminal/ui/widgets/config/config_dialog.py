@@ -7,7 +7,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QPixmap
 
 from plutus_terminal.controller.ui_controller import UIController
-from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.ui.widgets.config.account_config import AccountConfig
 from plutus_terminal.ui.widgets.config.news_config import NewsConfig
 from plutus_terminal.ui.widgets.config.perps_config import PerpsConfig

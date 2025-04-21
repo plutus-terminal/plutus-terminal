@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pandas
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
@@ -19,11 +18,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qasync import asyncSlot
 
 from plutus_terminal import __version__
 from plutus_terminal.core.config import CONFIG
-from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
@@ -34,8 +31,6 @@ from plutus_terminal.ui.widgets.trading_chart import TradingChart
 from plutus_terminal.ui.widgets.user_top_bar import UserTopBar
 
 if TYPE_CHECKING:
-    from lightweight_charts import Chart
-
     from plutus_terminal.controller.ui_controller import UIController
 
 LOGGER = logging.getLogger(__name__)
@@ -55,7 +50,6 @@ class PlutusMainWindow(QMainWindow):
         """Initialize shared variables."""
         super().__init__()
         self._ui_controller = ui_controller
-        self._chart_scroll_polling = False
 
         self.main_layout = QVBoxLayout()
         self.main_widget = QWidget()
@@ -90,7 +84,6 @@ class PlutusMainWindow(QMainWindow):
         # Init chart
         self.chart = TradingChart(
             self._ui_controller,
-            self.infinite_chart_scroll,
         )
 
         # Init open trades widget
@@ -118,15 +111,6 @@ class PlutusMainWindow(QMainWindow):
         self.setWindowTitle(f"Plutus Terminal - {__version__}")
         self.setWindowIcon(QPixmap(":/icons/plutus_icon"))
 
-        # Set chart data and connect signals
-        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
-            self.chart.update_chart_tick,
-        )
-        self._ui_controller.message_bus.positions_fetched.connect(
-            self.chart.draw_positions,
-        )
-        self._ui_controller.message_bus.orders_feched.connect(self.chart.draw_orders)
-
         # Configure config dialog
         self._config_dialog.updated_trade_values.connect(
             self._update_quick_trade_values,
@@ -140,24 +124,8 @@ class PlutusMainWindow(QMainWindow):
             self._news_list.notifications_toggled,
         )
 
-        # Configure account info
+        # Setup account info
         await self._account_info.set_approve_btn_visibility()
-        self._ui_controller.message_bus.balance_fetched.connect(self._account_info.update_balance)
-
-        # Configure Perps Trade
-        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
-            self._perps_trade.update_liquidation_info,
-        )
-
-        # Connect signals for open traders
-        self._ui_controller.message_bus.positions_fetched.connect(
-            self._trade_table.update_positions,
-        )
-        self._ui_controller.message_bus.orders_feched.connect(self._trade_table.update_orders)
-        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
-            self._trade_table.update_prices,
-        )
-        self._ui_controller.message_bus.formatted_news.connect(self._news_list.add_news)
 
         self._right_scroll.setSizePolicy(
             QSizePolicy.Policy.Fixed,
@@ -210,28 +178,6 @@ class PlutusMainWindow(QMainWindow):
         geometry = CONFIG.get_gui_settings("window_geometry")
         if geometry:
             self.restoreGeometry(bytes.fromhex(geometry))
-
-    @asyncSlot()
-    async def infinite_chart_scroll(self, chart: Chart, bars_before: int, bars_after: int) -> None:  # noqa: ARG002
-        """Function called when chart is scrolled."""
-        fetch_threshold = 25
-        if bars_before <= fetch_threshold and not self._chart_scroll_polling:
-            LOGGER.debug(
-                "Infinite chart scrolling: Fetching more data for %s",
-                self._ui_controller.current_pair,
-            )
-            candle_timestamp = ui_utils.convert_timestamp_from_local_to_utc(
-                chart.candle_data["time"].iloc[0],
-            )
-            self._chart_scroll_polling = True
-            history = await self._ui_controller.current_exchange.fetch_price_history(
-                self._ui_controller.current_pair,
-                self._ui_controller.current_timeframe,
-                bars_num=ui_utils.DEFAULT_BAR_NUMBERS * 3,
-                to_timestamp=int(candle_timestamp.timestamp()),
-            )
-            self.chart.update_data(pandas.DataFrame(history))
-            self._chart_scroll_polling = False
 
     def _update_quick_trade_values(self) -> None:
         """Update trade values."""

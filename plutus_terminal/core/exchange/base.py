@@ -503,7 +503,7 @@ class ExchangeBase(ABC):
         Returns:
             bool: True if order size is valid.
         """
-        return order_size < self.min_order_size or order_size > self.max_order_size
+        return self.min_order_size <= order_size <= self.max_order_size
 
     @abstractmethod
     async def create_order(

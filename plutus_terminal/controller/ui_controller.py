@@ -11,7 +11,6 @@ from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
-from plutus_terminal.core.news.types import NewsData
 from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.message_bus import MessageBus
 from plutus_terminal.ui import ui_utils
