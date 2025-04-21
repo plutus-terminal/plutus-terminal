@@ -49,8 +49,8 @@ def coin_association_action(
         text = news_data[text_data_key]  # type: ignore
         # Ensure color keyword is a tuple
         text = (
-            f"{text[:search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
-            f"{search_result.match}</span>{text[search_result.end:]}"
+            f"{text[: search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
+            f"{search_result.match}</span>{text[search_result.end :]}"
         )
         news_data[text_data_key] = text  # type: ignore
     return news_data
@@ -82,8 +82,8 @@ def sound_association_action(
         text = news_data[text_data_key]  # type: ignore
         # Ensure color keyword is a tuple
         text = (
-            f"{text[:search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
-            f"{search_result.match}</span>{text[search_result.end:]}"
+            f"{text[: search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
+            f"{search_result.match}</span>{text[search_result.end :]}"
         )
         news_data[text_data_key] = text  # type: ignore
     return news_data

@@ -21,22 +21,21 @@ from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
 
 
 class PerpsTradeWidget(QtWidgets.QWidget):
     """Widget for Trading Perpetuals."""
 
-    pair_changed = Signal(str)
-
     def __init__(
         self,
-        exchange: ExchangeBase,
+        ui_controller: UIController,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
-        self._exchange = exchange
+        self._ui_controller = ui_controller
+        self._exchange = ui_controller.current_exchange
 
         self.main_layout = QtWidgets.QGridLayout(self)
         self.top_bar = TopBar("Perps Trade")
@@ -100,6 +99,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         self._setup_widgets()
         self._setup_layout()
+        self._connect_signals()
 
     def _setup_widgets(self) -> None:  # noqa: PLR0915
         """Configure widgets."""
@@ -139,7 +139,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         self._set_data_from_exchange()
         self._pair_combo_box.currentTextChanged.connect(
-            lambda pair: self.pair_changed.emit(
+            lambda pair: self._ui_controller.change_current_pair(
                 f"{self._exchange.pair_prefix}{pair}{self._exchange.pair_suffix}",
             ),
         )
@@ -262,9 +262,22 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             alignment=QtCore.Qt.AlignmentFlag.AlignBottom,
         )
 
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
+            self.update_liquidation_info
+        )
+
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+        self._ui_controller.pair_changed.connect(self._update_current_pair)
+
     def _set_data_from_exchange(self) -> None:
-        """Set data from exchange."""
+        """Set data from exchange.
+
+        Fill combo box with available pairs and set default pair.
+        """
         # Fill combo box with available pairs
+        self._pair_combo_box.blockSignals(True)
         self._pair_combo_box.clear()
         for pair in sorted(self._exchange.available_pairs):
             self._pair_combo_box.addItem(
@@ -277,6 +290,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._pair_combo_box.setCurrentText(default_pair)
 
         self.top_bar.title.setText(f"Persp Trade | {default_pair}")
+        self._pair_combo_box.blockSignals(False)
 
     @asyncSlot()
     async def _set_leverage_spin(self, leverage_value: int) -> None:
@@ -493,7 +507,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         return PerpsTradeType.LIMIT
 
     @asyncSlot()
-    async def update_current_pair(self, pair: str) -> None:
+    async def _update_current_pair(self, pair: str) -> None:
         """Update current pair.
 
         Args:
@@ -535,17 +549,17 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             self._exchange.cached_prices[self._pair_combo_box.currentData()]["price"],
         )
 
-    def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
-        """Update info based on new exchange.
+    def _on_new_exchange(self) -> None:
+        """Update widget on new exchange.
 
-        Args:
-            new_exchange (ExchangeBase): New exchangeBase.
+        * Set data from exchange
+        * Update trade buttons
+        * Update leverage
         """
-        self._exchange = new_exchange
+        self._exchange = self._ui_controller.current_exchange
         self._set_data_from_exchange()
+        self.update_trade_buttons()
 
-    def on_new_account(self) -> None:
-        """Update info based on new account."""
         self.blockSignals(True)
         self._leverage_spin.setValue(CONFIG.leverage)
         self._update_leverage_buttons(CONFIG.leverage)

@@ -24,7 +24,7 @@ from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.news.base import NewsMessageBus
+    from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -71,11 +71,11 @@ class TreeNews(NewsFetcher):
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
     )
-    async def subscribe_to_wss(self, message_bus: NewsMessageBus) -> None:
+    async def subscribe_to_wss(self, message_bus: MessageBus) -> None:
         """Subscribe to news wss and emit news signal on new entry.
 
         Args:
-            message_bus (plutus_terminal.ui.thread.NewsMessageBus): Message bus
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus
                 to emit news messages
         """
         await self._ensure_websocket_connection()
@@ -85,7 +85,7 @@ class TreeNews(NewsFetcher):
             LOGGER.debug("New raw message received from TreeOfAlpha")
             json_message = json.loads(message)
             formated_message = self.format_news(json_message)
-            message_bus.raw_news_signal.emit(formated_message)
+            message_bus.raw_news.emit(formated_message)
 
     async def login(self) -> None:
         """Login to news source."""
@@ -101,11 +101,6 @@ class TreeNews(NewsFetcher):
         if not self._socket:
             return
         await self._socket.send(f"login {tree_api_key}")
-        login_attempt = await self._socket.recv()
-        login_attempt = json.loads(login_attempt)
-        login_attempt.setdefault("user", {})
-        login_attempt["user"].pop("address", None)
-        LOGGER.info("TreeOfAlpha login result: %s", login_attempt)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.4, max=2),
@@ -195,7 +190,7 @@ class TreeNews(NewsFetcher):
                 quote_image = news_message["info"]["quotedUser"].get("image", "")
         elif is_self_reply:
             with contextlib.suppress(KeyError):
-                reply_user = f'@{news_message["info"]["replyUser"]["screen_name"]}'
+                reply_user = f"@{news_message['info']['replyUser']['screen_name']}"
                 reply_message = news_message["info"]["replyUser"]["text"]
             with contextlib.suppress(KeyError):
                 reply_image = news_message["info"]["quotedUser"]["image"]
@@ -203,7 +198,7 @@ class TreeNews(NewsFetcher):
             match = self._compiled_pattern_quote.search(body)
             if match:
                 body = body[: match.end()].strip()
-                retweet_user = f'@{news_message["info"]["quotedUser"]["screen_name"]}'
+                retweet_user = f"@{news_message['info']['quotedUser']['screen_name']}"
 
         return NewsData(
             title=title,

@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, NotRequired, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from web3 import AsyncWeb3
 from web3.types import Gwei, Nonce, TxParams, Wei
 
 from plutus_terminal.core.exchange.web3 import web3_utils
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
     from decimal import Decimal
@@ -265,13 +264,13 @@ async def build_time_lock_contract(
 def build_stable_contract(
     web3_provider: AsyncWeb3,
 ) -> AsyncContract:
-    """Build Options core contract.
+    """Build Stable contract.
 
     Args:
         web3_provider (AsyncWeb3): Web3 provider.
 
     Returns:
-        AsyncContract: Contract for options core.
+        AsyncContract: Contract for stable.
     """
     with Path.open(Path(__file__).parent.parent.joinpath("web3/abi/usdc.json")) as f:
         stable_abi = json.load(f)
@@ -344,7 +343,7 @@ async def approve_plugin(
     )
 
     signed_txn = web3_account.sign_transaction(approval_transaction)
-    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.raw_transaction)
 
     await web3_utils.await_receipt_and_report(
         txn,
@@ -377,9 +376,7 @@ async def is_stable_approved(
         spender_address,
     ).call()
     approved_quantity = await stable_contract.functions.balanceOf(wallet_address).call()
-    if int(approved) <= int(approved_quantity):
-        return False
-    return True
+    return not int(approved) <= int(approved_quantity)
 
 
 async def approve_stable(
@@ -421,7 +418,7 @@ async def approve_stable(
     )
 
     signed_txn = web3_account.sign_transaction(approval_transaction)
-    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.raw_transaction)
 
     await web3_utils.await_receipt_and_report(
         txn,
@@ -471,7 +468,7 @@ async def ensure_referral(
         {"gas": await web3_utils.estimate_gas(web3_provider, set_referral_trasaction)},
     )
     signed_txn = web3_account.sign_transaction(set_referral_trasaction)
-    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.raw_transaction)
 
     await web3_utils.await_receipt_and_report(
         txn,

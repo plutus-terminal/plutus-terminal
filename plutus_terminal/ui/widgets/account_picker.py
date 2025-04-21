@@ -7,24 +7,23 @@ from typing import TYPE_CHECKING, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QComboBox, QWidget
+from qasync import asyncSlot
 
 from plutus_terminal.core.config import CONFIG
-from plutus_terminal.core.db.models import KeyringAccount
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.password_guard import PasswordGuard
+    from plutus_terminal.controller.ui_controller import UIController
 
 
 class AccountPicker(QComboBox):
     """Combo box to select account."""
 
-    account_changed = Signal(KeyringAccount)
-
-    def __init__(self, pass_guard: PasswordGuard, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, ui_controller: UIController, parent: Optional[QWidget] = None) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._pass_guard = pass_guard
+        self._ui_controller = ui_controller
+        self._pass_guard = ui_controller.pass_guard
         self._current_index = 0
 
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -62,7 +61,8 @@ class AccountPicker(QComboBox):
                 self._current_index = index
                 break
 
-    def _on_account_changed(self, index: int) -> None:
+    @asyncSlot()
+    async def _on_account_changed(self, index: int) -> None:
         """Account changed."""
         account = self.itemData(index)
 
@@ -83,8 +83,7 @@ class AccountPicker(QComboBox):
             self._add_all_accounts()
             self._set_current_account()
             self.blockSignals(False)
-            self.account_changed.emit(account)
             return
 
         CONFIG.current_keyring_account = account
-        self.account_changed.emit(account)
+        await self._ui_controller.change_current_exchange()

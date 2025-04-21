@@ -22,7 +22,6 @@
         <file alias="news_feed_icon">images/news_feed_icon.svg</file>
         <file alias="notification_off">images/notification_off.svg</file>
         <file alias="notification_on">images/notification_on.svg</file>
-        <file alias="options_icon">images/options_icon.svg</file>
         <file alias="perps_config_icon">images/perps_config_icon.svg</file>
         <file alias="plutus_icon">images/plutus_icon.png</file>
         <file alias="preview_icon">images/preview_icon.svg</file>

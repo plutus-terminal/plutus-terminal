@@ -43,7 +43,8 @@ from plutus_terminal.log_utils import log_retry
 if TYPE_CHECKING:
     from eth_typing import ChecksumAddress
 
-    from plutus_terminal.core.exchange.base import ExchangeFetcherMessageBus
+    from plutus_terminal.message_bus import MessageBus
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,14 +56,14 @@ class FoxifyFetcher(ExchangeFetcher):
         self,
         pair_map: dict[str, str],
         web3_address: ChecksumAddress,
-        message_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
     ) -> None:
         """Initialize shared attributes.
 
         Args:
             pair_map (dict[str, dict[str, str]]): Dict with adress and pair.
             web3_address (ChecksumAddress): Web3 account address.
-            message_bus (ExchangeFetcherMessageBus): Message bus.
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus.
         """
         LOGGER.info("Initialize FoxifyFetcher")
         self.aclient = AsyncClient()
@@ -85,7 +86,6 @@ class FoxifyFetcher(ExchangeFetcher):
         self._cached_stable_balance: Decimal = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_funding_rates: dict[str, dict[bool, int]] = {}
-        self._synced = True
         self._goldsky_url = "https://api.goldsky.com/api/public/project_cllqn805a7tva38uh4n5r9ap6/subgraphs/palmswap-synthetic-stats/arbitrum_mainnet/gn"
         self.async_stop_event = asyncio.Event()
 
@@ -94,14 +94,14 @@ class FoxifyFetcher(ExchangeFetcher):
         cls,
         pair_map: dict[str, str],
         web3_address: ChecksumAddress,
-        message_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
     ) -> Self:
         """Create class instance and init_async.
 
         Args:
             pair_map (dict[str, str]): Dict with adress and pair.
             web3_address (ChecksumAddress): Web3 account address.
-            message_bus (ExchangeFetcherMessageBus): Message bus.
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus.
 
         Returns:
             FoxifyFetcher: Instance of FoxifyFetcher.
@@ -222,7 +222,6 @@ class FoxifyFetcher(ExchangeFetcher):
                 ping_timeout=10,
             )
             LOGGER.info("Connected to hermes.pyth.network for Foxify")
-            self._message_bus.price_synced.emit(True)
         return self._socket
 
     @retry(
@@ -237,7 +236,6 @@ class FoxifyFetcher(ExchangeFetcher):
                 "Websocket disconnected. Attempting to reconnect websocket...",
             )
 
-            self._message_bus.price_synced.emit(False)
             await self.websocket_connect()
             await self.resubscribe_on_going_connections()
 
@@ -307,7 +305,7 @@ class FoxifyFetcher(ExchangeFetcher):
                 async for message in self._socket:  # type: ignore
                     data = orjson.loads(message)
                     if data.get("type", "") == "price_update":
-                        pair = self.pyth_id_pair[f'0x{data["price_feed"]["id"]}']
+                        pair = self.pyth_id_pair[f"0x{data['price_feed']['id']}"]
                         self._cached_prices[pair] = PriceData(
                             {
                                 "price": Decimal(
@@ -320,7 +318,7 @@ class FoxifyFetcher(ExchangeFetcher):
                                 ),
                             },
                         )
-                        self._message_bus.subscribed_prices_signal.emit(
+                        self._message_bus.subscribed_prices_fetched.emit(
                             self._cached_prices,
                         )
             except (ConnectionClosedError, ConnectionAbortedError):
@@ -378,7 +376,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 all_positions = await self.fetch_all_positions()
-                self._message_bus.positions_signal.emit(all_positions)
+                self._message_bus.positions_fetched.emit(all_positions)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
@@ -395,7 +393,7 @@ class FoxifyFetcher(ExchangeFetcher):
         """
         try:
             all_positions = await self.fetch_all_positions()
-            self._message_bus.positions_signal.emit(all_positions)
+            self._message_bus.positions_fetched.emit(all_positions)
         except (HTTPStatusError, ReadTimeout, ConnectError):
             LOGGER.exception("Unexpected error while fetching all positions")
 
@@ -468,7 +466,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 all_orders = await self.fetch_all_orders()
-                self._message_bus.orders_signal.emit(all_orders)
+                self._message_bus.orders_feched.emit(all_orders)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
@@ -485,7 +483,7 @@ class FoxifyFetcher(ExchangeFetcher):
         """
         try:
             all_orders = await self.fetch_all_orders()
-            self._message_bus.orders_signal.emit(all_orders)
+            self._message_bus.orders_feched.emit(all_orders)
         except (HTTPStatusError, ReadTimeout, ConnectError):
             LOGGER.exception("Unexpected error while fetching all positions")
 
@@ -602,7 +600,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 self._cached_stable_balance = await self.fetch_stable_balance()
-                self._message_bus.balance_signal.emit(self._cached_stable_balance)
+                self._message_bus.balance_fetched.emit(self._cached_stable_balance)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching stable balance.")
                 continue

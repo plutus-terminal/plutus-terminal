@@ -96,10 +96,8 @@ class DecimalSpinBox(QtWidgets.QDoubleSpinBox):
     def _on_value_changed(self, value: float) -> None:
         """On value changed."""
         self._current_decimal = Decimal(value)
-        if self._current_decimal > self._maximum_decimal:
-            self._current_decimal = self._maximum_decimal
-        if self._current_decimal < self._minimum_decimal:
-            self._current_decimal = self._minimum_decimal
+        self._current_decimal = min(self._current_decimal, self._maximum_decimal)
+        self._current_decimal = max(self._current_decimal, self._minimum_decimal)
         self.decimalValueChanged.emit(self._current_decimal)
 
 

@@ -11,13 +11,12 @@ from plutus_terminal.core.db.models import (
     DATABASE_PATH,
     GUISettings,
     KeyringAccount,
-    OptionsConfig,
     TradeConfig,
     UserFilter,
     Web3RPC,
     create_database,
 )
-from plutus_terminal.core.types_ import ExchangeType, OptionsDuration, OptionsRisk
+from plutus_terminal.core.types_ import ExchangeType
 
 
 class AppConfig:
@@ -37,15 +36,6 @@ class AppConfig:
         self._trade_value_low = 0
         self._trade_value_medium = 0
         self._trade_value_high = 0
-
-        self._options_rate_min = 0.0
-        self._options_amount = 0.0
-        self._options_avaialble_min = 0.0
-        self._options_percent_min = ""
-        self._options_percent_max = ""
-        self._options_duration_min = 0
-        self._options_duration_max = 0
-        self._options_risk = 0
 
         self._validate_database()
 
@@ -204,158 +194,6 @@ class AppConfig:
             )
         self._trade_value_high = new_value
 
-    @property
-    def options_amount(self) -> float:
-        """Returns amount to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._options_amount
-
-    @options_amount.setter
-    def options_amount(self, new_value: float) -> None:
-        """Set new amount value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"amount": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_amount = new_value
-
-    @property
-    def options_rate_min(self) -> float:
-        """Returns rate_min to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._options_rate_min
-
-    @options_rate_min.setter
-    def options_rate_min(self, new_value: float) -> None:
-        """Set new rate_min value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"rate_min": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_rate_min = new_value
-
-    @property
-    def options_available_min(self) -> float:
-        """Returns available_min to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._options_avaialble_min
-
-    @options_available_min.setter
-    def options_available_min(self, new_value: float) -> None:
-        """Set new available_min value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"available_min": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_avaialble_min = new_value
-
-    @property
-    def options_percent_min(self) -> str:
-        """Returns percent_min to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._options_percent_min
-
-    @options_percent_min.setter
-    def options_percent_min(self, new_value: str) -> None:
-        """Set new percent_min value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"percent_min": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_percent_min = new_value
-
-    @property
-    def options_percent_max(self) -> str:
-        """Returns percent_max to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._options_percent_max
-
-    @options_percent_max.setter
-    def options_percent_max(self, new_value: str) -> None:
-        """Set new percent_max value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"percent_max": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_percent_max = new_value
-
-    @property
-    def options_duration_min(self) -> OptionsDuration:
-        """Returns duration_min to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return OptionsDuration(self._options_duration_min)
-
-    @options_duration_min.setter
-    def options_duration_min(self, new_value: int) -> None:
-        """Set new duration_min value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"duration_min": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_duration_min = new_value
-
-    @property
-    def options_duration_max(self) -> OptionsDuration:
-        """Returns duration_max to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return OptionsDuration(self._options_duration_max)
-
-    @options_duration_max.setter
-    def options_duration_max(self, new_value: int) -> None:
-        """Set new duration_max value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"duration_max": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_duration_max = new_value
-
-    @property
-    def options_risk(self) -> OptionsRisk:
-        """Returns risk to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return OptionsRisk(self._options_risk)
-
-    @options_risk.setter
-    def options_risk(self, new_value: int) -> None:
-        """Set new risk value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                OptionsConfig,
-                {"risk": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._options_risk = new_value
-
     def _generic_update(
         self,
         model: ModelBase,
@@ -389,16 +227,6 @@ class AppConfig:
         self._trade_value_medium = trade_config.trade_value_medium
         self._trade_value_high = trade_config.trade_value_high
 
-        options_config = OptionsConfig.get(OptionsConfig.account == keyring_account.id)  # type: ignore
-        self._options_amount = options_config.amount
-        self._options_rate_min = options_config.rate_min
-        self._options_avaialble_min = options_config.available_min
-        self._options_percent_min = options_config.percent_min
-        self._options_percent_max = options_config.percent_max
-        self._options_duration_min = options_config.duration_min
-        self._options_duration_max = options_config.duration_max
-        self._options_risk = options_config.risk
-
     def create_default_gui_settings(self) -> None:
         """Get or create default GUI settings."""
         with DATABASE.atomic():
@@ -421,10 +249,6 @@ class AppConfig:
             GUISettings.get_or_create(
                 key="news_desktop_notifications",
                 defaults={"value": orjson.dumps(True)},
-            )
-            GUISettings.get_or_create(
-                key="options_show_preview",
-                defaults={"value": orjson.dumps(False)},
             )
             GUISettings.get_or_create(
                 key="minimize_to_tray",
@@ -499,7 +323,6 @@ class AppConfig:
                 exchange_name=exchange_name,
             )
             TradeConfig.create(account=keyring_account)
-            OptionsConfig.create(account=keyring_account)
         return keyring_account
 
     @staticmethod
@@ -510,7 +333,6 @@ class AppConfig:
             keyring.delete_password("plutus-terminal", str(keyring_account.username))
             KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()  # type: ignore
             TradeConfig.delete().where(TradeConfig.account == account_id).execute()
-            OptionsConfig.delete().where(OptionsConfig.account == account_id).execute()
 
     @staticmethod
     def create_default_rpcs() -> None:

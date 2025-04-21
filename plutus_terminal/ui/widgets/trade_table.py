@@ -15,35 +15,37 @@ from plutus_terminal.ui.widgets.positions_table import (
 )
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
 
 
 class TradeTable(QtWidgets.QWidget):
     """Widget to visualize and manage open trades."""
 
-    pair_clicked = Signal(str)
     order_clicked = Signal(str)
     edit_order = Signal(OrderData)
 
     def __init__(
         self,
-        exchange: ExchangeBase,
+        ui_controller: UIController,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared viarables."""
         super().__init__(parent)
+        self._ui_controller = ui_controller
+        self._exchange = ui_controller.current_exchange
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
         self._tab_widget = QtWidgets.QTabWidget()
-        self._positions_model = PositionsTableModel(exchange.format_simple_pair_from_pair)
+        self._positions_model = PositionsTableModel(self._exchange.format_simple_pair_from_pair)
         self._positions_table = PositionsTableView(
-            exchange,
+            self._exchange,
         )
-        self._orders_model = OrdersTableModel(exchange.format_simple_pair_from_pair)
-        self._orders_table = OrdersTableView(exchange)
+        self._orders_model = OrdersTableModel(self._exchange.format_simple_pair_from_pair)
+        self._orders_table = OrdersTableView(self._exchange)
 
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
 
         # Set minimum height to 10% of the widget height
@@ -52,11 +54,20 @@ class TradeTable(QtWidgets.QWidget):
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self._positions_table.setModel(self._positions_model)
-        self._positions_table.row_clicked.connect(self.pair_clicked)
         self._tab_widget.addTab(self._positions_table, "Positions (0)")
 
         self._orders_table.setModel(self._orders_model)
         self._tab_widget.addTab(self._orders_table, "Orders (0)")
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._positions_table.row_clicked.connect(self._ui_controller.change_current_pair)
+
+        self._ui_controller.message_bus.positions_fetched.connect(self.update_positions)
+        self._ui_controller.message_bus.orders_feched.connect(self.update_orders)
+        self._ui_controller.message_bus.subscribed_prices_fetched.connect(self.update_prices)
+
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
     def _setup_layout(self) -> None:
         """Configure layout."""
@@ -77,11 +88,7 @@ class TradeTable(QtWidgets.QWidget):
         """Update prices."""
         self._positions_table.update_cached_prices(cached_prices)
 
-    def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
-        """Update info based on new exchange.
-
-        Args:
-            new_exchange (ExchangeBase): New exchangeBase.
-        """
-        self._positions_model.on_new_exchange(new_exchange)
-        self._orders_model.on_new_exchange(new_exchange)
+    def _on_new_exchange(self) -> None:
+        """Update info based on new exchange."""
+        self._positions_model.on_new_exchange(self._ui_controller.current_exchange)
+        self._orders_model.on_new_exchange(self._ui_controller.current_exchange)

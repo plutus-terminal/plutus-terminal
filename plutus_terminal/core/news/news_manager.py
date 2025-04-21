@@ -13,9 +13,10 @@ from plutus_terminal.core.news.phoenix_news import PhoenixNews
 from plutus_terminal.core.news.tree_news import TreeNews
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.news.base import NewsFetcher, NewsMessageBus
+    from plutus_terminal.core.news.base import NewsFetcher
     from plutus_terminal.core.news.filter.filter_manager import FilterManager
     from plutus_terminal.core.types_ import NewsData
+    from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,20 +24,20 @@ LOGGER = logging.getLogger(__name__)
 class NewsManager:
     """Manage multiple news source."""
 
-    def __init__(self, news_bus: NewsMessageBus, filter_manager: FilterManager) -> None:
+    def __init__(self, message_bus: MessageBus, filter_manager: FilterManager) -> None:
         """Initialize shared variables.
 
         Args:
-            news_bus (NewsMessageBus): Message bus to send news signals.
+            message_bus (MessageBus): Message bus to send news signals.
             filter_manager (FilterManager): Filter manager to filter news.
         """
-        self.news_bus = news_bus
+        self.message_bus = message_bus
         self.news_sources: list[NewsFetcher] = [TreeNews(), PhoenixNews()]
         self._filter_manager = filter_manager
         self._seen_links: set[str] = set()
         self._news_task: list[asyncio.Task] = []
 
-        self.news_bus.raw_news_signal.connect(self.process_news)
+        self.message_bus.raw_news.connect(self.process_news)
 
     async def fetch_news(self) -> None:
         """Fetch news from news sources."""
@@ -44,7 +45,7 @@ class NewsManager:
         await asyncio.gather(*login_tasks)
         for news_fetcher in self.news_sources:
             self._news_task.append(
-                asyncio.create_task(news_fetcher.subscribe_to_wss(self.news_bus)),
+                asyncio.create_task(news_fetcher.subscribe_to_wss(self.message_bus)),
             )
 
     async def fetch_old_news(self, limit: int) -> list[NewsData]:
@@ -114,7 +115,7 @@ class NewsManager:
                 raw_news,
             )
 
-        self.news_bus.news_signal.emit(raw_news)
+        self.message_bus.formatted_news.emit(raw_news)
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""

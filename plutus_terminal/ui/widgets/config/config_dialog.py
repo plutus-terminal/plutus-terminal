@@ -6,7 +6,7 @@ from PySide6 import QtWidgets
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QPixmap
 
-from plutus_terminal.core.password_guard import PasswordGuard
+from plutus_terminal.controller.ui_controller import UIController
 from plutus_terminal.ui.widgets.config.account_config import AccountConfig
 from plutus_terminal.ui.widgets.config.news_config import NewsConfig
 from plutus_terminal.ui.widgets.config.perps_config import PerpsConfig
@@ -25,7 +25,7 @@ class ConfigDialog(QtWidgets.QDialog):
 
     def __init__(
         self,
-        pass_guard: PasswordGuard,
+        ui_controller: UIController,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize dialog."""
@@ -35,10 +35,10 @@ class ConfigDialog(QtWidgets.QDialog):
         self._main_layout.setContentsMargins(0, 0, 0, 0)
 
         self._tab_widget = QtWidgets.QTabWidget()
-        self.persp_config = PerpsConfig()
+        self.persp_config = PerpsConfig(ui_controller)
         self.news_config = NewsConfig()
         self.web3_config = Web3Config()
-        self.account_config = AccountConfig(pass_guard)
+        self.account_config = AccountConfig(ui_controller.pass_guard)
         self.terminal_config = TerminalConfig()
 
         self._setup_widgets()
