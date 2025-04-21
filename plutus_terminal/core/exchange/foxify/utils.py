@@ -343,7 +343,7 @@ async def approve_plugin(
     )
 
     signed_txn = web3_account.sign_transaction(approval_transaction)
-    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.raw_transaction)
 
     await web3_utils.await_receipt_and_report(
         txn,
@@ -418,7 +418,7 @@ async def approve_stable(
     )
 
     signed_txn = web3_account.sign_transaction(approval_transaction)
-    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.raw_transaction)
 
     await web3_utils.await_receipt_and_report(
         txn,
@@ -468,7 +468,7 @@ async def ensure_referral(
         {"gas": await web3_utils.estimate_gas(web3_provider, set_referral_trasaction)},
     )
     signed_txn = web3_account.sign_transaction(set_referral_trasaction)
-    txn = await web3_provider.eth.send_raw_transaction(signed_txn.rawTransaction)
+    txn = await web3_provider.eth.send_raw_transaction(signed_txn.raw_transaction)
 
     await web3_utils.await_receipt_and_report(
         txn,
