@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import keyring
 from qasync import os
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exceptions import (
     InvalidPasswordError,
     KeyringPasswordNotFoundError,
@@ -25,8 +25,9 @@ if TYPE_CHECKING:
 class PasswordGuard:
     """Class to encrypt and decrypt passwords."""
 
-    def __init__(self) -> None:
+    def __init__(self, app_config: AppConfig) -> None:
         """Initialize widget."""
+        self._app_config = app_config
         self._password = ""
         self._validation_text = "Validate Password Check@"
 
@@ -39,9 +40,11 @@ class PasswordGuard:
     def password(self, password: str) -> None:
         """Set password."""
         self._password = password
-        if CONFIG.get_gui_settings("first_run"):
-            CONFIG.set_gui_settings("password_validation", self.encrypt(self._validation_text))
-            CONFIG.set_gui_settings("first_run", False)
+        if self._app_config.get_gui_settings("first_run"):
+            self._app_config.set_gui_settings(
+                "password_validation", self.encrypt(self._validation_text)
+            )
+            self._app_config.set_gui_settings("first_run", False)
         elif not self.validate_password():
             raise InvalidPasswordError
 
@@ -96,11 +99,11 @@ class PasswordGuard:
 
     def validate_password(self) -> bool:
         """Validate password."""
-        encrypted_validation = CONFIG.get_gui_settings("password_validation")
+        encrypted_validation = self._app_config.get_gui_settings("password_validation")
         if not encrypted_validation:
             return False
         try:
-            decrypted_validation = self.decrypt(encrypted_validation)
+            decrypted_validation = self.decrypt(encrypted_validation)  # type: ignore
         except InvalidToken:
             return False
         return decrypted_validation == self._validation_text
@@ -108,7 +111,7 @@ class PasswordGuard:
     def get_keyring_password(self, keyring_account: KeyringAccount) -> str:
         """Get keyring password."""
         encrypted_keyring_password = keyring.get_password(
-            "plutus-terminal",
+            AppConfig.SERVICE_NAME,
             str(keyring_account.username),
         )
         if encrypted_keyring_password is None:

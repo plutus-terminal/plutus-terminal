@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 )
 
 from plutus_terminal import __version__
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
@@ -50,6 +49,7 @@ class PlutusMainWindow(QMainWindow):
         """Initialize shared variables."""
         super().__init__()
         self._ui_controller = ui_controller
+        self._app_config = ui_controller.app_config
 
         self.main_layout = QVBoxLayout()
         self.main_widget = QWidget()
@@ -111,19 +111,6 @@ class PlutusMainWindow(QMainWindow):
         self.setWindowTitle(f"Plutus Terminal - {__version__}")
         self.setWindowIcon(QPixmap(":/icons/plutus_icon"))
 
-        # Configure config dialog
-        self._config_dialog.updated_trade_values.connect(
-            self._update_quick_trade_values,
-        )
-        self._config_dialog.leverage_changed.connect(
-            self._ui_controller.current_exchange.set_all_leverage,
-        )
-        self._config_dialog.update_filters.connect(self._update_news_filters)
-        self._config_dialog.show_images_toggled.connect(self._news_list.show_images_toggled)
-        self._config_dialog.desktop_notifications_toggled.connect(
-            self._news_list.notifications_toggled,
-        )
-
         # Setup account info
         await self._account_info.set_approve_btn_visibility()
 
@@ -161,8 +148,10 @@ class PlutusMainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Hide window on close."""
-        CONFIG.set_gui_settings("window_geometry", self.saveGeometry().data().hex())
-        if CONFIG.get_gui_settings("minimize_to_tray"):
+        self._ui_controller.app_config.set_gui_settings(
+            "window_geometry", self.saveGeometry().data().hex()
+        )
+        if self._ui_controller.app_config.get_gui_settings("minimize_to_tray"):
             event.ignore()
             self.hide()
         else:
@@ -175,17 +164,6 @@ class PlutusMainWindow(QMainWindow):
 
     def _load_geometry(self) -> None:
         """Load window geometry."""
-        geometry = CONFIG.get_gui_settings("window_geometry")
+        geometry = self._ui_controller.app_config.get_gui_settings("window_geometry")
         if geometry:
-            self.restoreGeometry(bytes.fromhex(geometry))
-
-    def _update_quick_trade_values(self) -> None:
-        """Update trade values."""
-        self._news_list.update_news_trade_buttons()
-        self._perps_trade.update_trade_buttons()
-        Toast.show_message("Trade values updated!", type_=ToastType.SUCCESS)
-
-    def _update_news_filters(self) -> None:
-        """Update news filters."""
-        self._ui_controller.update_news_filters()
-        Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)
+            self.restoreGeometry(bytes.fromhex(geometry))  # type: ignore

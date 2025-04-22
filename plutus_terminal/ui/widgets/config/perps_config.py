@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Optional
 from PySide6 import QtWidgets
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QPixmap
+from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButton
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
@@ -20,9 +20,6 @@ if TYPE_CHECKING:
 class PerpsConfig(QtWidgets.QWidget):
     """Widget to control perps configuration."""
 
-    updated_trade_values = Signal()
-    leverage_changed = Signal(int)
-
     def __init__(
         self,
         ui_controller: UIController,
@@ -31,6 +28,7 @@ class PerpsConfig(QtWidgets.QWidget):
         """Initialize widget."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
+        self._app_config = self._ui_controller.app_config
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
 
@@ -76,61 +74,68 @@ class PerpsConfig(QtWidgets.QWidget):
         }
 
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
 
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
         self.top_bar.icon.setPixmap(QPixmap(":/icons/perps_config_icon"))
 
-        self._tp_spin.setValue(CONFIG.take_profit)
+        self._tp_spin.setValue(self._app_config.take_profit)
         self._tp_spin.setMinimum(0)
         self._tp_spin.setMaximum(100)
         self._tp_spin.setDecimals(2)
 
-        self._sl_spin.setValue(CONFIG.stop_loss)
+        self._sl_spin.setValue(self._app_config.stop_loss)
         self._sl_spin.setMinimum(0)
         self._sl_spin.setMaximum(100)
         self._sl_spin.setDecimals(2)
 
         self._tp_sl_update.setMinimumHeight(35)
-        self._tp_sl_update.clicked.connect(self._update_tp_sl)
 
         self._trade_lowest_spin.setMinimum(1)
         self._trade_lowest_spin.setMaximum(100_000_000)
-        self._trade_lowest_spin.setValue(CONFIG.trade_value_lowest)
+        self._trade_lowest_spin.setValue(self._app_config.trade_value_lowest)
 
         self._trade_low_spin.setMinimum(1)
         self._trade_low_spin.setMaximum(100_000_000)
-        self._trade_low_spin.setValue(CONFIG.trade_value_low)
+        self._trade_low_spin.setValue(self._app_config.trade_value_low)
 
         self._trade_med_spin.setMinimum(1)
         self._trade_med_spin.setMaximum(100_000_000)
-        self._trade_med_spin.setValue(CONFIG.trade_value_medium)
+        self._trade_med_spin.setValue(self._app_config.trade_value_medium)
 
         self._trade_high_spin.setMinimum(1)
         self._trade_high_spin.setMaximum(100_000_000)
-        self._trade_high_spin.setValue(CONFIG.trade_value_high)
+        self._trade_high_spin.setValue(self._app_config.trade_value_high)
 
         self._trade_values_update.setMinimumHeight(35)
-        self._trade_values_update.clicked.connect(self._update_trade_values)
 
         for value in (2, 5, 10, 20, 25, 50):
             button = QtWidgets.QRadioButton(str(value))
             self._leverage_group.addButton(button)
             self._leverage_group.setId(button, value)
             self._leverage_layout.addWidget(button)
-        self._leverage_group.buttonClicked.connect(self._set_leverage_button)
 
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(50)
-        self._leverage_spin.valueChanged.connect(self._update_leverage_buttons)
-        self._leverage_spin.setValue(CONFIG.leverage)
+        self._leverage_spin.setValue(self._app_config.leverage)
 
         self._leverage_set_button.setMinimumHeight(35)
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+        self._tp_sl_update.clicked.connect(self._update_tp_sl)
+        self._trade_values_update.clicked.connect(self._update_trade_values)
+        self._leverage_group.buttonClicked.connect(self._set_leverage_button)
+        self._leverage_spin.valueChanged.connect(self._update_leverage_buttons)
         self._leverage_set_button.clicked.connect(self._set_leverage)
+
+        self._app_config.leverage_changed.connect(self._set_leverage_spin)
+        self._app_config.leverage_changed.connect(self._update_leverage_buttons)
 
     def _setup_layout(self) -> None:
         """Configure layout."""
@@ -197,27 +202,32 @@ class PerpsConfig(QtWidgets.QWidget):
         """
         self._set_leverage_spin(self._leverage_group.id(button))
 
-    def _set_leverage(self) -> None:
+    @asyncSlot()
+    async def _set_leverage(self) -> None:
         """Set leverage on exchange.
 
         Args:
             leverage_value (int): Leverage value to set.
         """
         leverage_value = self._leverage_spin.value()
-        self.leverage_changed.emit(leverage_value)
+        await self._ui_controller.current_exchange.set_all_leverage(leverage_value)
 
     def _update_trade_values(self) -> None:
         """Update trade values."""
-        CONFIG.trade_value_lowest = self._trade_lowest_spin.value()
-        CONFIG.trade_value_low = self._trade_low_spin.value()
-        CONFIG.trade_value_medium = self._trade_med_spin.value()
-        CONFIG.trade_value_high = self._trade_high_spin.value()
-        self.updated_trade_values.emit()
+        # Blocking signals to avoid mutiple updates
+        self._app_config.blockSignals(True)
+        self._app_config.trade_value_lowest = self._trade_lowest_spin.value()
+        self._app_config.trade_value_low = self._trade_low_spin.value()
+        self._app_config.trade_value_medium = self._trade_med_spin.value()
+        self._app_config.blockSignals(False)
+
+        self._app_config.trade_value_high = self._trade_high_spin.value()
+        Toast.show_message("Trade values updated", type_=ToastType.SUCCESS)
 
     def _update_tp_sl(self) -> None:
         """Update take profit and stop loss."""
-        CONFIG.take_profit = self._tp_spin.value()
-        CONFIG.stop_loss = self._sl_spin.value()
+        self._app_config.take_profit = self._tp_spin.value()
+        self._app_config.stop_loss = self._sl_spin.value()
         Toast.show_message("TP/SL values updated", type_=ToastType.SUCCESS)
 
     def _on_new_exchange(self) -> None:
@@ -230,8 +240,8 @@ class PerpsConfig(QtWidgets.QWidget):
         # Update spin box values
         for spin, attr in self._spin_config_map.items():
             spin.blockSignals(True)
-            spin.setValue(getattr(CONFIG, attr))
+            spin.setValue(getattr(self._app_config, attr))
             spin.blockSignals(False)
 
-        self._set_leverage_spin(CONFIG.leverage)
+        self._set_leverage_spin(self._app_config.leverage)
         self.blockSignals(False)

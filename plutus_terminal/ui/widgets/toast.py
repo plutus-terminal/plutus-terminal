@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ class Toast(QFrame):
     def __init__(self, parent: Optional[QWidget] = None, desktop: bool = False) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
+        self._app_config = AppConfig()
         self.parent_rect = QRect()
         self._desktop = desktop
 
@@ -200,7 +201,7 @@ class Toast(QFrame):
             elif not add_event and self:
                 break
 
-        match CONFIG.get_gui_settings("toast_position"):
+        match self._app_config.get_gui_settings("toast_position"):
             case "top_left":
                 geometry.moveTopLeft(
                     self.parent_rect.topLeft() + QPoint(self._margin, self._margin),

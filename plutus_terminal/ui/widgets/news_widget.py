@@ -14,7 +14,6 @@ from PySide6.QtGui import QDesktopServices, QMouseEvent, QPixmap, QPixmapCache
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 import re2  # type: ignore
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.types import PerpsTradeType
 from plutus_terminal.core.types_ import NewsData, PerpsTradeDirection
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from decimal import Decimal
 
+    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.exchange.base import ExchangeBase, ExchangeFetcher
 
 ICON_MAP = {
@@ -59,6 +59,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         format_to_pair: Callable,
         available_pairs: set,
         display_delay: bool,
+        app_config: AppConfig,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared variables."""
@@ -68,6 +69,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self._available_pairs = available_pairs
         self._show_images = True
         self._display_delay = display_delay
+        self._app_config = app_config
         self._re_percent_complied = re2.compile(r"\(([^)]+)%\)")
         self._async_tasks: list[asyncio.Task] = []
 
@@ -498,7 +500,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             )
             for index, option_key in enumerate(option_keys):
                 value = getattr(
-                    CONFIG,
+                    self._app_config,
                     option_key,
                 )
                 button_long = QtWidgets.QPushButton(f"${value}")
@@ -527,7 +529,7 @@ class NewsWidget(QtWidgets.QGroupBox):
 
             for index, option_key in enumerate(option_keys):
                 value = getattr(
-                    CONFIG,
+                    self._app_config,
                     option_key,
                 )
                 button_short = QtWidgets.QPushButton(f"-${value}")
@@ -611,7 +613,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             trade_direction (PerpsTradeDirection): Trade direction.
             trade_type (PerpsTradeType): Trade type.
         """
-        amount = getattr(CONFIG, config_key_value)
+        amount = getattr(self._app_config, config_key_value)
         try:
             trade_function(coin, amount, trade_direction, trade_type)
         except InvalidOrderSizeError as error:
@@ -708,10 +710,10 @@ class NewsWidget(QtWidgets.QGroupBox):
     def update_trade_buttons(self) -> None:
         """Update trade values."""
         value_map = {
-            0: CONFIG.trade_value_lowest,
-            1: CONFIG.trade_value_low,
-            2: CONFIG.trade_value_medium,
-            3: CONFIG.trade_value_high,
+            0: self._app_config.trade_value_lowest,
+            1: self._app_config.trade_value_low,
+            2: self._app_config.trade_value_medium,
+            3: self._app_config.trade_value_high,
         }
         for index in range(4):
             for widget in self.findChildren(QtWidgets.QPushButton, f"SHORT_{index}"):

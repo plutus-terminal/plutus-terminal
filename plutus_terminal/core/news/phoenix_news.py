@@ -18,6 +18,7 @@ from tenacity import (
 )
 from websockets.client import WebSocketClientProtocol, connect
 
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.news.base import NewsFetcher
 from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
@@ -36,7 +37,7 @@ class PhoenixNews(NewsFetcher):
     def __init__(self) -> None:
         """Initialize shared variables."""
         self.wss = "wss://wss.phoenixnews.io/"
-        self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
+        self._socket: Optional[WebSocketClientProtocol] = None
         self._compiled_pattern_quote = re2.compile(r"&gt;&gt;QUOTE\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_reply = re2.compile(r"&gt;&gt;REPLY\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_retweet = re2.compile(r"&gt;&gt;RT\s+.+?\s*[^\(@]*\((@\w+)\)")
@@ -91,7 +92,7 @@ class PhoenixNews(NewsFetcher):
         """Login to news source."""
         LOGGER.info("Logging in to PhoenixNews...")
         phoenix_api_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             PHOENIX_KEY_NAME,
         )
         if not phoenix_api_key:

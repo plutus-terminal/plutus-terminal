@@ -3,6 +3,7 @@
 import logging
 
 from plutus_terminal.controller.ui_controller import UIController
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.message_bus import MessageBus
@@ -14,13 +15,16 @@ LOGGER = logging.getLogger(__name__)
 class PlutusController:
     """Central controller for managin the application."""
 
-    def __init__(self, pass_guard: PasswordGuard) -> None:
+    def __init__(self, pass_guard: PasswordGuard, app_config: AppConfig) -> None:
         """Initialize sync variables."""
         self.pass_guard = pass_guard
 
         self._message_bus = MessageBus()
         self._filter_manager = FilterManager()
-        self.ui_controller = UIController(self._message_bus, self._filter_manager, self.pass_guard)
+        self._app_config = app_config
+        self.ui_controller = UIController(
+            self._message_bus, self._filter_manager, self.pass_guard, self._app_config
+        )
         self.main_window = PlutusMainWindow(
             self.ui_controller,
         )

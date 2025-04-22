@@ -46,13 +46,13 @@ def coin_association_action(
     news_data["coin"].add(kwargs["coin"])
     # Only replace text if this key is provided
     if text_data_key and search_result:
-        text = news_data[text_data_key]  # type: ignore
+        text = news_data[text_data_key]
         # Ensure color keyword is a tuple
         text = (
             f"{text[: search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
             f"{search_result.match}</span>{text[search_result.end :]}"
         )
-        news_data[text_data_key] = text  # type: ignore
+        news_data[text_data_key] = text
     return news_data
 
 
@@ -79,13 +79,13 @@ def sound_association_action(
     news_data["sfx"] = kwargs["sound_path"]
     # Only replace text if this key is provided
     if text_data_key and search_result:
-        text = news_data[text_data_key]  # type: ignore
+        text = news_data[text_data_key]
         # Ensure color keyword is a tuple
         text = (
             f"{text[: search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
             f"{search_result.match}</span>{text[search_result.end :]}"
         )
-        news_data[text_data_key] = text  # type: ignore
+        news_data[text_data_key] = text
     return news_data
 
 

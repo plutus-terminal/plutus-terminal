@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 import orjson
 from PySide6 import QtCore, QtWidgets
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
@@ -41,7 +41,7 @@ class Web3Config(QtWidgets.QWidget):
         self._save_rpcs_btn.setMinimumSize(80, 30)
         self._save_rpcs_btn.clicked.connect(self._save_rpcs)
 
-        web3_rcps = CONFIG.get_all_web3_rpc()
+        web3_rcps = AppConfig.get_all_web3_rpc()
 
         for web3_rpc in web3_rcps:
             rpc_config = RPCConfig(web3_rpc=web3_rpc)
@@ -166,4 +166,4 @@ class RPCConfig(QtWidgets.QFrame):
         """Write web3_rpc to database."""
         current_list = self._model.stringList()
         self._web3_rpc.rpc_urls = orjson.dumps(current_list)  # type: ignore
-        CONFIG.write_model_to_db(self._web3_rpc)
+        AppConfig.write_model_to_db(self._web3_rpc)

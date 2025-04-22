@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
@@ -22,11 +22,13 @@ class AccountConfig(QtWidgets.QWidget):
     def __init__(
         self,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._pass_guard = pass_guard
+        self._app_config = app_config
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -37,6 +39,7 @@ class AccountConfig(QtWidgets.QWidget):
         self._add_account_btn = QtWidgets.QPushButton("Add new Account")
 
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
         self.populate_accounts()
 
@@ -47,7 +50,13 @@ class AccountConfig(QtWidgets.QWidget):
         self._add_account_btn.setIcon(QtGui.QPixmap(":/icons/user_add"))
         self._add_account_btn.setProperty("class", "LONG")
         self._add_account_btn.setMinimumSize(80, 30)
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
         self._add_account_btn.clicked.connect(self._add_account)
+
+        self._app_config.account_created.connect(self.populate_accounts)
+        self._app_config.account_deleted.connect(self.populate_accounts)
 
     def _setup_layout(self) -> None:
         """Config layout."""
@@ -59,6 +68,7 @@ class AccountConfig(QtWidgets.QWidget):
         account_btn_layout = QtWidgets.QHBoxLayout()
         account_btn_layout.addStretch()
         account_btn_layout.addWidget(self._add_account_btn)
+        self._account_box_layout.addStretch()
         self._main_layout.addLayout(account_btn_layout)
         self._main_layout.addStretch()
 
@@ -79,16 +89,19 @@ class AccountConfig(QtWidgets.QWidget):
             self._account_box_layout.removeWidget(widget)
             widget.deleteLater()
 
-        all_accounts = CONFIG.get_all_keyring_accounts()
+        all_accounts = AppConfig.get_all_accounts()
         for account in all_accounts:
-            account_widget = AccountWidget(keyring_account=account)
-            self._account_box_layout.addWidget(account_widget)
-            account_widget.deleted.connect(self.populate_accounts)
+            account_widget = AccountWidget(keyring_account=account, app_config=self._app_config)
+            self._account_box_layout.insertWidget(
+                self._account_box_layout.count() - 1, account_widget
+            )
 
     def _add_account(self) -> None:
         """Add account."""
-        new_account_dialog = NewAccountDialog(self._pass_guard)
+        new_account_dialog = NewAccountDialog(self._pass_guard, self._app_config)
         new_account_dialog.exec()
+        if not new_account_dialog.new_account:
+            return
         self.populate_accounts()
         Toast.show_message("New account added", type_=ToastType.SUCCESS)
 
@@ -96,16 +109,16 @@ class AccountConfig(QtWidgets.QWidget):
 class AccountWidget(QtWidgets.QFrame):
     """Widget to control keyring account."""
 
-    deleted = QtCore.Signal()
-
     def __init__(
         self,
         keyring_account: KeyringAccount,
+        app_config: AppConfig,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._keyring_account = keyring_account
+        self._app_config = app_config
 
         self._main_layout = QtWidgets.QHBoxLayout()
         self._account_icon = QtWidgets.QLabel()
@@ -140,8 +153,7 @@ class AccountWidget(QtWidgets.QFrame):
 
     def _delete_account(self) -> None:
         """Delete account."""
-        CONFIG.delete_account(self._keyring_account.id)  # type: ignore
-        self.deleted.emit()
+        self._app_config.delete_account(self._keyring_account.id)  # type: ignore
         Toast.show_message(
             f"Account '{self._keyring_account.username}' deleted",
             type_=ToastType.SUCCESS,

@@ -19,6 +19,7 @@ from tenacity import (
 )
 from websockets.client import WebSocketClientProtocol, connect
 
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.news.base import NewsFetcher
 from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
@@ -37,7 +38,7 @@ class TreeNews(NewsFetcher):
     def __init__(self) -> None:
         """Initialize shared variables."""
         self.wss = "wss://news.treeofalpha.com/ws"
-        self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
+        self._socket: Optional[WebSocketClientProtocol] = None
         self._compiled_pattern_quote = re2.compile(r"\bQuote\s+\[(@\w+)\]\([^)]*\)")
         self._compiled_pattern_tweet_title = re2.compile(r"\(@([a-zA-Z0-9_]+)\)")
 
@@ -91,7 +92,7 @@ class TreeNews(NewsFetcher):
         """Login to news source."""
         LOGGER.info("Logging in to TreeOfAlpha...")
         tree_api_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             TREE_KEY_NAME,
         )
         if not tree_api_key:

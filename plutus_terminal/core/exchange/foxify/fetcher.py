@@ -80,7 +80,7 @@ class FoxifyFetcher(ExchangeFetcher):
             self.pyth_pair_id: dict = json.load(f)
         self.pyth_id_pair = {value: key for key, value in self.pyth_pair_id.items()}
         self._message_bus = message_bus
-        self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
+        self._socket: Optional[WebSocketClientProtocol] = None
         self.connection_count: dict = defaultdict(int)
         self._cached_prices: dict[str, PriceData] = {}
         self._cached_stable_balance: Decimal = Decimal(0)
@@ -176,7 +176,7 @@ class FoxifyFetcher(ExchangeFetcher):
 
         response = await self.aclient.get(
             request_url,
-            params=request_params,  # type: ignore
+            params=request_params,
         )
         response.raise_for_status()
 
@@ -466,7 +466,7 @@ class FoxifyFetcher(ExchangeFetcher):
         while not self.async_stop_event.is_set():
             try:
                 all_orders = await self.fetch_all_orders()
-                self._message_bus.orders_feched.emit(all_orders)
+                self._message_bus.orders_fetched.emit(all_orders)
             except (HTTPStatusError, ReadTimeout, ConnectError):
                 LOGGER.exception("Unexpected error while fetching all positions")
                 continue
@@ -483,7 +483,7 @@ class FoxifyFetcher(ExchangeFetcher):
         """
         try:
             all_orders = await self.fetch_all_orders()
-            self._message_bus.orders_feched.emit(all_orders)
+            self._message_bus.orders_fetched.emit(all_orders)
         except (HTTPStatusError, ReadTimeout, ConnectError):
             LOGGER.exception("Unexpected error while fetching all positions")
 

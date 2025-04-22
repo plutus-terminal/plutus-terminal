@@ -7,7 +7,7 @@ import pandas
 from PySide6.QtCore import QObject, Signal
 from qasync import asyncio, asyncSlot
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
@@ -46,6 +46,7 @@ class UIController(QObject):
         message_bus: MessageBus,
         filter_manager: FilterManager,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
     ) -> None:
         """Initialize shared variables.
 
@@ -53,11 +54,13 @@ class UIController(QObject):
             message_bus (MessageBus): Message bus to send signals.
             filter_manager (FilterManager): Filter manager.
             pass_guard (PasswordGuard): Password guard.
+            app_config (AppConfig): App config.
         """
         super().__init__()
         self.message_bus = message_bus
         self.news_filter_manager = filter_manager
         self.pass_guard = pass_guard
+        self.app_config = app_config
         self.current_timeframe: str = "1"
         self.news_manager: NewsManager
         self.current_exchange: ExchangeBase
@@ -65,16 +68,19 @@ class UIController(QObject):
 
     async def init_async(self) -> None:
         """Initialize async shared variables."""
-        keyring_account = CONFIG.current_keyring_account
+        keyring_account = self.app_config.current_keyring_account
         self.current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
             self.message_bus,
             self.pass_guard,
+            self.app_config,
         )
         await self.current_exchange.fetch_prices()
         self.current_pair = self.current_exchange.default_pair
 
         self.news_manager = NewsManager(self.message_bus, self.news_filter_manager)
         asyncio.create_task(self.news_manager.fetch_news())
+
+        self.app_config.current_account_id_changed.connect(self.change_current_exchange)
 
     @property
     def exchange_available_pairs(self) -> set[str]:
@@ -88,10 +94,11 @@ class UIController(QObject):
         self.message_bus.blockSignals(True)
         await self.current_exchange.stop_async()
 
-        keyring_account = CONFIG.current_keyring_account
+        keyring_account = self.app_config.current_keyring_account
         self.current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
             self.message_bus,
             self.pass_guard,
+            self.app_config,
         )
 
         # Init price fetching loops
