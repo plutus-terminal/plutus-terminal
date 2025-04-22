@@ -26,7 +26,8 @@ class GUISettingsService:
         """Initialize GUISettingsService state."""
         self._cache: dict[str, Any] = {}
 
-    def initialize_defaults(self, defaults: dict[str, Any]) -> None:
+    @staticmethod
+    def initialize_defaults(defaults: dict[str, Any]) -> None:
         """Initialize GUISettings with default values."""
         with DATABASE.atomic():
             for key, default in defaults.items():
@@ -64,13 +65,13 @@ class GUISettingsService:
 class AccountService:
     """Handles KeyringAccount and TradeConfig creation/deletion."""
 
-    def get_all(self) -> list[KeyringAccount]:
+    @staticmethod
+    def get_all() -> list[KeyringAccount]:
         """Get all KeyringAccounts."""
         return list(KeyringAccount.select())
 
-    def create(
-        self, username: str, exchange_type: ExchangeType, exchange_name: str
-    ) -> KeyringAccount:
+    @staticmethod
+    def create(username: str, exchange_type: ExchangeType, exchange_name: str) -> KeyringAccount:
         """Create KeyringAccount and TradeConfig."""
         with DATABASE.atomic():
             acct = KeyringAccount.create(
@@ -81,11 +82,12 @@ class AccountService:
             TradeConfig.create(account=acct)
         return acct
 
-    def delete(self, account_id: int) -> None:
+    @staticmethod
+    def delete(account_id: int) -> None:
         """Delete KeyringAccount and TradeConfig."""
         with DATABASE.atomic():
             account = KeyringAccount.get_by_id(account_id)
-            keyring.delete_password("plutus_terminal", account.username)
+            keyring.delete_password(AppConfig.SERVICE_NAME, str(account.username))
             TradeConfig.delete().where(TradeConfig.account == account_id).execute()
             KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()
 
@@ -111,7 +113,8 @@ class RPCService:
                     defaults={"rpc_urls": orjson.dumps(urls)},
                 )
 
-    def get_by_name(self, chain_name: str) -> Web3RPC:
+    @staticmethod
+    def get_by_name(chain_name: str) -> Web3RPC:
         """Get Web3RPC by chain name.
 
         Args:
@@ -122,7 +125,8 @@ class RPCService:
         """
         return Web3RPC.get(Web3RPC.chain_name == chain_name)
 
-    def get_all(self) -> list[Web3RPC]:
+    @staticmethod
+    def get_all() -> list[Web3RPC]:
         """Get all Web3RPCs.
 
         Returns:
@@ -144,7 +148,7 @@ class TradeConfigService:
         Returns:
             TradeConfig: TradeConfig object.
         """
-        return TradeConfig.get(TradeConfig.account == self.account_id)  # type: ignore
+        return TradeConfig.get(TradeConfig.account == self.account_id)
 
     def update(self, field: str, value: Any) -> None:  # noqa: ANN401
         """Update TradeConfig for a given account.
@@ -198,12 +202,33 @@ class ConfigField:
 
 
 class AppConfig(QObject):
-    """Singleton configuration object with shared state, per-field signals, and services."""
+    """Singleton configuration object with shared state, per-field signals, and services.
+
+    Attributes:
+           leverage (int): current leverage setting (descriptor-injected)
+           stop_loss (float): current stop-loss setting
+           take_profit (float): current take-profit setting
+           trade_value_lowest (int)
+           trade_value_low (int)
+           trade_value_medium (int)
+           trade_value_high (int)
+    """
 
     _instance: Self | None = None
 
-    SERVICE_NAME = "plutus_terminal"
+    # Declare attributes for type checkers
+    leverage: int
+    stop_loss: float
+    take_profit: float
+    trade_value_lowest: int
+    trade_value_low: int
+    trade_value_medium: int
+    trade_value_high: int
+    current_account_id: int
 
+    SERVICE_NAME = "plutus-terminal"
+
+    # Trade Config Signals
     leverage_changed = Signal(int)
     stop_loss_changed = Signal(float)
     take_profit_changed = Signal(float)
@@ -212,6 +237,19 @@ class AppConfig(QObject):
     trade_value_medium_changed = Signal(int)
     trade_value_high_changed = Signal(int)
     current_account_id_changed = Signal(int)
+
+    # GUI Settings Signals
+    first_run_changed = Signal(bool)
+    password_validation_changed = Signal(str)
+    news_show_images_changed = Signal(bool)
+    news_desktop_notifications_changed = Signal(bool)
+    minimize_to_tray_changed = Signal(bool)
+    window_geometry_changed = Signal(dict)
+    toast_position_changed = Signal(str)
+
+    # Other Signals
+    account_deleted = Signal()
+    account_created = Signal()
 
     DEFAULT_GUI_SETTINGS: dict[str, Any] = {  # noqa: RUF012
         "first_run": True,
@@ -312,14 +350,46 @@ class AppConfig(QObject):
         """
         self.gui_settings_service.set(key, value)
 
+        signal = getattr(self, f"{key}_changed")
+        signal.emit(value)
+
+    def delete_account(self, account_id: int) -> None:
+        """Delete an account from the database.
+
+        Args:
+            account_id (int): Account ID.
+        """
+        current_id = self.current_keyring_account.id  # type: ignore
+
+        self.account_service.delete(account_id)
+        self.account_deleted.emit()
+
+        if account_id == current_id:
+            self.current_keyring_account = self.account_service.get_all()[0]
+
+    def create_account(
+        self, username: str, exchange_type: ExchangeType, exchange_name: str
+    ) -> KeyringAccount:
+        """Create a new account and trade config.
+
+        Args:
+            username (str): Account username.
+            exchange_type (ExchangeType): Exchange type.
+            exchange_name (str): Exchange name.
+
+        Returns:
+            KeyringAccount: Created KeyringAccount.
+        """
+        account = self.account_service.create(username, exchange_type, exchange_name)
+        self.account_created.emit()
+        return account
+
     # Static wrappers
-    get_all_accounts = staticmethod(AccountService().get_all)
-    create_account = staticmethod(AccountService().create)
-    delete_account = staticmethod(AccountService().delete)
+    get_all_accounts = staticmethod(AccountService.get_all)
     get_all_user_filters = staticmethod(lambda: list(UserFilter.select()))
     delete_user_filter = staticmethod(
         lambda uid: UserFilter.delete().where(UserFilter.id == uid).execute()  # type: ignore
     )
-    get_web3_rpc_by_name = staticmethod(RPCService().get_by_name)
-    get_all_web3_rpc = staticmethod(RPCService().get_all)
+    get_web3_rpc_by_name = staticmethod(RPCService.get_by_name)
+    get_all_web3_rpc = staticmethod(RPCService.get_all)
     write_model_to_db = staticmethod(lambda model: model.save())

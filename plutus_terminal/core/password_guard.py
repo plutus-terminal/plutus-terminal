@@ -12,13 +12,13 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import keyring
 from qasync import os
 
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exceptions import (
     InvalidPasswordError,
     KeyringPasswordNotFoundError,
 )
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.db.models import KeyringAccount
 
 
@@ -111,7 +111,7 @@ class PasswordGuard:
     def get_keyring_password(self, keyring_account: KeyringAccount) -> str:
         """Get keyring password."""
         encrypted_keyring_password = keyring.get_password(
-            "plutus-terminal",
+            AppConfig.SERVICE_NAME,
             str(keyring_account.username),
         )
         if encrypted_keyring_password is None:

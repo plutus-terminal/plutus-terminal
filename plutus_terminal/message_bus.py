@@ -29,7 +29,7 @@ class MessageBus(QObject):
         list[PerpsPosition]: List of open positions.
     """
 
-    orders_feched: Signal = Signal(list)
+    orders_fetched: Signal = Signal(list)
     """Signal emitted when open orders are fetched.
 
     Args:

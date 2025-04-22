@@ -11,12 +11,12 @@ from plutus_terminal.core.exchange.types import PerpsTradeDirection
 
 def get_take_profit_target(
     execution_price: Decimal,
-    take_profit_percent: Optional[float],  # type: ignore
+    take_profit_percent: Optional[float],
     trade_direction: PerpsTradeDirection,
 ) -> Decimal:
     """Get take profit target price."""
     if take_profit_percent is None:
-        take_profit_percent: float = AppConfig().take_profit  # type: ignore
+        take_profit_percent = AppConfig().take_profit
 
     if take_profit_percent == 0:
         return Decimal(0)
@@ -28,12 +28,12 @@ def get_take_profit_target(
 
 def get_stop_loss_target(
     execution_price: Decimal,
-    take_profit_percent: Optional[float],  # type: ignore
+    take_profit_percent: Optional[float],
     trade_direction: PerpsTradeDirection,
 ) -> Decimal:
     """Get stop loss target price."""
     if take_profit_percent is None:
-        take_profit_percent: float = AppConfig().stop_loss  # type: ignore
+        take_profit_percent = AppConfig().stop_loss
 
     if take_profit_percent == 0:
         return Decimal(0)

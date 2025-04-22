@@ -106,7 +106,7 @@ class TradingChart(QWidget):
         self._ui_controller.message_bus.positions_fetched.connect(
             self.draw_positions,
         )
-        self._ui_controller.message_bus.orders_feched.connect(self.draw_orders)
+        self._ui_controller.message_bus.orders_fetched.connect(self.draw_orders)
 
         self._ui_controller.pair_changed.connect(self._on_pair_changed)
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)

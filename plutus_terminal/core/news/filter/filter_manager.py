@@ -67,9 +67,9 @@ class FilterManager:
     def _create_user_filters(self) -> None:
         """Create user filters."""
         for user_filter in self._all_user_filters:
-            filter_type = FilterType(user_filter.filter_type)  # type: ignore
+            filter_type = FilterType(user_filter.filter_type)
             match_pattern = orjson.loads(user_filter.match_pattern)  # type: ignore
-            action_type = ActionType(user_filter.action_type)  # type: ignore
+            action_type = ActionType(user_filter.action_type)
             action_args = orjson.loads(user_filter.action_args)  # type: ignore
 
             self._filter_type_map[filter_type].add_to_queue(

@@ -141,7 +141,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             )
             leverage = self._max_leverage
 
-        self.app_config.leverage = leverage  # type: ignore
+        self.app_config.leverage = leverage
 
     @asyncSlot()
     async def set_leverage(self, coin: str, leverage: int) -> None:
@@ -171,7 +171,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             )
             leverage = self._max_leverage
 
-        self.app_config.leverage = leverage  # type: ignore
+        self.app_config.leverage = leverage
 
     @staticmethod
     def name() -> str:

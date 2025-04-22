@@ -17,12 +17,6 @@ from plutus_terminal.ui.widgets.config.web3_config import Web3Config
 class ConfigDialog(QtWidgets.QDialog):
     """Config dialog."""
 
-    updated_trade_values = Signal()
-    leverage_changed = Signal(int)
-    update_filters = Signal()
-    show_images_toggled = Signal(bool)
-    desktop_notifications_toggled = Signal(bool)
-
     def __init__(
         self,
         ui_controller: UIController,
@@ -36,7 +30,7 @@ class ConfigDialog(QtWidgets.QDialog):
 
         self._tab_widget = QtWidgets.QTabWidget()
         self.persp_config = PerpsConfig(ui_controller)
-        self.news_config = NewsConfig()
+        self.news_config = NewsConfig(ui_controller)
         self.web3_config = Web3Config()
         self.account_config = AccountConfig(ui_controller.pass_guard, ui_controller.app_config)
         self.terminal_config = TerminalConfig(ui_controller.app_config)
@@ -52,21 +46,14 @@ class ConfigDialog(QtWidgets.QDialog):
         self.setMinimumSize(800, 800)
 
         self._setup_persp_config()
-        self.persp_config.updated_trade_values.connect(self.updated_trade_values)
-        self.persp_config.leverage_changed.connect(self.leverage_changed)
         self._tab_widget.addTab(self.persp_config, "Trade")
 
-        self.news_config.update_filters.connect(self.update_filters)
         self._tab_widget.addTab(self.news_config, "News Source")
 
         self._tab_widget.addTab(self.web3_config, "Web3")
 
         self._tab_widget.addTab(self.account_config, "Account")
 
-        self.terminal_config.show_images_toggled.connect(self.show_images_toggled)
-        self.terminal_config.desktop_notifications_toggled.connect(
-            self.desktop_notifications_toggled,
-        )
         self._tab_widget.addTab(self.terminal_config, "Terminal")
 
     def _setup_persp_config(self) -> None:

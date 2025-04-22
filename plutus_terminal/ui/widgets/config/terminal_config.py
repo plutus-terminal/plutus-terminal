@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtWidgets
@@ -17,9 +18,6 @@ if TYPE_CHECKING:
 
 class TerminalConfig(QtWidgets.QWidget):
     """Widget to control terminal configs."""
-
-    show_images_toggled = Signal(bool)
-    desktop_notifications_toggled = Signal(bool)
 
     def __init__(
         self,
@@ -51,6 +49,7 @@ class TerminalConfig(QtWidgets.QWidget):
         self._log_viewer = LogViewer()
 
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
 
     def _setup_widgets(self) -> None:
@@ -58,20 +57,13 @@ class TerminalConfig(QtWidgets.QWidget):
         self._show_images_checkbox.setChecked(
             self._app_config.get_gui_settings("news_show_images"),  # type: ignore
         )
-        self._show_images_checkbox.toggled.connect(self.show_images_toggled)
 
         self._show_desktop_news_checkbox.setChecked(
             self._app_config.get_gui_settings("news_desktop_notifications"),  # type: ignore
         )
-        self._show_desktop_news_checkbox.toggled.connect(
-            self.desktop_notifications_toggled,
-        )
 
         self._minimize_on_close_checkbox.setChecked(
             self._app_config.get_gui_settings("minimize_to_tray"),  # type: ignore
-        )
-        self._minimize_on_close_checkbox.toggled.connect(
-            lambda value: self._app_config.set_gui_settings("minimize_to_tray", value),
         )
 
         for option in ["bottom_left", "bottom_right", "top_left", "top_right"]:
@@ -83,10 +75,28 @@ class TerminalConfig(QtWidgets.QWidget):
 
         self._open_log_button.setMinimumHeight(30)
         self._open_log_button.setToolTip("Open log file")
-        self._open_log_button.clicked.connect(self._log_viewer.show)
 
         self._toast_position_combobox.setCurrentIndex(current_index)
+
+    def _connect_signals(self) -> None:
+        """Connect UI Signals."""
+        self._show_images_checkbox.toggled.connect(
+            partial(self._app_config.set_gui_settings, "news_show_images")
+        )
+        self._show_desktop_news_checkbox.toggled.connect(
+            partial(self._app_config.set_gui_settings, "news_desktop_notifications")
+        )
+        self._minimize_on_close_checkbox.toggled.connect(
+            partial(self._app_config.set_gui_settings, "minimize_to_tray"),
+        )
+
+        self._open_log_button.clicked.connect(self._log_viewer.show)
         self._toast_position_combobox.currentIndexChanged.connect(self._set_toast_position)
+
+        self._app_config.news_show_images_changed.connect(self._show_images_checkbox.setChecked)
+        self._app_config.news_desktop_notifications_changed.connect(
+            self._show_desktop_news_checkbox.setChecked
+        )
 
     def _setup_layout(self) -> None:
         """Config layout."""

@@ -10,12 +10,12 @@ from PySide6 import QtWidgets
 from PySide6.QtCore import QRegularExpression, Qt
 from PySide6.QtGui import QPixmap, QRegularExpressionValidator
 
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.types_ import ExchangeType
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.db.models import KeyringAccount
     from plutus_terminal.core.password_guard import PasswordGuard
 
@@ -213,7 +213,7 @@ class NewAccountDialog(QtWidgets.QDialog):
 
         # Save secrets to keyring
         keyring.set_password(
-            "plutus-terminal",
+            AppConfig.SERVICE_NAME,
             str(account_name),
             encrypted_secrets,
         )

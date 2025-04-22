@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtWidgets
@@ -110,8 +111,13 @@ class NewsList(QtWidgets.QWidget):
 
     def _connect_signals(self) -> None:
         """Connect signals."""
-        self._top_bar_show_images.toggled.connect(self.show_images_toggled)
-        self._top_bar_notifications.toggled.connect(self.notifications_toggled)
+        self._top_bar_show_images.toggled.connect(
+            partial(self._app_config.set_gui_settings, "news_show_images")
+        )
+        self._top_bar_notifications.toggled.connect(
+            partial(self._app_config.set_gui_settings, "news_desktop_notifications")
+        )
+
         self._top_bar_max_news.currentIndexChanged.connect(
             self.update_max_news,
         )
@@ -120,8 +126,15 @@ class NewsList(QtWidgets.QWidget):
         )
 
         self._ui_controller.message_bus.formatted_news.connect(self.add_news)
-
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+
+        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_low_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_lowest_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
+
+        self._app_config.news_show_images_changed.connect(self.show_images_toggled)
+        self._app_config.news_desktop_notifications_changed.connect(self.notifications_toggled)
 
     def _setup_layout(self) -> None:
         """Configure layouts."""
@@ -202,7 +215,7 @@ class NewsList(QtWidgets.QWidget):
             return
         self._show_widget_index_at_top(self._scroll_layout.indexOf(news_widget))
 
-    def _select_news_widget(self, news_widget: NewsWidget) -> None:
+    def _select_news_widget(self, news_widget: NewsWidget | None) -> None:
         """Select news widget."""
         if news_widget is None:
             return
@@ -316,10 +329,8 @@ class NewsList(QtWidgets.QWidget):
 
     def show_images_toggled(self, value: bool) -> None:
         """Show images toggled."""
-        self._app_config.set_gui_settings("news_show_images", value)
-        self._top_bar_show_images.blockSignals(True)
         self._top_bar_show_images.setChecked(value)
-        self._top_bar_show_images.blockSignals(False)
+
         for index in range(self._scroll_layout.count()):
             widget = self._scroll_layout.itemAt(index).widget()
             if isinstance(widget, NewsWidget):
@@ -334,10 +345,7 @@ class NewsList(QtWidgets.QWidget):
 
     def notifications_toggled(self, value: bool) -> None:
         """Notifications toggled."""
-        self._app_config.set_gui_settings("news_desktop_notifications", value)
-        self._top_bar_notifications.blockSignals(True)
         self._top_bar_notifications.setChecked(value)
-        self._top_bar_notifications.blockSignals(False)
         if value:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_on"))
         else:

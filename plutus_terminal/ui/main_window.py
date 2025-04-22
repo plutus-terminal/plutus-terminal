@@ -49,6 +49,7 @@ class PlutusMainWindow(QMainWindow):
         """Initialize shared variables."""
         super().__init__()
         self._ui_controller = ui_controller
+        self._app_config = ui_controller.app_config
 
         self.main_layout = QVBoxLayout()
         self.main_widget = QWidget()
@@ -110,19 +111,6 @@ class PlutusMainWindow(QMainWindow):
         self.setWindowTitle(f"Plutus Terminal - {__version__}")
         self.setWindowIcon(QPixmap(":/icons/plutus_icon"))
 
-        # Configure config dialog
-        self._config_dialog.updated_trade_values.connect(
-            self._update_quick_trade_values,
-        )
-        self._config_dialog.leverage_changed.connect(
-            self._ui_controller.current_exchange.set_all_leverage,
-        )
-        self._config_dialog.update_filters.connect(self._update_news_filters)
-        self._config_dialog.show_images_toggled.connect(self._news_list.show_images_toggled)
-        self._config_dialog.desktop_notifications_toggled.connect(
-            self._news_list.notifications_toggled,
-        )
-
         # Setup account info
         await self._account_info.set_approve_btn_visibility()
 
@@ -179,14 +167,3 @@ class PlutusMainWindow(QMainWindow):
         geometry = self._ui_controller.app_config.get_gui_settings("window_geometry")
         if geometry:
             self.restoreGeometry(bytes.fromhex(geometry))  # type: ignore
-
-    def _update_quick_trade_values(self) -> None:
-        """Update trade values."""
-        self._news_list.update_news_trade_buttons()
-        self._perps_trade.update_trade_buttons()
-        Toast.show_message("Trade values updated!", type_=ToastType.SUCCESS)
-
-    def _update_news_filters(self) -> None:
-        """Update news filters."""
-        self._ui_controller.update_news_filters()
-        Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)

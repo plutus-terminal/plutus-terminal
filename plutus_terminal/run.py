@@ -184,7 +184,7 @@ def run() -> None:
     else:
         import setproctitle
 
-        setproctitle.setproctitle("Plutues Terminal")
+        setproctitle.setproctitle("Plutus Terminal")
 
     from plutus_terminal.log_utils import setup_logging
 

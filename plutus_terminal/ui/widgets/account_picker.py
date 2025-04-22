@@ -29,12 +29,16 @@ class AccountPicker(QComboBox):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self._add_all_accounts()
-        self._set_current_account()
         self.setMinimumWidth(self.sizeHint().width() + 5)
         self.currentIndexChanged.connect(self._on_account_changed)
 
+        self._app_config.account_created.connect(self._add_all_accounts)
+        self._app_config.account_deleted.connect(self._add_all_accounts)
+
     def _add_all_accounts(self) -> None:
         """Add all accounts."""
+        self.blockSignals(True)
+
         self.clear()
         all_accounts = self._app_config.get_all_accounts()
         # Add all accounts
@@ -52,6 +56,9 @@ class AccountPicker(QComboBox):
             "Add new account",
             userData="New Account",
         )
+
+        self._set_current_account()
+        self.blockSignals(False)
 
     def _set_current_account(self) -> None:
         """Set current account."""
@@ -86,4 +93,3 @@ class AccountPicker(QComboBox):
             return
 
         self._app_config.current_keyring_account = account
-        await self._ui_controller.change_current_exchange()

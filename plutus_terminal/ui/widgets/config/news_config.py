@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import keyring
 import orjson
@@ -20,15 +20,19 @@ from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
+if TYPE_CHECKING:
+    from plutus_terminal.controller.ui_controller import UIController
+
 
 class NewsConfig(QtWidgets.QWidget):
     """Widget to control news configuration."""
 
-    update_filters = QtCore.Signal()
-
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+    ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
+        self._ui_controller = ui_controller
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -73,7 +77,7 @@ class NewsConfig(QtWidgets.QWidget):
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
         current_tree_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             TREE_KEY_NAME,
         )
         if current_tree_key:
@@ -92,7 +96,7 @@ class NewsConfig(QtWidgets.QWidget):
         )
         self._phoenix_text_label.setOpenExternalLinks(True)
         current_phoenix_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             PHOENIX_KEY_NAME,
         )
         if current_phoenix_key:
@@ -126,9 +130,9 @@ class NewsConfig(QtWidgets.QWidget):
 
         user_filters = AppConfig.get_all_user_filters()
         for user_filter in user_filters:
-            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:
                 self._keyword_matching_layout.addWidget(KeywordMatchingWidget(user_filter))
-            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:
                 self._data_matching_layout.addWidget(DataMatchingWidget(user_filter))
 
     def _setup_layout(self) -> None:
@@ -184,7 +188,7 @@ class NewsConfig(QtWidgets.QWidget):
             PHOENIX_KEY_NAME: self._phoenix_input.text(),
         }
         keyring.set_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             news_source,
             text_source[news_source],
         )
@@ -253,12 +257,12 @@ class NewsConfig(QtWidgets.QWidget):
         # Create new filters widget matching database
         user_filters = AppConfig.get_all_user_filters()
         for user_filter in user_filters:
-            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:
                 self._keyword_matching_layout.insertWidget(
                     self._keyword_matching_layout.count() - 1,
                     KeywordMatchingWidget(user_filter),
                 )
-            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:
                 self._data_matching_layout.insertWidget(
                     self._data_matching_layout.count() - 1,
                     DataMatchingWidget(user_filter),
@@ -276,7 +280,8 @@ class NewsConfig(QtWidgets.QWidget):
             if isinstance(widget, DataMatchingWidget):
                 widget.write_to_db()
 
-        self.update_filters.emit()
+        self._ui_controller.update_news_filters()
+        Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)
 
 
 class ColorButton(QtWidgets.QPushButton):

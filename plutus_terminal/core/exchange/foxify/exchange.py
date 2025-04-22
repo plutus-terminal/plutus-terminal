@@ -316,7 +316,7 @@ class FoxifyExchange(ExchangeBase):
             trade_direction,
         )
 
-        size_delta = amount * self.app_config.leverage  # type: ignore
+        size_delta = amount * self.app_config.leverage
 
         trade_args = foxify_utils.OpenTradingArgs(
             {

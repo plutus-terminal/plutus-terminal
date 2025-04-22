@@ -157,7 +157,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(50)
-        self._leverage_spin.setValue(self._app_config.leverage)  # type: ignore
+        self._leverage_spin.setValue(self._app_config.leverage)
         self._leverage_spin.editingFinished.connect(
             lambda: self._set_leverage_spin(
                 self._leverage_spin.value(),
@@ -271,6 +271,12 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
         self._ui_controller.pair_changed.connect(self._update_current_pair)
 
+        self._app_config.trade_value_high_changed.connect(self.update_trade_buttons)
+        self._app_config.trade_value_low_changed.connect(self.update_trade_buttons)
+        self._app_config.trade_value_lowest_changed.connect(self.update_trade_buttons)
+        self._app_config.trade_value_high_changed.connect(self.update_trade_buttons)
+        self._app_config.leverage_changed.connect(self._update_leverage_values)
+
     def _set_data_from_exchange(self) -> None:
         """Set data from exchange.
 
@@ -310,6 +316,15 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         await self._set_leverage()
 
+    def _update_leverage_values(self) -> None:
+        """Update leverage spin."""
+        self._leverage_spin.blockSignals(True)
+        self._leverage_spin.setValue(self._app_config.leverage)
+        self._leverage_spin.blockSignals(False)
+
+        self._update_info()
+        self._update_leverage_buttons(self._app_config.leverage)
+
     def _update_leverage_buttons(self, leverage_value: int) -> None:
         """Update leverage buttons state based on leverage value."""
         if leverage_value in {2, 5, 10, 20, 25, 50}:
@@ -343,10 +358,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         await self._exchange.set_leverage(coin, leverage_value)
 
         # In case the levarage was changed due to limits, ensure UI is up to date
-        if self._app_config.leverage != leverage_value:  # type: ignore
+        if self._app_config.leverage != leverage_value:
             self._leverage_spin.blockSignals(True)
-            self._leverage_spin.setValue(self._app_config.leverage)  # type: ignore
-            self._update_leverage_buttons(self._app_config.leverage)  # type: ignore
+            self._leverage_spin.setValue(self._app_config.leverage)
+            self._update_leverage_buttons(self._app_config.leverage)
             self._leverage_spin.blockSignals(False)
 
     def _update_info(self) -> None:
@@ -520,17 +535,17 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         # Ensure leverage is set correctly
         coin = self._exchange.format_coin_from_pair(pair)
-        await self._exchange.set_leverage(coin, self._app_config.leverage)  # type: ignore
+        await self._exchange.set_leverage(coin, self._app_config.leverage)
 
         self.top_bar.title.setText(f"Persp Trade | {simplified_pair}")
 
     def update_trade_buttons(self) -> None:
         """Update trade buttons values."""
         value_map = {
-            0: self._app_config.trade_value_lowest,  # type: ignore
-            1: self._app_config.trade_value_low,  # type: ignore
-            2: self._app_config.trade_value_medium,  # type: ignore
-            3: self._app_config.trade_value_high,  # type: ignore
+            0: self._app_config.trade_value_lowest,
+            1: self._app_config.trade_value_low,
+            2: self._app_config.trade_value_medium,
+            3: self._app_config.trade_value_high,
         }
         for index, btn in enumerate(self._long_btns):
             btn.setText(f"${value_map[index]}")
@@ -561,8 +576,8 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self.update_trade_buttons()
 
         self.blockSignals(True)
-        self._leverage_spin.setValue(self._app_config.leverage)  # type: ignore
-        self._update_leverage_buttons(self._app_config.leverage)  # type: ignore
+        self._leverage_spin.setValue(self._app_config.leverage)
+        self._update_leverage_buttons(self._app_config.leverage)
         self.blockSignals(False)
 
 

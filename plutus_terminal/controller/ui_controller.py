@@ -80,6 +80,8 @@ class UIController(QObject):
         self.news_manager = NewsManager(self.message_bus, self.news_filter_manager)
         asyncio.create_task(self.news_manager.fetch_news())
 
+        self.app_config.current_account_id_changed.connect(self.change_current_exchange)
+
     @property
     def exchange_available_pairs(self) -> set[str]:
         """Get Exchange available pairs."""

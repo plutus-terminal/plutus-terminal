@@ -64,7 +64,7 @@ class TradeTable(QtWidgets.QWidget):
         self._positions_table.row_clicked.connect(self._ui_controller.change_current_pair)
 
         self._ui_controller.message_bus.positions_fetched.connect(self.update_positions)
-        self._ui_controller.message_bus.orders_feched.connect(self.update_orders)
+        self._ui_controller.message_bus.orders_fetched.connect(self.update_orders)
         self._ui_controller.message_bus.subscribed_prices_fetched.connect(self.update_prices)
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)

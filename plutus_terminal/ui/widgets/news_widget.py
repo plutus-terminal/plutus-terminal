@@ -710,10 +710,10 @@ class NewsWidget(QtWidgets.QGroupBox):
     def update_trade_buttons(self) -> None:
         """Update trade values."""
         value_map = {
-            0: self._app_config.trade_value_lowest,  # type: ignore
-            1: self._app_config.trade_value_low,  # type: ignore
-            2: self._app_config.trade_value_medium,  # type: ignore
-            3: self._app_config.trade_value_high,  # type: ignore
+            0: self._app_config.trade_value_lowest,
+            1: self._app_config.trade_value_low,
+            2: self._app_config.trade_value_medium,
+            3: self._app_config.trade_value_high,
         }
         for index in range(4):
             for widget in self.findChildren(QtWidgets.QPushButton, f"SHORT_{index}"):
