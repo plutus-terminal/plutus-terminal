@@ -97,7 +97,7 @@ class PlutusSystemTrayApp(QApplication):
         self.processEvents()
         from plutus_terminal.controller.plutus_controller import PlutusController
 
-        self.plutus_controller = PlutusController(self.pass_guard)
+        self.plutus_controller = PlutusController(self.pass_guard, self._app_config)
 
     def _init_tray(self) -> None:
         """Initialize tray icon."""
@@ -117,9 +117,7 @@ class PlutusSystemTrayApp(QApplication):
 
     async def init_and_show(self) -> None:
         """Initialize window and show."""
-        from plutus_terminal.core.config import CONFIG
-
-        CONFIG.load_config()
+        self._app_config.load_all_configs()
         self.splash_screen.show_message("Initializing Plutus Controller...")
         await self.plutus_controller.init_async()
         self.splash_screen.hide()
@@ -133,8 +131,8 @@ class PlutusSystemTrayApp(QApplication):
         from plutus_terminal.core.config import AppConfig
         from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 
-        if not AppConfig.get_all_keyring_accounts():
-            new_account_dialog = NewAccountDialog(self.pass_guard)
+        if not AppConfig.get_all_accounts():
+            new_account_dialog = NewAccountDialog(self.pass_guard, self._app_config)
             if not new_account_dialog.exec():
                 sys.exit()
 
@@ -144,15 +142,16 @@ class PlutusSystemTrayApp(QApplication):
             "Unlocking Plutus Terminal...",
         )
         self.processEvents()
-        from plutus_terminal.core.config import CONFIG
+        from plutus_terminal.core.config import AppConfig
         from plutus_terminal.core.password_guard import PasswordGuard
         from plutus_terminal.ui.widgets.password_dialog import (
             CreatePasswordDialog,
             UnlockPasswordDialog,
         )
 
-        pass_guard = PasswordGuard()
-        if CONFIG.get_gui_settings("first_run"):
+        self._app_config = AppConfig()
+        pass_guard = PasswordGuard(self._app_config)
+        if self._app_config.get_gui_settings("first_run"):
             dialog = CreatePasswordDialog(pass_guard)
             if not dialog.exec():
                 sys.exit()

@@ -38,8 +38,8 @@ class ConfigDialog(QtWidgets.QDialog):
         self.persp_config = PerpsConfig(ui_controller)
         self.news_config = NewsConfig()
         self.web3_config = Web3Config()
-        self.account_config = AccountConfig(ui_controller.pass_guard)
-        self.terminal_config = TerminalConfig()
+        self.account_config = AccountConfig(ui_controller.pass_guard, ui_controller.app_config)
+        self.terminal_config = TerminalConfig(ui_controller.app_config)
 
         self._setup_widgets()
         self._setup_layout()

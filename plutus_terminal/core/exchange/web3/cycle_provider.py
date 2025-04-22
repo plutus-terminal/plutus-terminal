@@ -11,7 +11,7 @@ from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3.providers.async_base import AsyncJSONBaseProvider
 from web3.types import RPCEndpoint, RPCResponse
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 
 LOGGER = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def build_cycle_provider(chain_name: str) -> AsyncWeb3:
     Returns:
         AsyncCycleWeb3Provider: Web3 provider.
     """
-    providers_urls = orjson.loads(str(CONFIG.get_web3_rpc_by_name(chain_name).rpc_urls))
+    providers_urls = orjson.loads(str(AppConfig.get_web3_rpc_by_name(chain_name).rpc_urls))
     providers = [AsyncHTTPProvider(url) for url in providers_urls]
 
     provider = AsyncCycleWeb3Provider(providers)

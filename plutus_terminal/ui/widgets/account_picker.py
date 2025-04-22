@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QComboBox, QWidget
 from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 
 if TYPE_CHECKING:
@@ -23,6 +22,7 @@ class AccountPicker(QComboBox):
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
+        self._app_config = ui_controller.app_config
         self._pass_guard = ui_controller.pass_guard
         self._current_index = 0
 
@@ -36,7 +36,7 @@ class AccountPicker(QComboBox):
     def _add_all_accounts(self) -> None:
         """Add all accounts."""
         self.clear()
-        all_accounts = CONFIG.get_all_keyring_accounts()
+        all_accounts = self._app_config.get_all_accounts()
         # Add all accounts
         for account in all_accounts:
             icon = QPixmap(f":/exchanges/{account.exchange_name}")
@@ -56,7 +56,7 @@ class AccountPicker(QComboBox):
     def _set_current_account(self) -> None:
         """Set current account."""
         for index in range(self.count()):
-            if self.itemData(index) == CONFIG.current_keyring_account:
+            if self.itemData(index) == self._app_config.current_keyring_account:
                 self.setCurrentIndex(index)
                 self._current_index = index
                 break
@@ -67,7 +67,7 @@ class AccountPicker(QComboBox):
         account = self.itemData(index)
 
         if account == "New Account":
-            new_account_dialog = NewAccountDialog(self._pass_guard)
+            new_account_dialog = NewAccountDialog(self._pass_guard, self._app_config)
 
             if not new_account_dialog.exec():
                 self.blockSignals(True)
@@ -85,5 +85,5 @@ class AccountPicker(QComboBox):
             self.blockSignals(False)
             return
 
-        CONFIG.current_keyring_account = account
+        self._app_config.current_keyring_account = account
         await self._ui_controller.change_current_exchange()

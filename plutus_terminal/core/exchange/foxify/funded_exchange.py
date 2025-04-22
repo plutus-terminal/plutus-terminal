@@ -6,7 +6,7 @@ from qasync import asyncSlot
 from web3 import Account, HTTPProvider, Web3
 from web3.types import Gwei
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.foxify.exchange import FoxifyExchange
 from plutus_terminal.core.exchange.foxify.funded_fetcher import FoxifyFundedFetcher
@@ -19,14 +19,20 @@ from plutus_terminal.ui.widgets.toast import Toast, ToastType
 class FoxifyFundedExchange(FoxifyExchange):
     """Foxify Funded Exchange."""
 
-    def __init__(self, message_bus: MessageBus, pass_guard: PasswordGuard) -> None:
+    def __init__(
+        self,
+        message_bus: MessageBus,
+        pass_guard: PasswordGuard,
+        app_config: AppConfig,
+    ) -> None:
         """Initialize shared attributes.
 
         Args:
             message_bus (MessageBus): Message bus to send signals.
             pass_guard (PasswordGuard): PasswordGuard.
+            app_config (AppConfig): App config.
         """
-        super().__init__(message_bus=message_bus, pass_guard=pass_guard)
+        super().__init__(message_bus=message_bus, pass_guard=pass_guard, app_config=app_config)
 
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
@@ -135,7 +141,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             )
             leverage = self._max_leverage
 
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage  # type: ignore
 
     @asyncSlot()
     async def set_leverage(self, coin: str, leverage: int) -> None:
@@ -165,7 +171,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             )
             leverage = self._max_leverage
 
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage  # type: ignore
 
     @staticmethod
     def name() -> str:

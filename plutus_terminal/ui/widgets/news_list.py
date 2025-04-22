@@ -10,7 +10,6 @@ from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QSoundEffect
 from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.news_widget import NewsWidget
 from plutus_terminal.ui.widgets.toast import Toast
@@ -38,6 +37,7 @@ class NewsList(QtWidgets.QWidget):
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
         self._exchange = ui_controller.current_exchange
+        self._app_config = self._ui_controller.app_config
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -83,13 +83,13 @@ class NewsList(QtWidgets.QWidget):
         self._top_bar_show_images.setAutoExclusive(False)
         self._top_bar_show_images.setIcon(QPixmap(":/icons/gallery_icon"))
         self._top_bar_show_images.setChecked(
-            CONFIG.get_gui_settings("news_show_images"),
+            self._app_config.get_gui_settings("news_show_images"),  # type: ignore
         )
         self._top_bar_show_images.setToolTip("Show Images")
 
         self._top_bar_notifications.setAutoExclusive(False)
         self._top_bar_notifications.setChecked(
-            CONFIG.get_gui_settings("news_desktop_notifications"),
+            self._app_config.get_gui_settings("news_desktop_notifications"),  # type: ignore
         )
         if self._top_bar_notifications.isChecked():
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_on"))
@@ -222,7 +222,7 @@ class NewsList(QtWidgets.QWidget):
             return
 
         self._sfxs[news_data["sfx"]].play()
-        if CONFIG.get_gui_settings("news_desktop_notifications"):
+        if self._app_config.get_gui_settings("news_desktop_notifications"):
             desktop_news = self._create_news_widget(news_data, display_delay=True)
             Toast.show_widget(
                 desktop_news,
@@ -291,8 +291,9 @@ class NewsList(QtWidgets.QWidget):
             self._exchange.format_pair_from_coin,
             self._exchange.available_pairs,
             display_delay=display_delay,
+            app_config=self._ui_controller.app_config,
         )
-        news_widget.show_images = CONFIG.get_gui_settings("news_show_images")
+        news_widget.show_images = self._app_config.get_gui_settings("news_show_images")  # type: ignore
         news_widget.create_interactions(self._exchange)
         news_widget.pair_clicked.connect(self._ui_controller.change_current_pair)
         news_widget.news_clicked.connect(self._show_widget_at_top)
@@ -315,7 +316,7 @@ class NewsList(QtWidgets.QWidget):
 
     def show_images_toggled(self, value: bool) -> None:
         """Show images toggled."""
-        CONFIG.set_gui_settings("news_show_images", value)
+        self._app_config.set_gui_settings("news_show_images", value)
         self._top_bar_show_images.blockSignals(True)
         self._top_bar_show_images.setChecked(value)
         self._top_bar_show_images.blockSignals(False)
@@ -333,7 +334,7 @@ class NewsList(QtWidgets.QWidget):
 
     def notifications_toggled(self, value: bool) -> None:
         """Notifications toggled."""
-        CONFIG.set_gui_settings("news_desktop_notifications", value)
+        self._app_config.set_gui_settings("news_desktop_notifications", value)
         self._top_bar_notifications.blockSignals(True)
         self._top_bar_notifications.setChecked(value)
         self._top_bar_notifications.blockSignals(False)

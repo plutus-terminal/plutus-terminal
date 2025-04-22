@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Optional, Protocol, Self
 
 from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import (
     TransactionFailedError,
 )
@@ -19,6 +18,7 @@ from plutus_terminal.core.exchange.types import PnlDetails
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
+    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.exchange.types import OrderData, TradeResults
     from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import (
@@ -264,17 +264,24 @@ class ExchangeTraderDex(ExchangeTrader, Protocol):
 class ExchangeBase(ABC):
     """Base class to interact with exchange."""
 
-    def __init__(self, message_bus: MessageBus, pass_guard: PasswordGuard) -> None:
+    def __init__(
+        self,
+        message_bus: MessageBus,
+        pass_guard: PasswordGuard,
+        app_config: AppConfig,
+    ) -> None:
         """Initialize shared variables.
 
         Args:
             message_bus (MessageBus): Message bus to send signals.
             pass_guard (PasswordGuard): Password guard.
+            app_config (AppConfig): App config.
         """
         self.message_bus = message_bus
+        self._pass_guard = pass_guard
+        self.app_config = app_config
         self._watched_positions: list[PerpsPosition] = []
         self._async_tasks: list[asyncio.Task] = []
-        self._pass_guard = pass_guard
 
     @property
     @abstractmethod
@@ -334,6 +341,7 @@ class ExchangeBase(ABC):
         cls,
         message_bus: MessageBus,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
     ) -> Self:
         """Create class instance and init_async."""
 
@@ -477,7 +485,7 @@ class ExchangeBase(ABC):
             f"Leverage set to all pairs: {leverage}x",
             type_=ToastType.SUCCESS,
         )
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage
 
     @asyncSlot()
     async def set_leverage(self, coin: str, leverage: int) -> None:
@@ -492,7 +500,7 @@ class ExchangeBase(ABC):
             f"Leverage of {pair} set to: {leverage}x",
             type_=ToastType.SUCCESS,
         )
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage
 
     def is_valid_order_size(self, order_size: Decimal) -> bool:
         """Validate order size with min and max values.
@@ -526,9 +534,9 @@ class ExchangeBase(ABC):
             trade_type (TradeType): Trade type.
             execution_price (Optional[Decimal], optional): Execution price.
             take_profit (Optional[float], optional): Take profit price.
-                If None use CONFIG.take_profit.
+                If None use self.app_config.take_profit.
             stop_loss (Optional[float], optional): Stop loss price.
-                If None use CONFIG.stop_loss.
+                If None use self.app_config.stop_loss.
 
         Raises:
             InvalidOrderSizeError: If order size is not valid.

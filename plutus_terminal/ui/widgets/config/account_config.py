@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.ui.widgets.new_account import NewAccountDialog
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
@@ -22,11 +22,13 @@ class AccountConfig(QtWidgets.QWidget):
     def __init__(
         self,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._pass_guard = pass_guard
+        self._app_config = app_config
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -79,7 +81,7 @@ class AccountConfig(QtWidgets.QWidget):
             self._account_box_layout.removeWidget(widget)
             widget.deleteLater()
 
-        all_accounts = CONFIG.get_all_keyring_accounts()
+        all_accounts = AppConfig.get_all_accounts()
         for account in all_accounts:
             account_widget = AccountWidget(keyring_account=account)
             self._account_box_layout.addWidget(account_widget)
@@ -87,7 +89,7 @@ class AccountConfig(QtWidgets.QWidget):
 
     def _add_account(self) -> None:
         """Add account."""
-        new_account_dialog = NewAccountDialog(self._pass_guard)
+        new_account_dialog = NewAccountDialog(self._pass_guard, self._app_config)
         new_account_dialog.exec()
         self.populate_accounts()
         Toast.show_message("New account added", type_=ToastType.SUCCESS)
@@ -140,7 +142,7 @@ class AccountWidget(QtWidgets.QFrame):
 
     def _delete_account(self) -> None:
         """Delete account."""
-        CONFIG.delete_account(self._keyring_account.id)  # type: ignore
+        AppConfig.delete_account(self._keyring_account.id)  # type: ignore
         self.deleted.emit()
         Toast.show_message(
             f"Account '{self._keyring_account.username}' deleted",

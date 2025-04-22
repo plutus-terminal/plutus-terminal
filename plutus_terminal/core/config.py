@@ -1,10 +1,10 @@
-"""Class to manage app config."""
+"""Module to manage app configuration."""
 
-from typing import Any
+from typing import Any, Self
 
 import keyring
 import orjson
-from peewee import ModelBase
+from PySide6.QtCore import QObject, Signal
 
 from plutus_terminal.core.db.models import (
     DATABASE,
@@ -19,363 +19,307 @@ from plutus_terminal.core.db.models import (
 from plutus_terminal.core.types_ import ExchangeType
 
 
-class AppConfig:
-    """Manage app config."""
-
-    SERVICE_NAME = "plutus_terminal"
+class GUISettingsService:
+    """Manages GUISettings CRUD and caching."""
 
     def __init__(self) -> None:
-        """Initialize shared variables."""
-        self._current_keyring_account: KeyringAccount
-        self._gui_settings_cache: dict[str, Any] = {}
+        """Initialize GUISettingsService state."""
+        self._cache: dict[str, Any] = {}
 
-        self._leverage = 0
-        self._stop_loss = 0.0
-        self._take_profit = 0.0
-        self._trade_value_lowest = 0
-        self._trade_value_low = 0
-        self._trade_value_medium = 0
-        self._trade_value_high = 0
-
-        self._validate_database()
-
-        # create default GUI settings
-        self.create_default_gui_settings()
-        # create default web3
-        self.create_default_rpcs()
-
-    @property
-    def current_keyring_account(self) -> KeyringAccount:
-        """Returns current account set in the terminal."""
-        return self._current_keyring_account
-
-    @current_keyring_account.setter
-    def current_keyring_account(self, new_account: KeyringAccount) -> None:
-        """Set new current account."""
-        if new_account not in self.get_all_keyring_accounts():
-            msg = f"Invalid account: {new_account}"
-            raise ValueError(msg)
+    def initialize_defaults(self, defaults: dict[str, Any]) -> None:
+        """Initialize GUISettings with default values."""
         with DATABASE.atomic():
-            self.set_gui_settings("current_account_id", new_account.id)  # type: ignore
+            for key, default in defaults.items():
+                GUISettings.get_or_create(
+                    key=key,
+                    defaults={"value": orjson.dumps(default)},
+                )
 
-        self._current_keyring_account = new_account
-        self.load_config()
-
-    @property
-    def leverage(self) -> int:
-        """Returns leverage to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._leverage
-
-    @leverage.setter
-    def leverage(self, new_value: int) -> None:
-        """Set new leverage value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"leverage": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._leverage = new_value
-
-    @property
-    def stop_loss(self) -> float:
-        """Returns stop_loss to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._stop_loss
-
-    @stop_loss.setter
-    def stop_loss(self, new_value: float) -> None:
-        """Set new stop_loss value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"stop_loss": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._stop_loss = new_value
-
-    @property
-    def take_profit(self) -> float:
-        """Returns take_profit to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._take_profit
-
-    @take_profit.setter
-    def take_profit(self, new_value: float) -> None:
-        """Set new take_profit value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"take_profit": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._take_profit = new_value
-
-    @property
-    def trade_value_lowest(self) -> int:
-        """Returns trade_value_lowest to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._trade_value_lowest
-
-    @trade_value_lowest.setter
-    def trade_value_lowest(self, new_value: int) -> None:
-        """Set new trade_value_lowest value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"trade_value_lowest": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._trade_value_lowest = new_value
-
-    @property
-    def trade_value_low(self) -> int:
-        """Returns trade_value_lowe to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._trade_value_low
-
-    @trade_value_low.setter
-    def trade_value_low(self, new_value: int) -> None:
-        """Set new trade_value_low value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"trade_value_low": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._trade_value_low = new_value
-
-    @property
-    def trade_value_medium(self) -> int:
-        """Returns trade_value_medium to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._trade_value_medium
-
-    @trade_value_medium.setter
-    def trade_value_medium(self, new_value: int) -> None:
-        """Set new trade_value_medium value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"trade_value_medium": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._trade_value_medium = new_value
-
-    @property
-    def trade_value_high(self) -> int:
-        """Returns trade_value_high to be used in the terminal.
-
-        This value is associated with the current account.
-        """
-        return self._trade_value_high
-
-    @trade_value_high.setter
-    def trade_value_high(self, new_value: int) -> None:
-        """Set new trade_value_high value for current_keyring_account."""
-        with DATABASE.atomic():
-            self._generic_update(
-                TradeConfig,
-                {"trade_value_high": new_value},
-                self.current_keyring_account.id,  # type: ignore
-            )
-        self._trade_value_high = new_value
-
-    def _generic_update(
-        self,
-        model: ModelBase,
-        attribute_dict: dict[str, Any],
-        model_id: int,
-    ) -> None:
-        """Update Model attribute with given vallue.
+    def get(self, key: str) -> str | bool | int:
+        """Get GUISettings value by key.
 
         Args:
-            model (Peewee.Model): Model to update value.
-            attribute_dict (dict[str, Any]): Dict with attribute name and value.
-            model_id (int): Id of the model to update.
+            key (str): GUISettings key.
+
+        Returns:
+            str|bool|int: GUISettings value.
         """
-        query = model.update(**attribute_dict).where(model.id == model_id)  # type: ignore
-        query.execute()
+        if key not in self._cache:
+            raw = GUISettings.get(GUISettings.key == key).value
+            self._cache[key] = orjson.loads(raw)
+        return self._cache[key]
 
-    def load_config(self) -> None:
-        """Load config values from database."""
-        account_id = GUISettings.get(GUISettings.key == "current_account_id").value
+    def set(self, key: str, value: Any) -> None:  # noqa: ANN401
+        """Set GUISettings value by key.
 
-        keyring_account: KeyringAccount = KeyringAccount.get_by_id(account_id)
-        self._current_keyring_account = keyring_account
+        Args:
+            key (str): GUISettings key.
+            value (Any): GUISettings value.
+        """
+        self._cache[key] = value
+        raw = orjson.dumps(value)
+        GUISettings.update(value=raw).where(GUISettings.key == key).execute()
 
-        trade_config = TradeConfig.get(TradeConfig.account == keyring_account.id)  # type: ignore
 
-        self._leverage = trade_config.leverage
-        self._stop_loss = trade_config.stop_loss
-        self._take_profit = trade_config.take_profit
-        self._trade_value_lowest = trade_config.trade_value_lowest
-        self._trade_value_low = trade_config.trade_value_low
-        self._trade_value_medium = trade_config.trade_value_medium
-        self._trade_value_high = trade_config.trade_value_high
+class AccountService:
+    """Handles KeyringAccount and TradeConfig creation/deletion."""
 
-    def create_default_gui_settings(self) -> None:
-        """Get or create default GUI settings."""
-        with DATABASE.atomic():
-            GUISettings.get_or_create(
-                key="first_run",
-                defaults={"value": orjson.dumps(True)},
-            )
-            GUISettings.get_or_create(
-                key="password_validation",
-                defaults={"value": orjson.dumps("")},
-            )
-            GUISettings.get_or_create(
-                key="current_account_id",
-                defaults={"value": orjson.dumps(1)},
-            )
-            GUISettings.get_or_create(
-                key="news_show_images",
-                defaults={"value": orjson.dumps(True)},
-            )
-            GUISettings.get_or_create(
-                key="news_desktop_notifications",
-                defaults={"value": orjson.dumps(True)},
-            )
-            GUISettings.get_or_create(
-                key="minimize_to_tray",
-                defaults={"value": orjson.dumps(True)},
-            )
-            GUISettings.get_or_create(
-                key="window_geometry",
-                defaults={"value": orjson.dumps({})},
-            )
-            GUISettings.get_or_create(
-                key="toast_position",
-                defaults={"value": orjson.dumps("bottom_left")},
-            )
+    def get_all(self) -> list[KeyringAccount]:
+        """Get all KeyringAccounts."""
+        return list(KeyringAccount.select())
 
-    def get_gui_settings(self, key: str) -> Any:  # noqa: ANN401
-        """Get GUI settings value for key."""
-        cached_value = self._gui_settings_cache.get(key, None)
-        if cached_value is not None:
-            return cached_value
-
-        value = GUISettings.get(GUISettings.key == key).value
-        value = orjson.loads(value)
-        self._gui_settings_cache[key] = value
-        return value
-
-    def set_gui_settings(self, key: str, value: Any) -> None:  # noqa: ANN401
-        """Set GUI settings value for key."""
-        self._gui_settings_cache[key] = value
-        value = orjson.dumps(value)
-        GUISettings.update(value=value).where(GUISettings.key == key).execute()
-
-    def _validate_database(self) -> None:
-        """Validate database existence and tables."""
-        if not DATABASE_PATH.exists():
-            create_database()
-
-    @staticmethod
-    def get_all_keyring_accounts() -> list[KeyringAccount]:
-        """Get all keyring accounts."""
-        with DATABASE.atomic():
-            return KeyringAccount.select()
-
-    @staticmethod
-    def get_all_user_filters() -> list[UserFilter]:
-        """Get all user filters from database."""
-        with DATABASE.atomic():
-            return UserFilter.select()
-
-    @staticmethod
-    def write_model_to_db(model: Any) -> None:  # noqa: ANN401
-        """Write model to database."""
-        with DATABASE.atomic():
-            model.save()
-
-    @staticmethod
-    def delete_user_filter(user_filter_id: int) -> None:
-        """Delete user_filter from database."""
-        with DATABASE.atomic():
-            UserFilter.delete().where(UserFilter.id == user_filter_id).execute()  # type: ignore
-
-    @staticmethod
-    def create_account(
-        username: str,
-        exchange_type: ExchangeType,
-        exchange_name: str,
+    def create(
+        self, username: str, exchange_type: ExchangeType, exchange_name: str
     ) -> KeyringAccount:
-        """Create new account."""
-        with DATABASE:
-            keyring_account = KeyringAccount.create(
+        """Create KeyringAccount and TradeConfig."""
+        with DATABASE.atomic():
+            acct = KeyringAccount.create(
                 username=username,
                 exchange_type=exchange_type,
                 exchange_name=exchange_name,
             )
-            TradeConfig.create(account=keyring_account)
-        return keyring_account
+            TradeConfig.create(account=acct)
+        return acct
 
-    @staticmethod
-    def delete_account(account_id: int) -> None:
-        """Delete account."""
+    def delete(self, account_id: int) -> None:
+        """Delete KeyringAccount and TradeConfig."""
         with DATABASE.atomic():
-            keyring_account = KeyringAccount.get_by_id(account_id)
-            keyring.delete_password("plutus-terminal", str(keyring_account.username))
-            KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()  # type: ignore
+            account = KeyringAccount.get_by_id(account_id)
+            keyring.delete_password("plutus_terminal", account.username)
             TradeConfig.delete().where(TradeConfig.account == account_id).execute()
+            KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()
 
-    @staticmethod
-    def create_default_rpcs() -> None:
-        """Create default values for Web3 RPC."""
+
+class RPCService:
+    """Manages Web3RPC defaults and queries."""
+
+    DEFAULT_RPCS: dict[str, list[str]] = {  # noqa: RUF012
+        "Arbitrum One Fetcher": [
+            "https://arbitrum-one-rpc.publicnode.com",
+            "https://arbitrum.blockpi.network/v1/rpc/public",
+            "https://arbitrum-one.public.blastapi.io/",
+        ],
+        "Arbitrum One Trader": ["https://arb1.arbitrum.io/rpc"],
+    }
+
+    def initialize_defaults(self) -> None:
+        """Initialize Web3RPC with default values."""
         with DATABASE.atomic():
-            # Arbitrum One
-            Web3RPC.get_or_create(
-                chain_name="Arbitrum One Fetcher",
-                defaults={
-                    "rpc_urls": orjson.dumps(
-                        [
-                            "https://arbitrum-one-rpc.publicnode.com",
-                            "https://arbitrum.blockpi.network/v1/rpc/public",
-                            "https://rpc.ankr.com/arbitrum",
-                            "https://arbitrum-one.public.blastapi.io/",
-                            "https://arbitrum.llamarpc.com",
-                        ],
-                    ),
-                },
-            )
+            for name, urls in self.DEFAULT_RPCS.items():
+                Web3RPC.get_or_create(
+                    chain_name=name,
+                    defaults={"rpc_urls": orjson.dumps(urls)},
+                )
 
-            Web3RPC.get_or_create(
-                chain_name="Arbitrum One Trader",
-                defaults={
-                    "rpc_urls": orjson.dumps(
-                        [
-                            "https://arb1.arbitrum.io/rpc",
-                        ],
-                    ),
-                },
-            )
+    def get_by_name(self, chain_name: str) -> Web3RPC:
+        """Get Web3RPC by chain name.
 
-    @staticmethod
-    def get_web3_rpc_by_name(chain_name: str) -> Web3RPC:
-        """Get Web3 RPC by name."""
-        with DATABASE.atomic():
-            return Web3RPC.get(Web3RPC.chain_name == chain_name)
+        Args:
+            chain_name (str): Web3RPC chain name.
 
-    @staticmethod
-    def get_all_web3_rpc() -> list[Web3RPC]:
-        """Get all Web3 RPC."""
-        with DATABASE.atomic():
-            return Web3RPC.select()
+        Returns:
+            Web3RPC: Web3RPC object.
+        """
+        return Web3RPC.get(Web3RPC.chain_name == chain_name)
+
+    def get_all(self) -> list[Web3RPC]:
+        """Get all Web3RPCs.
+
+        Returns:
+            list[Web3RPC]: List of Web3RPC objects.
+        """
+        return list(Web3RPC.select())
 
 
-CONFIG = AppConfig()
+class TradeConfigService:
+    """Manages retrieval and updates of TradeConfig for a given account."""
+
+    def __init__(self, account_id: int) -> None:
+        """Initialize TradeConfigService state."""
+        self.account_id = account_id
+
+    def load(self) -> TradeConfig:
+        """Load TradeConfig for a given account.
+
+        Returns:
+            TradeConfig: TradeConfig object.
+        """
+        return TradeConfig.get(TradeConfig.account == self.account_id)  # type: ignore
+
+    def update(self, field: str, value: Any) -> None:  # noqa: ANN401
+        """Update TradeConfig for a given account.
+
+        Args:
+            field (str): TradeConfig field.
+            value (Any): TradeConfig value.
+        """
+        TradeConfig.update(**{field: value}).where(TradeConfig.account == self.account_id).execute()
+
+
+class ConfigField:
+    """Descriptor that manages a single TradeConfig field.
+
+      - Persists changes via TradeConfigService.update()
+      - Updates the in-memory private attribute
+      - Emits a per-field Qt signal when modified
+
+    Args:
+        field (str): Name of the TradeConfig attribute this descriptor controls.
+    """
+
+    def __init__(self, field: str) -> None:
+        """Initialize ConfigField state."""
+        self.field: str = field
+
+    def __get__(self, instance: "AppConfig | None", owner: type[Any]) -> Any:  # noqa: ANN401
+        """Retrieve the value of the associated TradeConfig field.
+
+        Args:
+            instance (AppConfig): The AppConfig instance invoking the change.
+            owner (Any): The AppConfig class.
+
+        Returns:
+            Any: The value of the field.
+        """
+        if instance is None:
+            return self
+        return getattr(instance, f"_{self.field}")
+
+    def __set__(self, instance: "AppConfig", value: Any) -> None:  # noqa: ANN401
+        """Persist and broadcast a change to the associated TradeConfig field.
+
+        Args:
+            instance (AppConfig): The AppConfig instance invoking the change.
+            value (Any): The new value for the field.
+        """
+        instance._trade_service.update(self.field, value)  # noqa: SLF001
+        setattr(instance, f"_{self.field}", value)
+        getattr(instance, f"{self.field}_changed").emit(value)
+
+
+class AppConfig(QObject):
+    """Singleton configuration object with shared state, per-field signals, and services."""
+
+    _instance: Self | None = None
+
+    SERVICE_NAME = "plutus_terminal"
+
+    leverage_changed = Signal(int)
+    stop_loss_changed = Signal(float)
+    take_profit_changed = Signal(float)
+    trade_value_lowest_changed = Signal(int)
+    trade_value_low_changed = Signal(int)
+    trade_value_medium_changed = Signal(int)
+    trade_value_high_changed = Signal(int)
+    current_account_id_changed = Signal(int)
+
+    DEFAULT_GUI_SETTINGS: dict[str, Any] = {  # noqa: RUF012
+        "first_run": True,
+        "password_validation": "",
+        "current_account_id": 1,
+        "news_show_images": True,
+        "news_desktop_notifications": True,
+        "minimize_to_tray": True,
+        "window_geometry": {},
+        "toast_position": "bottom_left",
+    }
+
+    _trade_fields = [  # noqa: RUF012
+        "leverage",
+        "stop_loss",
+        "take_profit",
+        "trade_value_lowest",
+        "trade_value_low",
+        "trade_value_medium",
+        "trade_value_high",
+    ]
+
+    # Attach descriptors dynamically
+    for _field in _trade_fields:
+        locals()[_field] = ConfigField(_field)
+
+    def __new__(cls) -> Self:
+        """Singleton implementation."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self) -> None:
+        """Initialize AppConfig state."""
+        # Initialize only once
+        if getattr(self, "_initialized", False):
+            return
+        super().__init__()
+        self._initialized = True
+
+        # Services
+        self.gui_settings_service = GUISettingsService()
+        self.account_service = AccountService()
+        self.rpc_service = RPCService()
+
+        # Database and defaults
+        self._ensure_database()
+        self.gui_settings_service.initialize_defaults(self.DEFAULT_GUI_SETTINGS)
+        self.rpc_service.initialize_defaults()
+
+    def _ensure_database(self) -> None:
+        if not DATABASE_PATH.exists():
+            create_database()
+
+    def _load_services_for_account(self) -> None:
+        current_id = self.gui_settings_service.get("current_account_id")
+        self._trade_service = TradeConfigService(current_id)  # type: ignore
+
+    def load_all_configs(self) -> None:
+        """Loads GUI and trade settings into memory."""
+        # Load current account and trade config
+        self._load_services_for_account()
+        trade = self._trade_service.load()
+        for f in self._trade_fields:
+            setattr(self, f"_{f}", getattr(trade, f))
+
+    @property
+    def current_keyring_account(self) -> KeyringAccount:
+        """Returns: Current KeyringAccount."""
+        return KeyringAccount.get_by_id(self.gui_settings_service.get("current_account_id"))
+
+    @current_keyring_account.setter
+    def current_keyring_account(self, new_acct: KeyringAccount) -> None:
+        """Sets the current KeyringAccount.
+
+        Args:
+            new_acct (KeyringAccount): New KeyringAccount.
+        """
+        if new_acct not in self.account_service.get_all():
+            msg = f"Invalid account: {new_acct}"
+            raise ValueError(msg)
+
+        self.gui_settings_service.set("current_account_id", new_acct.id)  # type: ignore
+        self._load_services_for_account()
+        self.load_all_configs()
+        self.current_account_id_changed.emit(new_acct.id)  # type: ignore
+
+    def get_gui_settings(self, key: str) -> str | bool | int:
+        """Returns: GUISettings value by key."""
+        return self.gui_settings_service.get(key)
+
+    def set_gui_settings(self, key: str, value: Any) -> None:  # noqa: ANN401
+        """Set GUISettings value by key.
+
+        Args:
+            key (str): GUISettings key.
+            value (Any): GUISettings value.
+        """
+        self.gui_settings_service.set(key, value)
+
+    # Static wrappers
+    get_all_accounts = staticmethod(AccountService().get_all)
+    create_account = staticmethod(AccountService().create)
+    delete_account = staticmethod(AccountService().delete)
+    get_all_user_filters = staticmethod(lambda: list(UserFilter.select()))
+    delete_user_filter = staticmethod(
+        lambda uid: UserFilter.delete().where(UserFilter.id == uid).execute()  # type: ignore
+    )
+    get_web3_rpc_by_name = staticmethod(RPCService().get_by_name)
+    get_all_web3_rpc = staticmethod(RPCService().get_all)
+    write_model_to_db = staticmethod(lambda model: model.save())

@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 )
 
 from plutus_terminal import __version__
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
@@ -161,8 +160,10 @@ class PlutusMainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Hide window on close."""
-        CONFIG.set_gui_settings("window_geometry", self.saveGeometry().data().hex())
-        if CONFIG.get_gui_settings("minimize_to_tray"):
+        self._ui_controller.app_config.set_gui_settings(
+            "window_geometry", self.saveGeometry().data().hex()
+        )
+        if self._ui_controller.app_config.get_gui_settings("minimize_to_tray"):
             event.ignore()
             self.hide()
         else:
@@ -175,9 +176,9 @@ class PlutusMainWindow(QMainWindow):
 
     def _load_geometry(self) -> None:
         """Load window geometry."""
-        geometry = CONFIG.get_gui_settings("window_geometry")
+        geometry = self._ui_controller.app_config.get_gui_settings("window_geometry")
         if geometry:
-            self.restoreGeometry(bytes.fromhex(geometry))
+            self.restoreGeometry(bytes.fromhex(geometry))  # type: ignore
 
     def _update_quick_trade_values(self) -> None:
         """Update trade values."""

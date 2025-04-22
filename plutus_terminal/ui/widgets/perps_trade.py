@@ -10,7 +10,6 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Signal
 from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.types import PerpsPosition
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
@@ -36,6 +35,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
         self._exchange = ui_controller.current_exchange
+        self._app_config = self._ui_controller.app_config
 
         self.main_layout = QtWidgets.QGridLayout(self)
         self.top_bar = TopBar("Perps Trade")
@@ -157,7 +157,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(50)
-        self._leverage_spin.setValue(CONFIG.leverage)
+        self._leverage_spin.setValue(self._app_config.leverage)  # type: ignore
         self._leverage_spin.editingFinished.connect(
             lambda: self._set_leverage_spin(
                 self._leverage_spin.value(),
@@ -343,10 +343,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         await self._exchange.set_leverage(coin, leverage_value)
 
         # In case the levarage was changed due to limits, ensure UI is up to date
-        if CONFIG.leverage != leverage_value:
+        if self._app_config.leverage != leverage_value:  # type: ignore
             self._leverage_spin.blockSignals(True)
-            self._leverage_spin.setValue(CONFIG.leverage)
-            self._update_leverage_buttons(CONFIG.leverage)
+            self._leverage_spin.setValue(self._app_config.leverage)  # type: ignore
+            self._update_leverage_buttons(self._app_config.leverage)  # type: ignore
             self._leverage_spin.blockSignals(False)
 
     def _update_info(self) -> None:
@@ -432,7 +432,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         direction: PerpsTradeDirection,
     ) -> None:
         """Handle quick trade click."""
-        amount = getattr(CONFIG, option_key)
+        amount = getattr(self._app_config, option_key)
         pair = self._pair_combo_box.currentData()
         try:
             await self._exchange.create_order(
@@ -520,17 +520,17 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         # Ensure leverage is set correctly
         coin = self._exchange.format_coin_from_pair(pair)
-        await self._exchange.set_leverage(coin, CONFIG.leverage)
+        await self._exchange.set_leverage(coin, self._app_config.leverage)  # type: ignore
 
         self.top_bar.title.setText(f"Persp Trade | {simplified_pair}")
 
     def update_trade_buttons(self) -> None:
         """Update trade buttons values."""
         value_map = {
-            0: CONFIG.trade_value_lowest,
-            1: CONFIG.trade_value_low,
-            2: CONFIG.trade_value_medium,
-            3: CONFIG.trade_value_high,
+            0: self._app_config.trade_value_lowest,  # type: ignore
+            1: self._app_config.trade_value_low,  # type: ignore
+            2: self._app_config.trade_value_medium,  # type: ignore
+            3: self._app_config.trade_value_high,  # type: ignore
         }
         for index, btn in enumerate(self._long_btns):
             btn.setText(f"${value_map[index]}")
@@ -561,8 +561,8 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self.update_trade_buttons()
 
         self.blockSignals(True)
-        self._leverage_spin.setValue(CONFIG.leverage)
-        self._update_leverage_buttons(CONFIG.leverage)
+        self._leverage_spin.setValue(self._app_config.leverage)  # type: ignore
+        self._update_leverage_buttons(self._app_config.leverage)  # type: ignore
         self.blockSignals(False)
 
 

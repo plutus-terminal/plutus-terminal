@@ -10,7 +10,7 @@ import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtMultimedia import QSoundEffect
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.db.models import UserFilter
 from plutus_terminal.core.news.filter._actions import FILTER_ACTIONS_MAP
 from plutus_terminal.core.news.filter.types import ActionType, FilterType
@@ -124,7 +124,7 @@ class NewsConfig(QtWidgets.QWidget):
         self._save_filters_btn.setProperty("class", "LONG")
         self._save_filters_btn.clicked.connect(self._save_filters)
 
-        user_filters = CONFIG.get_all_user_filters()
+        user_filters = AppConfig.get_all_user_filters()
         for user_filter in user_filters:
             if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:  # type: ignore
                 self._keyword_matching_layout.addWidget(KeywordMatchingWidget(user_filter))
@@ -251,7 +251,7 @@ class NewsConfig(QtWidgets.QWidget):
             widget.deleteLater()
 
         # Create new filters widget matching database
-        user_filters = CONFIG.get_all_user_filters()
+        user_filters = AppConfig.get_all_user_filters()
         for user_filter in user_filters:
             if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:  # type: ignore
                 self._keyword_matching_layout.insertWidget(
@@ -354,7 +354,7 @@ class BaseFilterWidget(QtWidgets.QFrame):
     def write_to_db(self) -> None:
         """Write user_filter to database."""
         if self._to_delete:
-            CONFIG.delete_user_filter(self._user_filter.id)  # type: ignore
+            AppConfig.delete_user_filter(self._user_filter.id)  # type: ignore
             self.deleteLater()
             return
 
@@ -517,7 +517,7 @@ class KeywordMatchingWidget(BaseFilterWidget):
             action_args["color"] = self._color_picker.color.toTuple()[0:3]  # type: ignore
 
         self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore
-        CONFIG.write_model_to_db(self._user_filter)
+        AppConfig.write_model_to_db(self._user_filter)
 
 
 class DataMatchingWidget(BaseFilterWidget):
@@ -686,4 +686,4 @@ class DataMatchingWidget(BaseFilterWidget):
             action_args["coin"] = self._coin_line.text()
 
         self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore
-        CONFIG.write_model_to_db(self._user_filter)
+        AppConfig.write_model_to_db(self._user_filter)
