@@ -12,8 +12,7 @@ from peewee import (
     TextField,
 )
 
-DATABASE_PATH = Path(r"C:\Users\Manuel\Documents\projects\python\plutus_terminal.db")
-# DATABASE_PATH = Path(__file__).parent.joinpath("plutus_terminal.db")
+DATABASE_PATH = Path(__file__).parent.joinpath("plutus_terminal.db")
 DATABASE = SqliteDatabase(DATABASE_PATH)
 
 

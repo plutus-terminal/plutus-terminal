@@ -1,6 +1,6 @@
 [project]
 name = "plutus-terminal"
-version = "0.1.0b7"
+version = "0.1.0rc0"
 description = "Plutus Terminal is a powerful open-source crypto news trading terminal with the focus on Perpetuals DEX."
 authors = [{name = "Plutus", email = "plutus-terminal@protonmail.com"}]
 readme = "README.md"
@@ -28,13 +28,13 @@ dependencies = [
 ]
 
 [tool.poetry.group.dev.dependencies]
-mypy = "^1.15.0"
-isort = "^6.0.1"
-pyside6-stubs = "^6.7.3.0"
-pandas-stubs = "^2.2.3.250308"
-types-peewee = "^3.17.0.0"
-ruff = "^0.11.6"
-pre-commit = "^4.2.0"
+mypy = "1.15.0"
+isort = "6.0.1"
+pyside6-stubs = "6.7.3.0"
+pandas-stubs = "2.2.3.250308"
+types-peewee = "3.17.9.20250401"
+ruff = "0.11.6"
+pre-commit = "4.2.0"
 
 [project.scripts]
 plutus-terminal = "plutus_terminal.run:run"
