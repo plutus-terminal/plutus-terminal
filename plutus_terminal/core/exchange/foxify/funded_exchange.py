@@ -6,27 +6,33 @@ from qasync import asyncSlot
 from web3 import Account, HTTPProvider, Web3
 from web3.types import Gwei
 
-from plutus_terminal.core.config import CONFIG
-from plutus_terminal.core.exchange.base import ExchangeFetcherMessageBus
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exchange.foxify import utils as foxify_utils
 from plutus_terminal.core.exchange.foxify.exchange import FoxifyExchange
 from plutus_terminal.core.exchange.foxify.funded_fetcher import FoxifyFundedFetcher
 from plutus_terminal.core.exchange.foxify.funded_trader import FoxifyFundedTrader
 from plutus_terminal.core.password_guard import PasswordGuard
+from plutus_terminal.message_bus import MessageBus
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 
 class FoxifyFundedExchange(FoxifyExchange):
     """Foxify Funded Exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
+    def __init__(
+        self,
+        message_bus: MessageBus,
+        pass_guard: PasswordGuard,
+        app_config: AppConfig,
+    ) -> None:
         """Initialize shared attributes.
 
         Args:
-            fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
+            message_bus (MessageBus): Message bus to send signals.
             pass_guard (PasswordGuard): PasswordGuard.
+            app_config (AppConfig): App config.
         """
-        super().__init__(fetcher_bus=fetcher_bus, pass_guard=pass_guard)
+        super().__init__(message_bus=message_bus, pass_guard=pass_guard, app_config=app_config)
 
     async def init_async(self) -> None:
         """Initialize async shared attributes."""
@@ -76,7 +82,7 @@ class FoxifyFundedExchange(FoxifyExchange):
         self._fetcher = await FoxifyFundedFetcher.create(
             self._pair_map,
             self._funded_trader_address,
-            self.fetcher_bus,
+            self.message_bus,
         )
 
     @property
@@ -96,7 +102,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             "Exchange": self.name().capitalize(),
             "Exchange Type": self.exchange_type().name,
             "Wallet": f"{self.web3_account.address[:5]}...{self.web3_account.address[-5:]}",
-            "Trader Wallet": f"{self._funded_trader_address[:5]}...{self._funded_trader_address[-5:]}",  # noqa: E501
+            "Trader Wallet": f"{self._funded_trader_address[:5]}...{self._funded_trader_address[-5:]}",
         }
 
     @asyncSlot()
@@ -135,7 +141,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             )
             leverage = self._max_leverage
 
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage
 
     @asyncSlot()
     async def set_leverage(self, coin: str, leverage: int) -> None:
@@ -165,7 +171,7 @@ class FoxifyFundedExchange(FoxifyExchange):
             )
             leverage = self._max_leverage
 
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage
 
     @staticmethod
     def name() -> str:

@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from PySide6.QtCore import QObject, Signal
-
-from plutus_terminal.core.types_ import NewsData
-
-
-class NewsMessageBus(QObject):
-    """Message bus for news message."""
-
-    raw_news_signal = Signal(NewsData)
-    news_signal = Signal(NewsData)
+if TYPE_CHECKING:
+    from plutus_terminal.core.types_ import NewsData
+    from plutus_terminal.message_bus import MessageBus
 
 
 class NewsFetcher(Protocol):
     """News fetcher protocol."""
 
-    async def subscribe_to_wss(self, message_bus: NewsMessageBus) -> None:
+    async def subscribe_to_wss(self, message_bus: MessageBus) -> None:
         """Subscribe to news wss and emit news signal on new entry.
 
         Args:
-            message_bus (plutus_terminal.ui.thread.NewsMessageBus): Message bus
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus
                 to emit news messages
         """
         ...

@@ -18,12 +18,13 @@ from tenacity import (
 )
 from websockets.client import WebSocketClientProtocol, connect
 
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.news.base import NewsFetcher
 from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.news.base import NewsMessageBus
+    from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class PhoenixNews(NewsFetcher):
     def __init__(self) -> None:
         """Initialize shared variables."""
         self.wss = "wss://wss.phoenixnews.io/"
-        self._socket: Optional[WebSocketClientProtocol] = None  # type: ignore
+        self._socket: Optional[WebSocketClientProtocol] = None
         self._compiled_pattern_quote = re2.compile(r"&gt;&gt;QUOTE\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_reply = re2.compile(r"&gt;&gt;REPLY\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_retweet = re2.compile(r"&gt;&gt;RT\s+.+?\s*[^\(@]*\((@\w+)\)")
@@ -71,11 +72,11 @@ class PhoenixNews(NewsFetcher):
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
     )
-    async def subscribe_to_wss(self, message_bus: NewsMessageBus) -> None:
+    async def subscribe_to_wss(self, message_bus: MessageBus) -> None:
         """Subscribe to news wss and emit news signal on new entry.
 
         Args:
-            message_bus (plutus_terminal.ui.thread.NewsMessageBus): Message bus
+            message_bus (plutus_terminal.message_bus.MessageBus): Message bus
                 to emit news messages
         """
         await self._ensure_websocket_connection()
@@ -85,13 +86,13 @@ class PhoenixNews(NewsFetcher):
             LOGGER.debug("New raw message received from PhonixNews")
             json_message = json.loads(message)
             formated_message = self.format_news(json_message)
-            message_bus.raw_news_signal.emit(formated_message)
+            message_bus.raw_news.emit(formated_message)
 
     async def login(self) -> None:
         """Login to news source."""
         LOGGER.info("Logging in to PhoenixNews...")
         phoenix_api_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             PHOENIX_KEY_NAME,
         )
         if not phoenix_api_key:
@@ -159,7 +160,7 @@ class PhoenixNews(NewsFetcher):
         retweet_user = ""
 
         if source == "Twitter":
-            title = f'@{news_message.get("username")}'
+            title = f"@{news_message.get('username')}"
             body = news_message.get("body", "")
 
             if is_quote:

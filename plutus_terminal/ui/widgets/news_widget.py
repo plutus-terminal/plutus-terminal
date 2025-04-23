@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import partial
 import time
 from typing import TYPE_CHECKING, Optional
@@ -14,7 +14,6 @@ from PySide6.QtGui import QDesktopServices, QMouseEvent, QPixmap, QPixmapCache
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 import re2  # type: ignore
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.types import PerpsTradeType
 from plutus_terminal.core.types_ import NewsData, PerpsTradeDirection
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from decimal import Decimal
 
+    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.exchange.base import ExchangeBase, ExchangeFetcher
 
 ICON_MAP = {
@@ -59,6 +59,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         format_to_pair: Callable,
         available_pairs: set,
         display_delay: bool,
+        app_config: AppConfig,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared variables."""
@@ -68,6 +69,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self._available_pairs = available_pairs
         self._show_images = True
         self._display_delay = display_delay
+        self._app_config = app_config
         self._re_percent_complied = re2.compile(r"\(([^)]+)%\)")
         self._async_tasks: list[asyncio.Task] = []
 
@@ -184,7 +186,7 @@ class NewsWidget(QtWidgets.QGroupBox):
 
             self.retweet_title.setObjectName("subTitle")
             self.retweet_title.setTextFormat(Qt.TextFormat.RichText)
-            self.retweet_title.setText(f"Reposted: {self.news_data["retweet_user"]}")
+            self.retweet_title.setText(f"Reposted: {self.news_data['retweet_user']}")
             self.retweet_title.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
@@ -222,7 +224,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.reply_title.setObjectName("subTitle")
             self.reply_title.setTextFormat(Qt.TextFormat.RichText)
             self.reply_title.setText(
-                f"Replied to: {self.news_data["reply_user"]} 👇",
+                f"Replied to: {self.news_data['reply_user']} 👇",
             )
             self.reply_title.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
@@ -296,7 +298,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             ui_utils.LOCAL_TIMEZONE,
         )
         self.time_label.setText(
-            f'Source Time: {converted_time.strftime("%H:%M:%S:%f")[:-3]}',
+            f"Source Time: {converted_time.strftime('%H:%M:%S:%f')[:-3]}",
         )
         self.time_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
@@ -459,7 +461,7 @@ class NewsWidget(QtWidgets.QGroupBox):
                 percent_layout = self.group_box_layout[coin].itemAt(0).layout()
                 percent_layout.insertWidget(1, initial_price_label)  # type: ignore
 
-    def create_interactions(self, exchange: ExchangeBase) -> bool:  # noqa: PLR0915
+    def create_interactions(self, exchange: ExchangeBase) -> bool:  # noqa: C901, PLR0915
         """Create buttons for interactions.
 
         Args:
@@ -498,7 +500,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             )
             for index, option_key in enumerate(option_keys):
                 value = getattr(
-                    CONFIG,
+                    self._app_config,
                     option_key,
                 )
                 button_long = QtWidgets.QPushButton(f"${value}")
@@ -527,7 +529,7 @@ class NewsWidget(QtWidgets.QGroupBox):
 
             for index, option_key in enumerate(option_keys):
                 value = getattr(
-                    CONFIG,
+                    self._app_config,
                     option_key,
                 )
                 button_short = QtWidgets.QPushButton(f"-${value}")
@@ -572,12 +574,12 @@ class NewsWidget(QtWidgets.QGroupBox):
                         asyncio.create_task(exchange.fetcher.subscribe_to_price(pair)),
                     )
 
-                exchange.fetcher_bus.subscribed_prices_signal.connect(
+                exchange.message_bus.subscribed_prices_fetched.connect(
                     self.update_percents,
                 )
                 self.timer_end.connect(
                     partial(
-                        exchange.fetcher_bus.subscribed_prices_signal.disconnect,
+                        exchange.message_bus.subscribed_prices_fetched.disconnect,
                         self.update_percents,
                     ),
                 )
@@ -611,7 +613,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             trade_direction (PerpsTradeDirection): Trade direction.
             trade_type (PerpsTradeType): Trade type.
         """
-        amount = getattr(CONFIG, config_key_value)
+        amount = getattr(self._app_config, config_key_value)
         try:
             trade_function(coin, amount, trade_direction, trade_type)
         except InvalidOrderSizeError as error:
@@ -708,10 +710,10 @@ class NewsWidget(QtWidgets.QGroupBox):
     def update_trade_buttons(self) -> None:
         """Update trade values."""
         value_map = {
-            0: CONFIG.trade_value_lowest,
-            1: CONFIG.trade_value_low,
-            2: CONFIG.trade_value_medium,
-            3: CONFIG.trade_value_high,
+            0: self._app_config.trade_value_lowest,
+            1: self._app_config.trade_value_low,
+            2: self._app_config.trade_value_medium,
+            3: self._app_config.trade_value_high,
         }
         for index in range(4):
             for widget in self.findChildren(QtWidgets.QPushButton, f"SHORT_{index}"):

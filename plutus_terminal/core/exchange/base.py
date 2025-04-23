@@ -9,47 +9,30 @@ import logging
 import time
 from typing import TYPE_CHECKING, Optional, Protocol, Self
 
-from PySide6.QtCore import QObject, Signal
 from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import (
-    OptionsNotAvailableError,
     TransactionFailedError,
 )
 from plutus_terminal.core.exchange.types import PnlDetails
-from plutus_terminal.core.types_ import (
-    ExchangeType,
-    NewAccountInfo,
-    OptionsDirection,
-    PerpsPosition,
-    PerpsTradeType,
-    PriceData,
-    PriceHistory,
-)
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
-    import pandas
-
+    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.exchange.types import OrderData, TradeResults
     from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import (
+        ExchangeType,
+        NewAccountInfo,
+        PerpsPosition,
         PerpsTradeDirection,
+        PerpsTradeType,
+        PriceData,
+        PriceHistory,
     )
+    from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
-
-
-class ExchangeFetcherMessageBus(QObject):
-    """Message Bus for all fetch related events."""
-
-    price_history_signal = Signal(PriceHistory)
-    subscribed_prices_signal = Signal(dict)
-    balance_signal = Signal(Decimal)
-    positions_signal = Signal(list)  # list[PerpsPosition]
-    orders_signal = Signal(list)  # list[OrderData]
-    price_synced = Signal(bool)
 
 
 class ExchangeFetcher(Protocol):
@@ -278,61 +261,27 @@ class ExchangeTraderDex(ExchangeTrader, Protocol):
         ...
 
 
-class ExchangeOptions(Protocol):
-    """Protocol for exchange options actions."""
-
-    async def fetch_orders(self, options_orders_params) -> pandas.DataFrame:  # noqa: ANN001
-        """Fetch options orders based on parameters.
-
-        Args:
-            options_orders_params (OrdersParams): Params for request.
-
-        Returns:
-            pandas.DataFrame: DataFrame with options orders.
-        """
-        ...
-
-    async def buy_options(self, options_buy_params) -> None:  # noqa: ANN001
-        """Buy options.
-
-        Args:
-            options_buy_params: Params to buy options.
-        """
-        ...
-
-    def fetch_available_pairs(self) -> list[str]:
-        """Fetch available pairs for options."""
-        ...
-
-    async def filter_with_strategy(
-        self,
-        direction: OptionsDirection,
-        value: Decimal,
-        pair: str,
-    ) -> pandas.DataFrame:
-        """Filter options based on strategy.
-
-        Args:
-            direction (OptionsDirection): Direction to buy the option.
-            value (Decimal): Max value to spend.
-            pair (str): Pair to open options for.
-
-        Returns:
-            pandas.DataFrame: DataFrame with options orders.
-        """
-        ...
-
-
 class ExchangeBase(ABC):
     """Base class to interact with exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
-        """Initialize shared variables."""
-        self.fetcher_bus = fetcher_bus
-        self._is_price_synced = True
+    def __init__(
+        self,
+        message_bus: MessageBus,
+        pass_guard: PasswordGuard,
+        app_config: AppConfig,
+    ) -> None:
+        """Initialize shared variables.
+
+        Args:
+            message_bus (MessageBus): Message bus to send signals.
+            pass_guard (PasswordGuard): Password guard.
+            app_config (AppConfig): App config.
+        """
+        self.message_bus = message_bus
+        self._pass_guard = pass_guard
+        self.app_config = app_config
         self._watched_positions: list[PerpsPosition] = []
         self._async_tasks: list[asyncio.Task] = []
-        self._pass_guard = pass_guard
 
     @property
     @abstractmethod
@@ -346,7 +295,7 @@ class ExchangeBase(ABC):
 
     @property
     @abstractmethod
-    def available_pairs(self) -> set:
+    def available_pairs(self) -> set[str]:
         """Returns set with all available pairs."""
 
     @property
@@ -390,8 +339,9 @@ class ExchangeBase(ABC):
     @abstractmethod
     async def create(
         cls,
-        fetcher_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
     ) -> Self:
         """Create class instance and init_async."""
 
@@ -409,18 +359,6 @@ class ExchangeBase(ABC):
     def max_order_size(self) -> Decimal:
         """Return max trade size."""
         return Decimal(100_000_000_000_000_000_000_000)
-
-    @property
-    def options(self) -> ExchangeOptions:
-        """Returns: Exchange Options."""
-        raise OptionsNotAvailableError
-
-    def has_options(self) -> bool:
-        """Return if exchange has options."""
-        try:
-            return self.options is not None
-        except OptionsNotAvailableError:
-            return False
 
     @abstractmethod
     async def is_ready_to_trade(self) -> bool:
@@ -460,7 +398,7 @@ class ExchangeBase(ABC):
 
     async def fetch_prices(self) -> None:
         """Fetch prices in an infinite loop."""
-        await self.fetcher.subscribe_to_price(self.default_pair)
+        # await self.fetcher.subscribe_to_price(self.default_pair)
         self._async_tasks.append(
             asyncio.create_task(self.fetcher.receive_subscribed_prices()),
         )
@@ -469,7 +407,7 @@ class ExchangeBase(ABC):
         )
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_all_orders()))
         self._async_tasks.append(asyncio.create_task(self.fetcher.watch_stable_balance()))
-        self.fetcher_bus.positions_signal.connect(self._update_watched_positions)
+        self.message_bus.positions_fetched.connect(self._update_watched_positions)
 
     @asyncSlot()
     async def _update_watched_positions(
@@ -547,7 +485,7 @@ class ExchangeBase(ABC):
             f"Leverage set to all pairs: {leverage}x",
             type_=ToastType.SUCCESS,
         )
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage
 
     @asyncSlot()
     async def set_leverage(self, coin: str, leverage: int) -> None:
@@ -562,7 +500,7 @@ class ExchangeBase(ABC):
             f"Leverage of {pair} set to: {leverage}x",
             type_=ToastType.SUCCESS,
         )
-        CONFIG.leverage = leverage
+        self.app_config.leverage = leverage
 
     def is_valid_order_size(self, order_size: Decimal) -> bool:
         """Validate order size with min and max values.
@@ -573,9 +511,7 @@ class ExchangeBase(ABC):
         Returns:
             bool: True if order size is valid.
         """
-        if order_size < self.min_order_size or order_size > self.max_order_size:
-            return False
-        return True
+        return self.min_order_size <= order_size <= self.max_order_size
 
     @abstractmethod
     async def create_order(
@@ -598,9 +534,9 @@ class ExchangeBase(ABC):
             trade_type (TradeType): Trade type.
             execution_price (Optional[Decimal], optional): Execution price.
             take_profit (Optional[float], optional): Take profit price.
-                If None use CONFIG.take_profit.
+                If None use self.app_config.take_profit.
             stop_loss (Optional[float], optional): Stop loss price.
-                If None use CONFIG.stop_loss.
+                If None use self.app_config.stop_loss.
 
         Raises:
             InvalidOrderSizeError: If order size is not valid.
@@ -688,7 +624,7 @@ class ExchangeBase(ABC):
                 type_=ToastType.ERROR,
             )
         all_positions = await self.fetcher.fetch_all_positions()
-        self.fetcher_bus.positions_signal.emit(all_positions)
+        self.message_bus.positions_signal.emit(all_positions)
         Toast.update_message(toast_id, "Position closed", type_=ToastType.SUCCESS)
 
     def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
@@ -771,21 +707,6 @@ class ExchangeBase(ABC):
                 "pnl_percentage_after_fees": pnl_percentage_after_fees,
             },
         )
-
-    async def buy_options_with_strategy(
-        self,
-        direction: OptionsDirection,  # noqa: ARG002
-        value: Decimal,  # noqa: ARG002
-        pair: str,  # noqa: ARG002
-    ) -> None:
-        """Buy options based on strategy.
-
-        Args:
-            direction (OptionsDirection): Direction to buy the option.
-            value (Decimal): Max value in stable to spend.
-            pair (str): Pair to open options for.
-        """
-        raise OptionsNotAvailableError
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""

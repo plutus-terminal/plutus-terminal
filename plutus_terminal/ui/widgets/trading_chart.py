@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from functools import partial
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from lightweight_charts.widgets import QtChart
@@ -28,17 +27,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qasync import asyncSlot
 
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from lightweight_charts import Chart
     from lightweight_charts.abstract import HorizontalLine
 
-    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.core.exchange.types import OrderData, PerpsPosition
 
 LOGGER = logging.getLogger(__name__)
@@ -60,22 +58,17 @@ class ChartDrawingStorage:
 class TradingChart(QWidget):
     """Trading Chart Widget."""
 
-    timeframe_signal = Signal(str)
-    pair_changed = Signal(str)
     request_more_data = Signal(int)
 
     def __init__(
         self,
-        available_pairs: set[str],
-        format_simple_pair: Callable[[str], str],
-        infinite_scroll_func: Callable[[Chart, int, int], None],
+        ui_controller: UIController,
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._available_pairs = available_pairs
-        self._format_simple_pair = format_simple_pair
-        self._infinite_scroll_func = infinite_scroll_func
+        self._ui_controller = ui_controller
+        self._chart_scroll_polling = False
 
         self._main_layout = QVBoxLayout()
 
@@ -83,12 +76,12 @@ class TradingChart(QWidget):
         self._price_label = QLabel("")
 
         self._main_chart = QtChart(toolbox=True)
-        self._current_pair = ""
         self._position_lines: dict[int, HorizontalLine] = {}
         self._liquidation_lines: dict[int, HorizontalLine] = {}
         self._order_lines: dict[str, HorizontalLine] = {}
 
         self._config_widgets()
+        self._connect_signals()
         self._config_chart()
         self._config_layout()
         self._config_shortcuts()
@@ -105,6 +98,20 @@ class TradingChart(QWidget):
         self._price_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._price_label.setObjectName("title")
 
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
+            self.update_chart_tick,
+        )
+        self._ui_controller.message_bus.positions_fetched.connect(
+            self.draw_positions,
+        )
+        self._ui_controller.message_bus.orders_fetched.connect(self.draw_orders)
+
+        self._ui_controller.pair_changed.connect(self._on_pair_changed)
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+        self._ui_controller.timeframe_changed.connect(self._on_timeframe_changed)
+
     def _config_chart(self) -> None:
         """Configure chart."""
         self._main_chart.precision(4)
@@ -117,8 +124,10 @@ class TradingChart(QWidget):
             default="1min",
             func=self.on_timeframe_selection,
         )
-        self._main_chart.events.range_change += self._infinite_scroll_func
-        self._chart_storage = ChartDrawingStorage(f"{self.current_pair}_{self.current_timeframe}")
+        self._main_chart.events.range_change += self._infinite_chart_scroll
+        self._chart_storage = ChartDrawingStorage(
+            f"{self._ui_controller.current_pair}_{self.current_timeframe}",
+        )
         if self._main_chart.toolbox is not None:
             self._main_chart.toolbox.save_drawings_under(self._chart_storage)
 
@@ -139,15 +148,15 @@ class TradingChart(QWidget):
         """Returns: Main QtChart widget."""
         return self._main_chart
 
-    @property
-    def current_pair(self) -> str:
-        """Returns the pair being diplayed."""
-        return self._current_pair
-
-    @current_pair.setter
-    def current_pair(self, pair: str) -> None:
+    @asyncSlot()
+    async def _on_pair_changed(self, pair: str) -> None:
         """Set the current pair being displayed."""
-        self._current_pair = pair
+        self._ui_controller.message_bus.blockSignals(True)
+        history_dataframe, minimal_digits = await self._ui_controller.fetch_price_history()
+        self.set_start_data(history_dataframe)
+        self.main_chart.precision(minimal_digits)
+        self._ui_controller.message_bus.blockSignals(False)
+
         self.set_pair_text(pair)
         self._chart_storage.tag = f"{pair}_{self.current_timeframe}"
 
@@ -165,7 +174,7 @@ class TradingChart(QWidget):
 
     def set_pair_text(self, pair: str) -> None:
         """Fill topbar text with pair."""
-        pair_text = self._format_simple_pair(pair)
+        pair_text = self._ui_controller.format_simple_pair_from_pair(pair)
         self._main_chart.topbar["pair"].set(pair_text)  # type: ignore
         self.top_bar.title.setText(f"Chart | {pair_text}")
 
@@ -215,11 +224,11 @@ class TradingChart(QWidget):
             data (dict): Data with all available prices.
         """
         try:
-            price = data[self.current_pair]
+            price = data[self._ui_controller.current_pair]
         except KeyError:
             LOGGER.warning(
                 "Price data for %s not available. Skipping update.",
-                self.current_pair,
+                self._ui_controller.current_pair,
             )
             return
         tick = pandas.Series(price)
@@ -239,7 +248,9 @@ class TradingChart(QWidget):
             all_positions (list[PerpsPosition]): List of current positions.
         """
         new_positions = {
-            pos["id"]: pos for pos in all_positions if pos["pair"] == self.current_pair
+            pos["id"]: pos
+            for pos in all_positions
+            if pos["pair"] == self._ui_controller.current_pair
         }
 
         # Update existing positions
@@ -297,7 +308,9 @@ class TradingChart(QWidget):
             all_orders (list[OrderData]): List of current orders.
         """
         new_orders = {
-            order["id"]: order for order in all_orders if order["pair"] == self.current_pair
+            order["id"]: order
+            for order in all_orders
+            if order["pair"] == self._ui_controller.current_pair
         }
 
         for order_id, order in new_orders.items():
@@ -324,7 +337,7 @@ class TradingChart(QWidget):
             self._order_lines[order_id].delete()
             del self._order_lines[order_id]
 
-    def on_timeframe_selection(self, chart: Chart) -> None:
+    async def on_timeframe_selection(self, chart: Chart) -> None:
         """Emit signal to change timeframe."""
         timeframe_value = chart.topbar["timeframe"].value
         if timeframe_value.endswith("min"):
@@ -333,8 +346,42 @@ class TradingChart(QWidget):
             timeframe_value = timeframe_value[:-2]
             timeframe_value = int(timeframe_value) * 60
 
-        self._chart_storage.tag = f"{self.current_pair}_{timeframe_value}"
-        self.timeframe_signal.emit(str(timeframe_value))
+        self._chart_storage.tag = f"{self._ui_controller.current_pair}_{timeframe_value}"
+        await self._ui_controller.change_timeframe(str(timeframe_value))
+
+    @asyncSlot()
+    async def _on_timeframe_changed(self, timeframe_value: str) -> None:
+        """On timeframe changed.
+
+        Args:
+            timeframe_value (str): Timeframe to change to.
+        """
+        history_dataframe = await self._ui_controller.fetch_price_history_for_timeframe(
+            timeframe_value,
+        )
+        self.set_start_data(history_dataframe)
+
+    @asyncSlot()
+    async def _infinite_chart_scroll(self, chart: Chart, bars_before: int, bars_after: int) -> None:  # noqa: ARG002
+        """Function called when chart is scrolled."""
+        fetch_threshold = 25
+        if bars_before <= fetch_threshold and not self._chart_scroll_polling:
+            LOGGER.debug(
+                "Infinite chart scrolling: Fetching more data for %s",
+                self._ui_controller.current_pair,
+            )
+            candle_timestamp = ui_utils.convert_timestamp_from_local_to_utc(
+                chart.candle_data["time"].iloc[0],
+            )
+            self._chart_scroll_polling = True
+            history = await self._ui_controller.current_exchange.fetch_price_history(
+                self._ui_controller.current_pair,
+                self._ui_controller.current_timeframe,
+                bars_num=ui_utils.DEFAULT_BAR_NUMBERS * 3,
+                to_timestamp=int(candle_timestamp.timestamp()),
+            )
+            self.update_data(pandas.DataFrame(history))
+            self._chart_scroll_polling = False
 
     def show_search_pair(self) -> None:
         """Show search pair modal."""
@@ -344,22 +391,16 @@ class TradingChart(QWidget):
             return
 
         search_pair_modal = SearchPairModal(
-            self._available_pairs,
-            self._format_simple_pair,
+            self._ui_controller,
             self,
         )
-        search_pair_modal.pair_selected.connect(self.pair_changed.emit)
+        search_pair_modal.pair_selected.connect(self._ui_controller.change_current_pair)
         search_pair_modal.show()
 
-    def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
-        """Update info based on new exchange.
-
-        Args:
-            new_exchange (ExchangeBase): New exchangeBase.
-        """
-        self._current_pair = new_exchange.default_pair
-        self._available_pairs = new_exchange.available_pairs
-        self._format_simple_pair = new_exchange.format_simple_pair_from_pair
+    @asyncSlot()
+    async def _on_new_exchange(self) -> None:
+        """Handle new exchange change."""
+        await self._ui_controller.change_timeframe(self._ui_controller.current_timeframe)
 
 
 class SearchPairModal(QWidget):
@@ -369,19 +410,20 @@ class SearchPairModal(QWidget):
 
     def __init__(
         self,
-        available_pairs: set[str],
-        format_simple_pair_from_pair: Callable[[str], str],
+        ui_controller: UIController,
         parent: Optional[QWidget] = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent, Qt.WindowType.WindowStaysOnTopHint)
-        self._available_pairs = {
-            format_simple_pair_from_pair(pair): pair for pair in available_pairs
+        self._ui_controller = ui_controller
+        self._formated_available_pairs = {
+            self._ui_controller.format_simple_pair_from_pair(pair): pair
+            for pair in ui_controller.exchange_available_pairs
         }
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        self._completer = QCompleter(list(self._available_pairs.keys()))
+        self._completer = QCompleter(list(self._formated_available_pairs.keys()))
         self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._completer.setFilterMode(Qt.MatchFlag.MatchContains)
 
@@ -407,8 +449,8 @@ class SearchPairModal(QWidget):
 
     def on_search_pair(self) -> None:
         """Emit pair selected signal if search input is valid."""
-        if self.search_input.text() in self._available_pairs:
-            self.pair_selected.emit(self._available_pairs[self.search_input.text()])
+        if self.search_input.text() in self._formated_available_pairs:
+            self.pair_selected.emit(self._formated_available_pairs[self.search_input.text()])
         self.close()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:

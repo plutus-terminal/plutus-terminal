@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import keyring
 import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtMultimedia import QSoundEffect
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.db.models import UserFilter
 from plutus_terminal.core.news.filter._actions import FILTER_ACTIONS_MAP
 from plutus_terminal.core.news.filter.types import ActionType, FilterType
@@ -20,15 +20,19 @@ from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
+if TYPE_CHECKING:
+    from plutus_terminal.controller.ui_controller import UIController
+
 
 class NewsConfig(QtWidgets.QWidget):
     """Widget to control news configuration."""
 
-    update_filters = QtCore.Signal()
-
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(
+        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+    ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
+        self._ui_controller = ui_controller
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -68,12 +72,12 @@ class NewsConfig(QtWidgets.QWidget):
         self._tree_text_label.setText(
             """Add your TreeOfAlpha API key bellow if you are a paid subscriber.<br>"""
             """To get your API key, go to """
-            """<a href="https://news.treeofalpha.com/api/api_key """
+            """<a href="https://news.treeofalpha.com/api/api_key"""
             """style="color:rgb(80, 210, 180)">"""
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
         current_tree_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             TREE_KEY_NAME,
         )
         if current_tree_key:
@@ -92,7 +96,7 @@ class NewsConfig(QtWidgets.QWidget):
         )
         self._phoenix_text_label.setOpenExternalLinks(True)
         current_phoenix_key = keyring.get_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             PHOENIX_KEY_NAME,
         )
         if current_phoenix_key:
@@ -124,11 +128,11 @@ class NewsConfig(QtWidgets.QWidget):
         self._save_filters_btn.setProperty("class", "LONG")
         self._save_filters_btn.clicked.connect(self._save_filters)
 
-        user_filters = CONFIG.get_all_user_filters()
+        user_filters = AppConfig.get_all_user_filters()
         for user_filter in user_filters:
-            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:
                 self._keyword_matching_layout.addWidget(KeywordMatchingWidget(user_filter))
-            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:
                 self._data_matching_layout.addWidget(DataMatchingWidget(user_filter))
 
     def _setup_layout(self) -> None:
@@ -184,7 +188,7 @@ class NewsConfig(QtWidgets.QWidget):
             PHOENIX_KEY_NAME: self._phoenix_input.text(),
         }
         keyring.set_password(
-            "plutus-terminal:news-source",
+            f"{AppConfig.SERVICE_NAME}:news-source",
             news_source,
             text_source[news_source],
         )
@@ -251,14 +255,14 @@ class NewsConfig(QtWidgets.QWidget):
             widget.deleteLater()
 
         # Create new filters widget matching database
-        user_filters = CONFIG.get_all_user_filters()
+        user_filters = AppConfig.get_all_user_filters()
         for user_filter in user_filters:
-            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:
                 self._keyword_matching_layout.insertWidget(
                     self._keyword_matching_layout.count() - 1,
                     KeywordMatchingWidget(user_filter),
                 )
-            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:  # type: ignore
+            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:
                 self._data_matching_layout.insertWidget(
                     self._data_matching_layout.count() - 1,
                     DataMatchingWidget(user_filter),
@@ -276,7 +280,8 @@ class NewsConfig(QtWidgets.QWidget):
             if isinstance(widget, DataMatchingWidget):
                 widget.write_to_db()
 
-        self.update_filters.emit()
+        self._ui_controller.update_news_filters()
+        Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)
 
 
 class ColorButton(QtWidgets.QPushButton):
@@ -312,7 +317,7 @@ class ColorButton(QtWidgets.QPushButton):
 
         if self._color:
             self.setStyleSheet(
-                "QPushButton#buttonColor {background-color: %s;}" % self._color.name(),
+                f"QPushButton#buttonColor {{background-color: {self._color.name()};}}",
             )
         else:
             self.setStyleSheet("")
@@ -354,7 +359,7 @@ class BaseFilterWidget(QtWidgets.QFrame):
     def write_to_db(self) -> None:
         """Write user_filter to database."""
         if self._to_delete:
-            CONFIG.delete_user_filter(self._user_filter.id)  # type: ignore
+            AppConfig.delete_user_filter(self._user_filter.id)  # type: ignore
             self.deleteLater()
             return
 
@@ -517,7 +522,7 @@ class KeywordMatchingWidget(BaseFilterWidget):
             action_args["color"] = self._color_picker.color.toTuple()[0:3]  # type: ignore
 
         self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore
-        CONFIG.write_model_to_db(self._user_filter)
+        AppConfig.write_model_to_db(self._user_filter)
 
 
 class DataMatchingWidget(BaseFilterWidget):
@@ -686,4 +691,4 @@ class DataMatchingWidget(BaseFilterWidget):
             action_args["coin"] = self._coin_line.text()
 
         self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore
-        CONFIG.write_model_to_db(self._user_filter)
+        AppConfig.write_model_to_db(self._user_filter)

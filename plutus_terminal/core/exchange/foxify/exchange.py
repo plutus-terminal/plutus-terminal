@@ -14,7 +14,6 @@ from qasync import asyncSlot
 from web3 import Account
 from web3.types import Gwei
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.core.exceptions import (
     InvalidOrderSizeError,
     TransactionFailedError,
@@ -39,11 +38,10 @@ from plutus_terminal.ui.widgets.toast import Toast, ToastType
 if TYPE_CHECKING:
     from eth_account.signers.local import LocalAccount
 
-    from plutus_terminal.core.exchange.base import (
-        ExchangeFetcherMessageBus,
-    )
+    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.exchange.types import OrderData, PerpsPosition
     from plutus_terminal.core.password_guard import PasswordGuard
+    from plutus_terminal.message_bus import MessageBus
 
 
 LOGGER = logging.getLogger(__name__)
@@ -52,17 +50,23 @@ LOGGER = logging.getLogger(__name__)
 class FoxifyExchange(ExchangeBase):
     """Class to interact with Foxify Exchange."""
 
-    def __init__(self, fetcher_bus: ExchangeFetcherMessageBus, pass_guard: PasswordGuard) -> None:
+    def __init__(
+        self,
+        message_bus: MessageBus,
+        pass_guard: PasswordGuard,
+        app_config: AppConfig,
+    ) -> None:
         """Initialize shared attributes.
 
         Args:
-            fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
+            message_bus (MessageBus): Message bus to send signals.
             pass_guard (PasswordGuard): PasswordGuard.
+            app_config (AppConfig): App config.
         """
-        super().__init__(fetcher_bus=fetcher_bus, pass_guard=pass_guard)
+        super().__init__(message_bus=message_bus, pass_guard=pass_guard, app_config=app_config)
         self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         # Get current account
-        keyring_account = CONFIG.current_keyring_account
+        keyring_account = self.app_config.current_keyring_account
         decrypted_password = self._pass_guard.get_keyring_password(keyring_account)
         web3_account: LocalAccount = Account.from_key(orjson.loads(decrypted_password)[0])
 
@@ -77,19 +81,21 @@ class FoxifyExchange(ExchangeBase):
     @classmethod
     async def create(
         cls,
-        fetcher_bus: ExchangeFetcherMessageBus,
+        message_bus: MessageBus,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
     ) -> Self:
         """Create class instance and init_async.
 
         Args:
-            fetcher_bus (ExchangeFetcherMessageBus): ExchangeFetcherMessageBus.
+            message_bus (MessageBus): Message bus to send signals.
             pass_guard (PasswordGuard): PasswordGuard.
+            app_config (AppConfig): App config.
 
         Returns:
             FoxifyExchange: Instance of FoxifyExchange.
         """
-        instance = cls(fetcher_bus, pass_guard)
+        instance = cls(message_bus, pass_guard, app_config)
         await instance.init_async()
         return instance
 
@@ -103,10 +109,8 @@ class FoxifyExchange(ExchangeBase):
         self._fetcher = await FoxifyFetcher.create(
             self._pair_map,
             self.web3_account.address,
-            self.fetcher_bus,
+            self.message_bus,
         )
-        # Options are being rebuild in Foxify. Disable for now
-        # self._options = await FoxifyOptions.create(self.web3_account, Gwei(0))
 
     @property
     def trader(self) -> FoxifyTrader:
@@ -173,11 +177,6 @@ class FoxifyExchange(ExchangeBase):
         # Could not find this from any contracts only on the front end.
         # TODO: Fix this with the value from the contract
         return Decimal(10)
-
-    # @property
-    # def options(self) -> ExchangeOptions:
-    #     """Return exchange options."""
-    #     return self._options
 
     @asyncSlot()
     async def is_ready_to_trade(self) -> bool:
@@ -269,9 +268,9 @@ class FoxifyExchange(ExchangeBase):
             execution_price (Optional[Decimal], optional): Execution price.
                 If None use current price.
             take_profit (Optional[float], optional): Take profit price.
-                If None use CONFIG.take_profit.
+                If None use self.app_config.take_profit.
             stop_loss (Optional[float], optional): Stop loss price.
-                If None use CONFIG.stop_loss.
+                If None use self.app_config.stop_loss.
 
         Raises:
             InvalidOrderSizeError: If order size is not valid.
@@ -317,7 +316,7 @@ class FoxifyExchange(ExchangeBase):
             trade_direction,
         )
 
-        size_delta = amount * CONFIG.leverage
+        size_delta = amount * self.app_config.leverage
 
         trade_args = foxify_utils.OpenTradingArgs(
             {
@@ -635,44 +634,6 @@ class FoxifyExchange(ExchangeBase):
             LOGGER,
             toast_id,
         )
-
-    # @asyncSlot()
-    # async def buy_options_with_strategy(
-    #     self, direction: OptionsDirection, value: Decimal, pair: str
-    # ) -> None:
-    #     """Buy options based on strategy.
-    #
-    #     Args:
-    #         direction (OptionsDirection): Direction to buy the option.
-    #         value (Decimal): Max value in stable to spend.
-    #         pair (str): Pair to open options for.
-    #     """
-    #     extracted_data = await self.options.filter_with_strategy(direction, value, pair)
-    #     if extracted_data.empty:
-    #         Toast.show_message(
-    #             "No options avaialble for the given strategy.",
-    #             type_=ToastType.ERROR,
-    #         )
-    #         return
-    #
-    #     # Store orders ids and amount to buy for each order.
-    #     orders_to_buy: OptionsBuyParams = {"orders": {}, "price_id": ""}
-    #     available_to_spend = int(value.scaleb(6))
-    #
-    #     # Set price_id using the first valid oracle priceId
-    #     if not orders_to_buy["price_id"]:
-    #         orders_to_buy["price_id"] = extracted_data["oracle"].iloc[0]["priceId"]
-    #
-    #     # Calculate order amounts
-    #     for _, row in extracted_data[["orderId", "available"]].iterrows():
-    #         if available_to_spend >= row["available"]:
-    #             orders_to_buy["orders"][row["orderId"]] = row["available"]
-    #         else:
-    #             orders_to_buy["orders"][row["orderId"]] = available_to_spend
-    #             break
-    #         available_to_spend -= orders_to_buy["orders"][row["orderId"]]
-    #
-    #     await self._options.buy_options(orders_to_buy)
 
     @staticmethod
     def name() -> str:

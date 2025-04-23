@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QSoundEffect
+from qasync import asyncSlot
 
-from plutus_terminal.core.config import CONFIG
 from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.news_widget import NewsWidget
 from plutus_terminal.ui.widgets.toast import Toast
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.core.types_ import NewsData
 
 
@@ -26,17 +27,18 @@ class NewsList(QtWidgets.QWidget):
     Acts like a news factory and handles news items.
     """
 
-    pair_clicked = Signal(str)
     refresh_news = Signal()
 
     def __init__(
         self,
-        exchange: ExchangeBase,
+        ui_controller: UIController,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._exchange = exchange
+        self._ui_controller = ui_controller
+        self._exchange = ui_controller.current_exchange
+        self._app_config = self._ui_controller.app_config
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -57,6 +59,7 @@ class NewsList(QtWidgets.QWidget):
 
         self._load_sfxs()
         self._setup_widgets()
+        self._connect_signals()
         self._setup_layout()
         self._setup_shorcuts()
         self._show_widget_index_at_top(0)
@@ -81,26 +84,21 @@ class NewsList(QtWidgets.QWidget):
         self._top_bar_show_images.setAutoExclusive(False)
         self._top_bar_show_images.setIcon(QPixmap(":/icons/gallery_icon"))
         self._top_bar_show_images.setChecked(
-            CONFIG.get_gui_settings("news_show_images"),
+            self._app_config.get_gui_settings("news_show_images"),  # type: ignore
         )
         self._top_bar_show_images.setToolTip("Show Images")
-        self._top_bar_show_images.toggled.connect(self.show_images_toggled)
 
         self._top_bar_notifications.setAutoExclusive(False)
         self._top_bar_notifications.setChecked(
-            CONFIG.get_gui_settings("news_desktop_notifications"),
+            self._app_config.get_gui_settings("news_desktop_notifications"),  # type: ignore
         )
         if self._top_bar_notifications.isChecked():
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_on"))
         else:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_off"))
         self._top_bar_notifications.setToolTip("Enable Desktop Notifications")
-        self._top_bar_notifications.toggled.connect(self.notifications_toggled)
 
         self._top_bar_max_news.addItems(["25 results", "50 results", "100 results", "200 results"])
-        self._top_bar_max_news.currentIndexChanged.connect(
-            self.update_max_news,
-        )
 
         self.top_bar.add_widget(self._top_bar_show_images)
         self.top_bar.add_widget(self._top_bar_notifications)
@@ -111,9 +109,32 @@ class NewsList(QtWidgets.QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
 
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self._top_bar_show_images.toggled.connect(
+            partial(self._app_config.set_gui_settings, "news_show_images")
+        )
+        self._top_bar_notifications.toggled.connect(
+            partial(self._app_config.set_gui_settings, "news_desktop_notifications")
+        )
+
+        self._top_bar_max_news.currentIndexChanged.connect(
+            self.update_max_news,
+        )
         self._scroll_area.verticalScrollBar().rangeChanged.connect(
             lambda: self._show_widget_at_top(self._selected_news_widget),
         )
+
+        self._ui_controller.message_bus.formatted_news.connect(self.add_news)
+        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+
+        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_low_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_lowest_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
+
+        self._app_config.news_show_images_changed.connect(self.show_images_toggled)
+        self._app_config.news_desktop_notifications_changed.connect(self.notifications_toggled)
 
     def _setup_layout(self) -> None:
         """Configure layouts."""
@@ -194,7 +215,7 @@ class NewsList(QtWidgets.QWidget):
             return
         self._show_widget_index_at_top(self._scroll_layout.indexOf(news_widget))
 
-    def _select_news_widget(self, news_widget: NewsWidget) -> None:
+    def _select_news_widget(self, news_widget: NewsWidget | None) -> None:
         """Select news widget."""
         if news_widget is None:
             return
@@ -214,7 +235,7 @@ class NewsList(QtWidgets.QWidget):
             return
 
         self._sfxs[news_data["sfx"]].play()
-        if CONFIG.get_gui_settings("news_desktop_notifications"):
+        if self._app_config.get_gui_settings("news_desktop_notifications"):
             desktop_news = self._create_news_widget(news_data, display_delay=True)
             Toast.show_widget(
                 desktop_news,
@@ -224,8 +245,9 @@ class NewsList(QtWidgets.QWidget):
 
         self._add_news_to_list(news_data, display_delay=True)
 
-    def fill_old_news(self, list_news: list[NewsData]) -> None:
-        """Clear and fill list with given data."""
+    async def fill_old_news(self) -> None:
+        """Clear and fill list with old news."""
+        list_news = await self._ui_controller.news_manager.fetch_old_news(self.max_news)
         self.setDisabled(True)
         self._scroll_area.blockSignals(True)
         self.clear_list()
@@ -282,10 +304,11 @@ class NewsList(QtWidgets.QWidget):
             self._exchange.format_pair_from_coin,
             self._exchange.available_pairs,
             display_delay=display_delay,
+            app_config=self._ui_controller.app_config,
         )
-        news_widget.show_images = CONFIG.get_gui_settings("news_show_images")
+        news_widget.show_images = self._app_config.get_gui_settings("news_show_images")  # type: ignore
         news_widget.create_interactions(self._exchange)
-        news_widget.pair_clicked.connect(self.pair_clicked.emit)
+        news_widget.pair_clicked.connect(self._ui_controller.change_current_pair)
         news_widget.news_clicked.connect(self._show_widget_at_top)
         return news_widget
 
@@ -306,10 +329,8 @@ class NewsList(QtWidgets.QWidget):
 
     def show_images_toggled(self, value: bool) -> None:
         """Show images toggled."""
-        CONFIG.set_gui_settings("news_show_images", value)
-        self._top_bar_show_images.blockSignals(True)
         self._top_bar_show_images.setChecked(value)
-        self._top_bar_show_images.blockSignals(False)
+
         for index in range(self._scroll_layout.count()):
             widget = self._scroll_layout.itemAt(index).widget()
             if isinstance(widget, NewsWidget):
@@ -324,27 +345,28 @@ class NewsList(QtWidgets.QWidget):
 
     def notifications_toggled(self, value: bool) -> None:
         """Notifications toggled."""
-        CONFIG.set_gui_settings("news_desktop_notifications", value)
-        self._top_bar_notifications.blockSignals(True)
         self._top_bar_notifications.setChecked(value)
-        self._top_bar_notifications.blockSignals(False)
         if value:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_on"))
         else:
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_off"))
 
-    def on_new_exchange(self, exchange: ExchangeBase) -> None:
-        """Update info based on new exchange.
+    @asyncSlot()
+    async def _on_new_exchange(self) -> None:
+        """Update widget on new exchange.
 
-        Args:
-            exchange (ExchangeBase): New exchangeBase.
+        * Update news trade button values
+        * Fetch old news
         """
-        self._exchange = exchange
+        self._exchange = self._ui_controller.current_exchange
         self._selected_news_widget = None
+        self.update_news_trade_buttons()
+        await self.fill_old_news()
 
-    def update_max_news(self, max_news_index: int) -> None:
+    @asyncSlot()
+    async def update_max_news(self, max_news_index: int) -> None:
         """Update max news."""
         max_news_text = self._top_bar_max_news.itemText(max_news_index)
         max_news = int(max_news_text.split(" ")[0])
         self.max_news = max_news
-        self.refresh_news.emit()
+        await self.fill_old_news()

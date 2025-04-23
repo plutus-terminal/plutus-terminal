@@ -91,7 +91,7 @@ class ManageOrder(QtWidgets.QDialog):
         )
 
         minimum_digits = ui_utils.get_minimal_digits(float(self._order_data["trigger_price"]), 4)
-        self._open_price_value.setText(f"${self._order_data["trigger_price"]:,.{minimum_digits}f}")
+        self._open_price_value.setText(f"${self._order_data['trigger_price']:,.{minimum_digits}f}")
         self._open_price_value.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._liq_price_value.setAlignment(Qt.AlignmentFlag.AlignRight)
 

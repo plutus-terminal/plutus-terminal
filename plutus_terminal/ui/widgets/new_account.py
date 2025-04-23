@@ -10,7 +10,7 @@ from PySide6 import QtWidgets
 from PySide6.QtCore import QRegularExpression, Qt
 from PySide6.QtGui import QPixmap, QRegularExpressionValidator
 
-from plutus_terminal.core.config import CONFIG
+from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.types_ import ExchangeType
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
@@ -26,12 +26,14 @@ class NewAccountDialog(QtWidgets.QDialog):
     def __init__(
         self,
         pass_guard: PasswordGuard,
+        app_config: AppConfig,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
-
         self._pass_guard = pass_guard
+        self._app_config = app_config
+
         self.main_layout = QtWidgets.QVBoxLayout(self)
         self.new_account: Optional[KeyringAccount] = None
 
@@ -198,12 +200,12 @@ class NewAccountDialog(QtWidgets.QDialog):
             Toast.update_message(toast_id, error, ToastType.ERROR)
             return
 
-        self.new_account = CONFIG.create_account(
+        self.new_account = self._app_config.create_account(
             username=account_name,
             exchange_type=ExchangeType[self._type_combo_box.currentText()],
             exchange_name=exchange_name,
         )
-        CONFIG.current_keyring_account = self.new_account
+        self._app_config.current_keyring_account = self.new_account
 
         encrypted_secrets = self._pass_guard.encrypt(
             orjson.dumps(secrets).decode("utf-8"),
@@ -211,7 +213,7 @@ class NewAccountDialog(QtWidgets.QDialog):
 
         # Save secrets to keyring
         keyring.set_password(
-            "plutus-terminal",
+            AppConfig.SERVICE_NAME,
             str(account_name),
             encrypted_secrets,
         )

@@ -57,7 +57,7 @@ class LogViewer(QtWidgets.QDialog):
 
     def _load_log(self) -> None:
         """Load log data."""
-        with self._log_path.open() as log_file:
+        with self._log_path.open(encoding="utf-8", errors="ignore") as log_file:
             self._log_view.setPlainText(log_file.read())
 
     def _copy_log_path(self) -> None:

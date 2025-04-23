@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0rc0 - 23/04/2025
+
+* [refactor] Add UI Controller and Puluts Controller (#79)
+* [fix] Fix infinite scroll type
+* Update poetry to v2 and update depedencies to latest
+* [feat] Improve Splash screen startup time
+* [refactor] Redisign Config Class
+
+
 ## 0.1.0b7 - 31/12/2024
 
 * [feat] Improve CI/DC (#75)
