@@ -29,11 +29,12 @@ from plutus_terminal.core.exchange.web3 import web3_utils
 from plutus_terminal.core.exchange.web3.cycle_provider import build_cycle_provider
 from plutus_terminal.core.types_ import (
     ExchangeType,
+    MessageLevel,
     NewAccountInfo,
     PerpsTradeDirection,
     PerpsTradeType,
+    UserMessage,
 )
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
     from eth_account.signers.local import LocalAccount
@@ -172,6 +173,16 @@ class FoxifyExchange(ExchangeBase):
         return self.fetcher._cached_stable_balance  # noqa: SLF001
 
     @property
+    def min_leverage(self) -> int:
+        """Return min leverage."""
+        return 1
+
+    @property
+    def max_leverage(self) -> int:
+        """Return max leverage."""
+        return 50
+
+    @property
     def min_order_size(self) -> Decimal:
         """Return min trade size."""
         # Could not find this from any contracts only on the front end.
@@ -283,11 +294,6 @@ class FoxifyExchange(ExchangeBase):
             )
             raise InvalidOrderSizeError(msg)
 
-        toast_id = Toast.show_message(
-            f"Creating {trade_type.name} order for {pair}",
-            type_=ToastType.WARNING,
-        )
-
         # Get cached price if available otherwise fetch it.
         if execution_price is None and trade_type == PerpsTradeType.MARKET:
             try:
@@ -332,12 +338,19 @@ class FoxifyExchange(ExchangeBase):
         )
         try:
             trade_result = await self.trader.create_order(trade_args)
-        except TransactionFailedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Failed to create order: {error}",
-                type_=ToastType.ERROR,
+            user_message = UserMessage(
+                text=f"Creating {trade_type.name} order for {pair}",
+                level=MessageLevel.INFO,
+                timeout_ms=5000,
             )
+            self.message_bus.send_message.emit(user_message)
+        except TransactionFailedError as error:
+            user_message = UserMessage(
+                text=f"Failed to create order: {error}",
+                level=MessageLevel.ERROR,
+                timeout_ms=5000,
+            )
+            self.message_bus.send_message.emit(user_message)
             return
 
         if isinstance(trade_result, dict):
@@ -350,7 +363,8 @@ class FoxifyExchange(ExchangeBase):
             "Order Created.",
             "https://arbiscan.io/tx/",
             LOGGER,
-            toast_id,
+            self.message_bus,
+            user_message.message_id,
         )
 
     @asyncSlot()
@@ -371,11 +385,6 @@ class FoxifyExchange(ExchangeBase):
         Raises:
             TransactionFailedError: If transaction failed
         """
-        toast_id = Toast.show_message(
-            f"Editing order {order_data['id']}",
-            type_=ToastType.WARNING,
-        )
-
         if new_size_stable > order_data["size_stable"]:
             msg = "New size must be smaller/equal than current size."
             raise ValueError(msg)
@@ -405,11 +414,19 @@ class FoxifyExchange(ExchangeBase):
 
         try:
             trade_result = await self.trader.edit_order(edit_args)
+            user_message = UserMessage(
+                text=f"Editing order {order_data['id']}",
+                level=MessageLevel.WARNING,
+                timeout_ms=5000,
+            )
+            self.message_bus.send_message.emit(user_message)
         except TransactionFailedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Failed to edit order: {error}",
-                type_=ToastType.ERROR,
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Failed to edit order: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
             )
             return
         if isinstance(trade_result, dict):
@@ -422,7 +439,8 @@ class FoxifyExchange(ExchangeBase):
             "Order Edited.",
             "https://arbiscan.io/tx/",
             LOGGER,
-            toast_id,
+            self.message_bus,
+            user_message.message_id,
         )
 
     @asyncSlot()
@@ -448,11 +466,6 @@ class FoxifyExchange(ExchangeBase):
         Raises:
             TransactionFailedError: If transaction failed
         """
-        toast_id = Toast.show_message(
-            f"Creating {trade_type.name} order for {pair}",
-            type_=ToastType.WARNING,
-        )
-
         # Get cached price if available otherwise fetch it.
         if execution_price is None and trade_type == PerpsTradeType.MARKET:
             try:
@@ -487,18 +500,29 @@ class FoxifyExchange(ExchangeBase):
 
         try:
             trade_result = await self.trader.create_reduce_order(trade_args)
+            user_message = UserMessage(
+                text=f"Creating {trade_type.name} order for {pair}",
+                level=MessageLevel.WARNING,
+                timeout_ms=5000,
+            )
+            self.message_bus.send_message.emit(user_message)
+
         except TransactionFailedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Failed to create reduce order: {error}",
-                type_=ToastType.ERROR,
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Failed to create reduce order: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
             )
             return
         except NotImplementedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Reduce order not supported: {error}",
-                type_=ToastType.ERROR,
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Reduce order not supported: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
             )
             return
 
@@ -512,7 +536,8 @@ class FoxifyExchange(ExchangeBase):
             "Reduce Order Created.",
             "https://arbiscan.io/tx/",
             LOGGER,
-            toast_id,
+            self.message_bus,
+            user_message.message_id,
         )
 
     @asyncSlot()
@@ -525,11 +550,6 @@ class FoxifyExchange(ExchangeBase):
         Raises:
             TransactionFailed: If the transaction fails.
         """
-        toast_id = Toast.show_message(
-            f"Canceling {order_data['order_type'].name} order for {order_data['pair']}",
-            type_=ToastType.WARNING,
-        )
-
         order_extra = order_data.get("extra", None)
         if order_extra is None:
             msg = "Missing 'extra' attribute in order_data."
@@ -548,11 +568,20 @@ class FoxifyExchange(ExchangeBase):
 
         try:
             trade_result = await self.trader.cancel_order(cancel_args)
+            user_message = UserMessage(
+                text=f"Canceling {order_data['order_type'].name} order for {order_data['pair']}",
+                level=MessageLevel.INFO,
+                timeout_ms=5000,
+            )
+            self.message_bus.send_message.emit(user_message)
+
         except TransactionFailedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Failed to create reduce order: {error}",
-                type_=ToastType.ERROR,
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Failed to cancel order: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
             )
             return
 
@@ -566,7 +595,8 @@ class FoxifyExchange(ExchangeBase):
             "Order Cancelled.",
             "https://arbiscan.io/tx/",
             LOGGER,
-            toast_id,
+            self.message_bus,
+            user_message.message_id,
         )
 
     @asyncSlot()
@@ -579,11 +609,6 @@ class FoxifyExchange(ExchangeBase):
         Raises:
             TransactionFailed: If the transaction fails.
         """
-        toast_id = Toast.show_message(
-            f"Closing position for {perps_position['pair']}",
-            type_=ToastType.WARNING,
-        )
-
         # Get cached price if available otherwise fetch it.
         try:
             current_price = Decimal(self.cached_prices[perps_position["pair"]]["price"])
@@ -614,11 +639,19 @@ class FoxifyExchange(ExchangeBase):
         )
         try:
             trade_result = await self.trader.close_position(trade_arguments)
+            user_message = UserMessage(
+                text=f"Closing position for {perps_position['pair']}",
+                level=MessageLevel.INFO,
+                timeout_ms=5000,
+            )
+            self.message_bus.send_message.emit(user_message)
         except TransactionFailedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Failed to close position: {error}",
-                type_=ToastType.ERROR,
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Failed to close position: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
             )
             return
 
@@ -632,7 +665,8 @@ class FoxifyExchange(ExchangeBase):
             "Position Closed.",
             "https://arbiscan.io/tx/",
             LOGGER,
-            toast_id,
+            self.message_bus,
+            user_message.message_id,
         )
 
     @staticmethod

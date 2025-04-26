@@ -55,7 +55,12 @@ class Toast(QFrame):
     _toasts_desktop: ClassVar[dict] = {}
     closed = Signal()
 
-    def __init__(self, parent: Optional[QWidget] = None, desktop: bool = False) -> None:
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        desktop: bool = False,
+        message_id: bytes | None = None,
+    ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
         self._app_config = AppConfig()
@@ -69,7 +74,7 @@ class Toast(QFrame):
         self._pin_button = QToolButton()
         self._button_layout = QHBoxLayout()
         self._message_widget = QWidget()
-        self._id = os.urandom(8)
+        self._id = message_id or os.urandom(8)
 
         self._timer = QTimer()
         self._margin = 10
@@ -77,6 +82,11 @@ class Toast(QFrame):
 
         self._setup_widgets()
         self._setup_layout()
+
+    @property
+    def id(self) -> bytes:
+        """Toast ID."""
+        return self._id
 
     def add_message_widget(self, message_widget: QWidget) -> None:
         """Add message widget."""
@@ -247,6 +257,7 @@ class Toast(QFrame):
         timeout: int = 10000,
         desktop: bool = False,
         type_: ToastType = ToastType.MESSAGE,
+        message_id: bytes | None = None,
     ) -> bytes:
         """Show Toast message.
 
@@ -255,18 +266,23 @@ class Toast(QFrame):
             timeout (int, optional): Timeout in milliseconds. Defaults to 10000.
             desktop (bool, optional): Show on desktop. Defaults to False.
             type_ (ToastType, optional): Toast type. Defaults to ToastType.MESSAGE.
+            message_id (bytes | None, optional): Message ID. Defaults to None.
 
         Returns:
             bytes: Toast ID.
         """
+        if message_id in Toast._toasts_win or message_id in Toast._toasts_desktop:
+            Toast.update_message(message_id, message, type_, desktop)
+            return message_id
+
         message_label = QLabel(message)
         message_label.setTextFormat(Qt.TextFormat.RichText)
         message_label.setOpenExternalLinks(True)
-        return Toast.show_widget(message_label, timeout, desktop, type_)
+        return Toast.show_widget(message_label, timeout, desktop, type_, message_id)
 
     @staticmethod
     def update_message(
-        toast_id: bytes,
+        message_id: bytes,
         message: str,
         type_: ToastType,
         desktop: bool = False,
@@ -274,15 +290,15 @@ class Toast(QFrame):
         """Update toast message.
 
         Args:
-            toast_id (bytes): Toast ID.
+            message_id (bytes): Toast ID.
             message (str): Message to show.
             type_ (ToastType): Toast type.
             desktop (bool, optional): Show on desktop. Defaults to False.
         """
         if desktop:
-            toast = Toast._toasts_desktop.get(toast_id, False)
+            toast = Toast._toasts_desktop.get(message_id, False)
         else:
-            toast = Toast._toasts_win.get(toast_id, False)
+            toast = Toast._toasts_win.get(message_id, False)
 
         if not toast:
             return
@@ -299,6 +315,7 @@ class Toast(QFrame):
         timeout: int = 10000,
         desktop: bool = False,
         type_: ToastType = ToastType.MESSAGE,
+        message_id: bytes | None = None,
     ) -> bytes:
         """Show toast widget.
 
@@ -307,13 +324,14 @@ class Toast(QFrame):
             timeout (int, optional): Timeout in milliseconds. Defaults to 10000.
             desktop (bool, optional): Show on desktop. Defaults to False.
             type_ (ToastType, optional): Toast type. Defaults to ToastType.MESSAGE.
+            message_id (bytes | None, optional): Toast ID. Defaults to None.
 
         Returns:
             bytes: Toast ID.
         """
         if desktop:
             # Setup to show on desktop
-            toast = Toast(None, desktop=True)
+            toast = Toast(None, desktop=True, message_id=message_id)
             current_screen = QApplication.primaryScreen()
 
             # Use cursor for window reference
@@ -344,9 +362,9 @@ class Toast(QFrame):
 
         # Store toast in memory depending of type
         if desktop:
-            Toast._toasts_desktop[toast._id] = toast
+            Toast._toasts_desktop[toast.id] = toast
         else:
-            Toast._toasts_win[toast._id] = toast
+            Toast._toasts_win[toast.id] = toast
 
         toast._timer.setInterval(timeout)
 
@@ -359,4 +377,4 @@ class Toast(QFrame):
         if desktop:
             toast.setWindowFlag(Qt.WindowType.Tool)
         toast.show()
-        return toast._id
+        return toast.id

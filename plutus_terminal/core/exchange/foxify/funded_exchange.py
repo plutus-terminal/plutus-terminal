@@ -13,7 +13,6 @@ from plutus_terminal.core.exchange.foxify.funded_fetcher import FoxifyFundedFetc
 from plutus_terminal.core.exchange.foxify.funded_trader import FoxifyFundedTrader
 from plutus_terminal.core.password_guard import PasswordGuard
 from plutus_terminal.message_bus import MessageBus
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 
 class FoxifyFundedExchange(FoxifyExchange):
@@ -86,6 +85,16 @@ class FoxifyFundedExchange(FoxifyExchange):
         )
 
     @property
+    def min_leverage(self) -> int:
+        """Return min leverage."""
+        return int(self._min_leverage)
+
+    @property
+    def max_leverage(self) -> int:
+        """Return max leverage."""
+        return int(self._max_leverage)
+
+    @property
     def min_order_size(self) -> Decimal:
         """Return min trade size."""
         return self._min_order_size
@@ -114,64 +123,6 @@ class FoxifyFundedExchange(FoxifyExchange):
         """
         # Funded contracts don't need to be approved
         return True
-
-    @asyncSlot()
-    async def set_all_leverage(self, leverage: int) -> None:
-        """Set leverage for all positions.
-
-        Args:
-            leverage (int): Leverage to set.
-        """
-        toast_id = Toast.show_message(
-            f"Leverage set to all pairs: {leverage}x",
-            type_=ToastType.SUCCESS,
-        )
-        if leverage < self._min_leverage:
-            Toast.update_message(
-                toast_id,
-                f"Leverage is too low. Set minimum leverage: {self._min_leverage}x",
-                type_=ToastType.WARNING,
-            )
-            leverage = self._min_leverage
-        elif leverage > self._max_leverage:
-            Toast.update_message(
-                toast_id,
-                f"Leverage is too high. Set maximum leverage: {self._max_leverage}x",
-                type_=ToastType.WARNING,
-            )
-            leverage = self._max_leverage
-
-        self.app_config.leverage = leverage
-
-    @asyncSlot()
-    async def set_leverage(self, coin: str, leverage: int) -> None:
-        """Set leverage for pair.
-
-        Args:
-            coin (str): Coin to set leverage for.
-            leverage (int): Leverage to set.
-        """
-        pair = self.format_pair_from_coin(coin)
-        toast_id = Toast.show_message(
-            f"Leverage of {pair} set to: {leverage}x",
-            type_=ToastType.SUCCESS,
-        )
-        if leverage < self._min_leverage:
-            Toast.update_message(
-                toast_id,
-                f"Leverage of {pair} is too low. Set minimum leverage: {self._min_leverage}x",
-                type_=ToastType.WARNING,
-            )
-            leverage = self._min_leverage
-        elif leverage > self._max_leverage:
-            Toast.update_message(
-                toast_id,
-                f"Leverage of {pair} is too high. Set maximum leverage: {self._max_leverage}x",
-                type_=ToastType.WARNING,
-            )
-            leverage = self._max_leverage
-
-        self.app_config.leverage = leverage
 
     @staticmethod
     def name() -> str:

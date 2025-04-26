@@ -11,11 +11,13 @@ from .exchange.types import (
 )
 from .news.filter.types import ActionType, FilterType
 from .news.types import NewsData
+from .user_message import MessageLevel, UserMessage
 
 __all__ = [
     "ActionType",
     "ExchangeType",
     "FilterType",
+    "MessageLevel",
     "NewAccountInfo",
     "NewsData",
     "PerpsPosition",
@@ -23,4 +25,5 @@ __all__ = [
     "PerpsTradeType",
     "PriceData",
     "PriceHistory",
+    "UserMessage",
 ]

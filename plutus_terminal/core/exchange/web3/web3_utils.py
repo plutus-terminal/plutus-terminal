@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from web3.types import TxReceipt, Wei
 
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
+from plutus_terminal.core.types_ import MessageLevel, UserMessage
 
 if TYPE_CHECKING:
     import logging
@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from hexbytes import HexBytes
     from web3 import AsyncWeb3
     from web3.types import Gwei, TxParams
+
+    from plutus_terminal.message_bus import MessageBus
 
 
 async def estimate_gas_price(web3_provider: AsyncWeb3, extra_gas: Gwei) -> Wei:
@@ -61,7 +63,8 @@ async def await_receipt_and_report(
     message: str,
     scan_url: str,
     log: logging.Logger,
-    toast_id: Optional[bytes] = None,
+    message_bus: MessageBus,
+    message_id: Optional[bytes] = None,
 ) -> TxReceipt:
     """Await transaction receipt and report result.
 
@@ -71,51 +74,55 @@ async def await_receipt_and_report(
         message (str): Message to display.
         scan_url (str): Scan url.
         log (logging.Logger): Log instance.
-        toast_id (Optional[bytes]): Toast id. If none create one.
+        message_bus (MessageBus): Message bus.
+        message_id (Optional[bytes]): Message id.
 
     """
-    if toast_id is None:
-        toast_id = Toast.show_message(
-            message=f"Awaiting::{message}...",
-            type_=ToastType.WARNING,
-            timeout=5000,
-        )
-    else:
-        Toast.update_message(
-            toast_id,
-            message=f"Awaiting::{message}...",
-            type_=ToastType.WARNING,
-        )
+    user_message = UserMessage(
+        text=f"Awaiting: {message}...",
+        level=MessageLevel.WARNING,
+        timeout_ms=5000,
+        message_id=message_id,
+    )
+    message_bus.send_message.emit(user_message)
+
     tx_receipt = await web3_provider.eth.wait_for_transaction_receipt(send_txn)
     if tx_receipt["status"] == 1:
         log.info(
-            "Transaction Sucessfully Sent:: %s Tx:: %s%s",
+            "Transaction Sucessfully Sent: %s Tx: %s%s",
             message,
             scan_url,
             web3_provider.to_hex(send_txn),
         )
-        toast_message = (
-            f"Sucessfull::{message} "
+
+        user_message = (
+            f"Sucessfull: {message} "
             f"<a href='{scan_url}{web3_provider.to_hex(send_txn)}'>TX Link</a>"
         )
-        Toast.update_message(
-            toast_id,
-            message=toast_message,
-            type_=ToastType.SUCCESS,
+        message_bus.send_message.emit(
+            UserMessage(
+                text=user_message,
+                level=MessageLevel.SUCCESS,
+                timeout_ms=5000,
+                message_id=message_id,
+            )
         )
     else:
         log.warning(
-            "Transaction Failed:: %s Tx:: %s%s",
+            "Transaction Failed: %s Tx: %s%s",
             message,
             scan_url,
             web3_provider.to_hex(send_txn),
         )
-        toast_message = (
-            f"Failed::{message} <a href='{scan_url}{web3_provider.to_hex(send_txn)}'>TX Link</a>"
+        user_message = (
+            f"Failed: {message} <a href='{scan_url}{web3_provider.to_hex(send_txn)}'>TX Link</a>"
         )
-        Toast.update_message(
-            toast_id,
-            message=toast_message,
-            type_=ToastType.ERROR,
+        message_bus.send_message.emit(
+            UserMessage(
+                text=user_message,
+                level=MessageLevel.ERROR,
+                timeout_ms=5000,
+                message_id=message_id,
+            )
         )
     return tx_receipt

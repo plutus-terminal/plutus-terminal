@@ -210,7 +210,7 @@ class PerpsConfig(QtWidgets.QWidget):
             leverage_value (int): Leverage value to set.
         """
         leverage_value = self._leverage_spin.value()
-        await self._ui_controller.current_exchange.set_all_leverage(leverage_value)
+        await self._ui_controller.set_all_leverage(leverage_value)
 
     def _update_trade_values(self) -> None:
         """Update trade values."""

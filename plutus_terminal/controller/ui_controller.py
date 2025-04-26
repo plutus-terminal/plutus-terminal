@@ -12,8 +12,10 @@ from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
 from plutus_terminal.core.password_guard import PasswordGuard
+from plutus_terminal.core.types_ import MessageLevel, UserMessage
 from plutus_terminal.message_bus import MessageBus
 from plutus_terminal.ui import ui_utils
+from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
     from plutus_terminal.core.exchange.base import ExchangeBase
@@ -65,6 +67,12 @@ class UIController(QObject):
         self.news_manager: NewsManager
         self.current_exchange: ExchangeBase
         self.current_pair: str
+
+        self._connect_signals()
+
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self.message_bus.send_message.connect(self.show_toast_message)
 
     async def init_async(self) -> None:
         """Initialize async shared variables."""
@@ -180,4 +188,76 @@ class UIController(QObject):
         await asyncio.gather(
             self.news_manager.stop_async(),
             self.current_exchange.stop_async(),
+        )
+
+    async def set_leverage(self, coin: str, leverage: int) -> None:
+        """Set leverage for current pair.
+
+        Args:
+            coin (str): Coin to set leverage for.
+            leverage (int): Leverage to set.
+        """
+        await self.current_exchange.set_leverage(self.current_pair, leverage)
+        pair = self.current_exchange.format_pair_from_coin(coin)
+        if leverage < self.current_exchange.min_leverage:
+            Toast.show_message(
+                f"Leverage of {pair} is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
+                type_=ToastType.WARNING,
+            )
+        elif leverage > self.current_exchange.max_leverage:
+            Toast.show_message(
+                f"Leverage of {pair} is too high. Set maximum leverage: {self.current_exchange.max_leverage}x",
+                type_=ToastType.WARNING,
+            )
+        else:
+            Toast.show_message(
+                f"Leverage of {pair} set to: {leverage}x",
+                type_=ToastType.SUCCESS,
+            )
+
+    @asyncSlot()
+    async def set_all_leverage(self, leverage: int) -> None:
+        """Set leverage for all positions.
+
+        Args:
+            leverage (int): Leverage to set.
+        """
+        await self.current_exchange.set_all_leverage(leverage)
+        if leverage < self.current_exchange.min_leverage:
+            Toast.show_message(
+                f"Leverage is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
+                type_=ToastType.WARNING,
+            )
+        elif leverage > self.current_exchange.max_leverage:
+            Toast.show_message(
+                f"Leverage is too high. Set maximum leverage: {self.current_exchange.max_leverage}x",
+                type_=ToastType.WARNING,
+            )
+        else:
+            Toast.show_message(
+                f"Leverage set to all pairs: {leverage}x",
+                type_=ToastType.SUCCESS,
+            )
+
+    def show_toast_message(self, message: UserMessage) -> None:
+        """Handle user message.
+
+        Send Toast message.
+
+        Args:
+            message (UserMessage): User message.
+        """
+        level_map = {
+            MessageLevel.INFO: ToastType.MESSAGE,
+            MessageLevel.SUCCESS: ToastType.SUCCESS,
+            MessageLevel.WARNING: ToastType.WARNING,
+            MessageLevel.ERROR: ToastType.ERROR,
+        }
+
+        Toast.show_message(
+            message=message.text,
+            timeout=message.timeout_ms,
+            desktop=message.desktop,
+            type_=level_map[message.level],
+            message_id=message.message_id,
         )
