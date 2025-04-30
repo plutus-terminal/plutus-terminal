@@ -355,7 +355,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         leverage_value = self._leverage_spin.value()
         pair = self._pair_combo_box.currentData()
         coin = self._exchange.format_coin_from_pair(pair)
-        await self._exchange.set_leverage(coin, leverage_value)
+        await self._ui_controller.set_leverage(coin, leverage_value)
 
         # In case the levarage was changed due to limits, ensure UI is up to date
         if self._app_config.leverage != leverage_value:
@@ -535,7 +535,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         # Ensure leverage is set correctly
         coin = self._exchange.format_coin_from_pair(pair)
-        await self._exchange.set_leverage(coin, self._app_config.leverage)
+        await self._ui_controller.set_leverage(coin, self._app_config.leverage)
 
         self.top_bar.title.setText(f"Persp Trade | {simplified_pair}")
 

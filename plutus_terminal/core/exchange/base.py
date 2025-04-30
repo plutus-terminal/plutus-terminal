@@ -15,7 +15,7 @@ from plutus_terminal.core.exceptions import (
     TransactionFailedError,
 )
 from plutus_terminal.core.exchange.types import PnlDetails
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
+from plutus_terminal.core.types_ import MessageLevel, UserMessage
 
 if TYPE_CHECKING:
     from plutus_terminal.core.config import AppConfig
@@ -329,6 +329,16 @@ class ExchangeBase(ABC):
         """Return stable balance."""
 
     @property
+    @abstractmethod
+    def min_leverage(self) -> int:
+        """Return min leverage."""
+
+    @property
+    @abstractmethod
+    def max_leverage(self) -> int:
+        """Return max leverage."""
+
+    @property
     def account_info(self) -> dict[str, str]:
         """Return info to be added to account info widget."""
         return {
@@ -481,25 +491,16 @@ class ExchangeBase(ABC):
         Args:
             leverage (int): Leverage to set.
         """
-        Toast.show_message(
-            f"Leverage set to all pairs: {leverage}x",
-            type_=ToastType.SUCCESS,
-        )
         self.app_config.leverage = leverage
 
     @asyncSlot()
-    async def set_leverage(self, coin: str, leverage: int) -> None:
+    async def set_leverage(self, coin: str, leverage: int) -> None:  # noqa: ARG002
         """Set leverage for pair.
 
         Args:
             coin (str): Coin to set leverage for.
             leverage (int): Leverage to set.
         """
-        pair = self.format_pair_from_coin(coin)
-        Toast.show_message(
-            f"Leverage of {pair} set to: {leverage}x",
-            type_=ToastType.SUCCESS,
-        )
         self.app_config.leverage = leverage
 
     def is_valid_order_size(self, order_size: Decimal) -> bool:
@@ -611,21 +612,31 @@ class ExchangeBase(ABC):
         Raises:
             TransactionFailedError: If transaction failed
         """
-        toast_id = Toast.show_message(
-            f"Closing position for {perps_position['pair']}",
-            type_=ToastType.WARNING,
-        )
         try:
             await self.trader.close_position(perps_position)
-        except TransactionFailedError as error:
-            Toast.update_message(
-                toast_id,
-                f"Failed to close position > {error}",
-                type_=ToastType.ERROR,
+            user_message = UserMessage(
+                f"Position closed for {perps_position['pair']}",
+                level=MessageLevel.INFO,
             )
+            self.message_bus.send_message.emit(user_message)
+        except TransactionFailedError as error:
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    f"Failed to close position for {perps_position['pair']}: {error}",
+                    level=MessageLevel.ERROR,
+                ),
+            )
+            return
+
         all_positions = await self.fetcher.fetch_all_positions()
-        self.message_bus.positions_signal.emit(all_positions)
-        Toast.update_message(toast_id, "Position closed", type_=ToastType.SUCCESS)
+        self.message_bus.positions_fetched.emit(all_positions)
+        self.message_bus.send_message.emit(
+            UserMessage(
+                f"Position closed for {perps_position['pair']}",
+                level=MessageLevel.SUCCESS,
+                message_id=user_message.message_id,
+            ),
+        )
 
     def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
         """Get position associated with given order.

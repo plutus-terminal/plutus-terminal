@@ -7,6 +7,7 @@ from decimal import Decimal
 from PySide6.QtCore import QObject, Signal
 
 from plutus_terminal.core.news.types import NewsData
+from plutus_terminal.core.types_ import UserMessage
 
 
 class MessageBus(QObject):
@@ -41,3 +42,10 @@ class MessageBus(QObject):
 
     formatted_news: Signal = Signal(NewsData)
     """Signal emitted when formatted_news is received."""
+
+    send_message: Signal = Signal(UserMessage)
+    """Signal emitted when message is sent.
+
+    Args:
+        UserMessage: Message to send.
+    """

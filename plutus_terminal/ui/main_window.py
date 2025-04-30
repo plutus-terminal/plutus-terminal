@@ -24,7 +24,6 @@ from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
 from plutus_terminal.ui.widgets.perps_trade import PerpsTradeWidget
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.trade_table import TradeTable
 from plutus_terminal.ui.widgets.trading_chart import TradingChart
 from plutus_terminal.ui.widgets.user_top_bar import UserTopBar
