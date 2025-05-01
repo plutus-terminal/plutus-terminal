@@ -5,11 +5,11 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Optional
 
-import keyring
 import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtMultimedia import QSoundEffect
 
+from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.db.models import UserFilter
 from plutus_terminal.core.news.filter._actions import FILTER_ACTIONS_MAP
@@ -33,6 +33,7 @@ class NewsConfig(QtWidgets.QWidget):
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
+        self._pass_guard = self._ui_controller.pass_guard
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -76,13 +77,13 @@ class NewsConfig(QtWidgets.QWidget):
             """style="color:rgb(80, 210, 180)">"""
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
-        current_tree_key = keyring.get_password(
-            f"{AppConfig.SERVICE_NAME}:news-source",
-            TREE_KEY_NAME,
-        )
-        if current_tree_key:
+        try:
+            current_tree_key = keyring_manager.get_news_source_api_key(
+                TREE_KEY_NAME,
+                self._pass_guard,
+            )
             self._tree_input.setText(current_tree_key)
-        else:
+        except keyring_manager.KeyringPasswordNotFoundError:
             self._tree_input.setPlaceholderText(
                 "Enter your TreeOfAlpha API key here...",
             )
@@ -95,13 +96,14 @@ class NewsConfig(QtWidgets.QWidget):
             """https://phoenixnews.io</a>""",
         )
         self._phoenix_text_label.setOpenExternalLinks(True)
-        current_phoenix_key = keyring.get_password(
-            f"{AppConfig.SERVICE_NAME}:news-source",
-            PHOENIX_KEY_NAME,
-        )
-        if current_phoenix_key:
+
+        try:
+            current_phoenix_key = keyring_manager.get_news_source_api_key(
+                PHOENIX_KEY_NAME,
+                self._pass_guard,
+            )
             self._phoenix_input.setText(current_phoenix_key)
-        else:
+        except keyring_manager.KeyringPasswordNotFoundError:
             self._phoenix_input.setPlaceholderText("Enter your Phoenix API key here...")
 
         self._tree_input.editingFinished.connect(
@@ -187,10 +189,10 @@ class NewsConfig(QtWidgets.QWidget):
             TREE_KEY_NAME: self._tree_input.text(),
             PHOENIX_KEY_NAME: self._phoenix_input.text(),
         }
-        keyring.set_password(
-            f"{AppConfig.SERVICE_NAME}:news-source",
+        keyring_manager.set_news_source_api_key(
             news_source,
             text_source[news_source],
+            self._pass_guard,
         )
         Toast.show_message(
             "News source API key saved successfully!",

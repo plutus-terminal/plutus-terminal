@@ -9,11 +9,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Self
 
-import orjson
 from qasync import asyncSlot
 from web3 import Account
 from web3.types import Gwei
 
+from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.exceptions import (
     InvalidOrderSizeError,
     TransactionFailedError,
@@ -68,8 +68,10 @@ class FoxifyExchange(ExchangeBase):
         self.web3_provider = build_cycle_provider("Arbitrum One Trader")
         # Get current account
         keyring_account = self.app_config.current_keyring_account
-        decrypted_password = self._pass_guard.get_keyring_password(keyring_account)
-        web3_account: LocalAccount = Account.from_key(orjson.loads(decrypted_password)[0])
+        decrypted_password = keyring_manager.get_exchange_password(
+            str(keyring_account.username), pass_guard
+        )
+        web3_account: LocalAccount = Account.from_key(decrypted_password[0])
 
         self.web3_account = web3_account
         self._pair_prefix = "Crypto."

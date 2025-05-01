@@ -15,6 +15,7 @@ from plutus_terminal.core.news.tree_news import TreeNews
 if TYPE_CHECKING:
     from plutus_terminal.core.news.base import NewsFetcher
     from plutus_terminal.core.news.filter.filter_manager import FilterManager
+    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import NewsData
     from plutus_terminal.message_bus import MessageBus
 
@@ -24,16 +25,23 @@ LOGGER = logging.getLogger(__name__)
 class NewsManager:
     """Manage multiple news source."""
 
-    def __init__(self, message_bus: MessageBus, filter_manager: FilterManager) -> None:
+    def __init__(
+        self,
+        message_bus: MessageBus,
+        filter_manager: FilterManager,
+        pass_guard: PasswordGuard,
+    ) -> None:
         """Initialize shared variables.
 
         Args:
             message_bus (MessageBus): Message bus to send news signals.
             filter_manager (FilterManager): Filter manager to filter news.
+            pass_guard (PasswordGuard): Password guard
         """
         self.message_bus = message_bus
         self.news_sources: list[NewsFetcher] = [TreeNews(), PhoenixNews()]
         self._filter_manager = filter_manager
+        self._pass_guard = pass_guard
         self._seen_links: set[str] = set()
         self._news_task: list[asyncio.Task] = []
 
@@ -41,7 +49,7 @@ class NewsManager:
 
     async def fetch_news(self) -> None:
         """Fetch news from news sources."""
-        login_tasks = [news_fetcher.login() for news_fetcher in self.news_sources]
+        login_tasks = [news_fetcher.login(self._pass_guard) for news_fetcher in self.news_sources]
         await asyncio.gather(*login_tasks)
         for news_fetcher in self.news_sources:
             self._news_task.append(
