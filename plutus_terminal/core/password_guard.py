@@ -9,17 +9,14 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-import keyring
 from qasync import os
 
-from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exceptions import (
     InvalidPasswordError,
-    KeyringPasswordNotFoundError,
 )
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.db.models import KeyringAccount
+    from plutus_terminal.core.config import AppConfig
 
 
 class PasswordGuard:
@@ -107,15 +104,3 @@ class PasswordGuard:
         except InvalidToken:
             return False
         return decrypted_validation == self._validation_text
-
-    def get_keyring_password(self, keyring_account: KeyringAccount) -> str:
-        """Get keyring password."""
-        encrypted_keyring_password = keyring.get_password(
-            AppConfig.SERVICE_NAME,
-            str(keyring_account.username),
-        )
-        if encrypted_keyring_password is None:
-            msg = "Keyring password not found"
-            raise KeyringPasswordNotFoundError(msg)
-
-        return self.decrypt(encrypted_keyring_password)

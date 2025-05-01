@@ -85,7 +85,7 @@ class UIController(QObject):
         await self.current_exchange.fetch_prices()
         self.current_pair = self.current_exchange.default_pair
 
-        self.news_manager = NewsManager(self.message_bus, self.news_filter_manager)
+        self.news_manager = NewsManager(self.message_bus, self.news_filter_manager, self.pass_guard)
         asyncio.create_task(self.news_manager.fetch_news())
 
         self.app_config.current_account_id_changed.connect(self.change_current_exchange)

@@ -7,7 +7,6 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from httpx import AsyncClient
-import keyring
 import orjson as json
 import re2
 from tenacity import (
@@ -18,12 +17,14 @@ from tenacity import (
 )
 from websockets.client import WebSocketClientProtocol, connect
 
-from plutus_terminal.core.config import AppConfig
+from plutus_terminal.core import keyring_manager
+from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
 from plutus_terminal.core.news.base import NewsFetcher
 from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
+    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.message_bus import MessageBus
 
 LOGGER = logging.getLogger(__name__)
@@ -88,14 +89,19 @@ class PhoenixNews(NewsFetcher):
             formated_message = self.format_news(json_message)
             message_bus.raw_news.emit(formated_message)
 
-    async def login(self) -> None:
-        """Login to news source."""
+    async def login(self, pass_guard: PasswordGuard) -> None:
+        """Login to news source.
+
+        Args:
+            pass_guard (PasswordGuard): Password guard
+        """
         LOGGER.info("Logging in to PhoenixNews...")
-        phoenix_api_key = keyring.get_password(
-            f"{AppConfig.SERVICE_NAME}:news-source",
-            PHOENIX_KEY_NAME,
-        )
-        if not phoenix_api_key:
+        try:
+            phoenix_api_key = keyring_manager.get_news_source_api_key(
+                PHOENIX_KEY_NAME,
+                pass_guard=pass_guard,
+            )
+        except KeyringPasswordNotFoundError:
             LOGGER.warning("PhoenixNews API key not found")
             return
         await self._ensure_websocket_connection()

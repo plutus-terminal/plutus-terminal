@@ -4,18 +4,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-import keyring
-import orjson
 from PySide6 import QtWidgets
 from PySide6.QtCore import QRegularExpression, Qt
 from PySide6.QtGui import QPixmap, QRegularExpressionValidator
 
-from plutus_terminal.core.config import AppConfig
+from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.types_ import ExchangeType
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
+    from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.db.models import KeyringAccount
     from plutus_terminal.core.password_guard import PasswordGuard
 
@@ -207,15 +206,11 @@ class NewAccountDialog(QtWidgets.QDialog):
         )
         self._app_config.current_keyring_account = self.new_account
 
-        encrypted_secrets = self._pass_guard.encrypt(
-            orjson.dumps(secrets).decode("utf-8"),
-        )
-
         # Save secrets to keyring
-        keyring.set_password(
-            AppConfig.SERVICE_NAME,
-            str(account_name),
-            encrypted_secrets,
+        keyring_manager.set_exchange_password(
+            account_name,
+            secrets,
+            self._pass_guard,
         )
 
         self._log_label.setText("Account created successfully!")

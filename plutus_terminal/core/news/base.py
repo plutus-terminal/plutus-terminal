@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import NewsData
     from plutus_terminal.message_bus import MessageBus
 
@@ -33,8 +34,12 @@ class NewsFetcher(Protocol):
         """
         ...
 
-    async def login(self) -> None:
-        """Login to news source."""
+    async def login(self, pass_guard: PasswordGuard) -> None:
+        """Login to news source.
+
+        Args:
+            pass_guard (PasswordGuard): Password guard
+        """
         ...
 
     async def stop_async(self) -> None:
