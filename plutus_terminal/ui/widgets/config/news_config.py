@@ -14,8 +14,8 @@ from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.db.models import UserFilter
 from plutus_terminal.core.news.filter._actions import FILTER_ACTIONS_MAP
 from plutus_terminal.core.news.filter.types import ActionType, FilterType
-from plutus_terminal.core.news.phoenix_news import PHOENIX_KEY_NAME
-from plutus_terminal.core.news.tree_news import TREE_KEY_NAME
+from plutus_terminal.core.news.phoenix_news import PhoenixNews
+from plutus_terminal.core.news.tree_news import TreeNews
 from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
@@ -79,7 +79,7 @@ class NewsConfig(QtWidgets.QWidget):
         )
         try:
             current_tree_key = keyring_manager.get_news_source_api_key(
-                TREE_KEY_NAME,
+                TreeNews.NEWS_SERVICE_NAME,
                 self._pass_guard,
             )
             self._tree_input.setText(current_tree_key)
@@ -99,7 +99,7 @@ class NewsConfig(QtWidgets.QWidget):
 
         try:
             current_phoenix_key = keyring_manager.get_news_source_api_key(
-                PHOENIX_KEY_NAME,
+                PhoenixNews.NEWS_SERVICE_NAME,
                 self._pass_guard,
             )
             self._phoenix_input.setText(current_phoenix_key)
@@ -107,10 +107,10 @@ class NewsConfig(QtWidgets.QWidget):
             self._phoenix_input.setPlaceholderText("Enter your Phoenix API key here...")
 
         self._tree_input.editingFinished.connect(
-            partial(self.record_news_source_key, TREE_KEY_NAME),
+            partial(self.record_news_source_key, TreeNews.NEWS_SERVICE_NAME),
         )
         self._phoenix_input.editingFinished.connect(
-            partial(self.record_news_source_key, PHOENIX_KEY_NAME),
+            partial(self.record_news_source_key, PhoenixNews.NEWS_SERVICE_NAME),
         )
 
         self._news_scroll_area.setWidgetResizable(True)
@@ -186,8 +186,8 @@ class NewsConfig(QtWidgets.QWidget):
             news_source: name of the news source,
         """
         text_source = {
-            TREE_KEY_NAME: self._tree_input.text(),
-            PHOENIX_KEY_NAME: self._phoenix_input.text(),
+            TreeNews.NEWS_SERVICE_NAME: self._tree_input.text(),
+            PhoenixNews.NEWS_SERVICE_NAME: self._phoenix_input.text(),
         }
         keyring_manager.set_news_source_api_key(
             news_source,
