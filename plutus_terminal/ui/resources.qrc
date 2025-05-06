@@ -11,6 +11,9 @@
         <file alias="upbit">images/upbit.png</file>
         <file alias="usgov">images/usgov.png</file>
         <file alias="webs">images/webs.png</file>
+        <file alias="synoptic">images/synoptic.png</file>
+        <file alias="bybit">images/bybit.png</file>
+        <file alias="on_chain">images/on_chain.png</file>
     </qresource>
 
     <qresource prefix="icons">
@@ -41,6 +44,8 @@
         <file alias="lock_icon">images/lock_icon.svg</file>
         <file alias="repost">images/repost_icon.svg</file>
         <file alias="reply">images/reply_icon.svg</file>
+        <file alias="eye_open">images/eye_open.svg</file>
+        <file alias="eye_closed">images/eye_closed.svg</file>
     </qresource>
 
     <qresource prefix="general">

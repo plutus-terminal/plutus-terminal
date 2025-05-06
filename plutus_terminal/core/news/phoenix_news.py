@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import TYPE_CHECKING, Optional
@@ -52,11 +53,10 @@ class PhoenixNews(NewsFetcher):
         """Connect to websocket to fetch news.
 
         Returns:
-            WebSocketClientProtocol: Websocket connection.
+            ClientConnection: Websocket connection.
         """
-        if self._socket is None or self._socket.state == State.CLOSED:
-            self._socket = await connect(self.wss, ping_interval=5, ping_timeout=10)
-            LOGGER.info("Connected to %s Websocket", self.NEWS_SERVICE_NAME)
+        self._socket = await connect(self.wss, ping_interval=5, ping_timeout=10)
+        LOGGER.info("Connected to %s Websocket", self.NEWS_SERVICE_NAME)
         return self._socket
 
     @retry(
@@ -110,11 +110,14 @@ class PhoenixNews(NewsFetcher):
         if not self._socket:
             return
         await self._socket.send(f"login {phoenix_api_key}")
-        login_attempt = await self._socket.recv()
-        login_attempt = json.loads(login_attempt)
-        login_attempt.pop("apiKey", None)
-        login_attempt.pop("address", None)
-        LOGGER.info("%s login result: %s", self.NEWS_SERVICE_NAME, login_attempt)
+        try:
+            login_attempt = await asyncio.wait_for(self._socket.recv(), timeout=1)
+            login_attempt = json.loads(login_attempt)
+            login_attempt.pop("apiKey", None)
+            login_attempt.pop("address", None)
+            LOGGER.info("%s login result: %s", self.NEWS_SERVICE_NAME, login_attempt)
+        except TimeoutError:
+            LOGGER.warning("%s login timed out", self.NEWS_SERVICE_NAME)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.4, max=2),
@@ -235,5 +238,5 @@ class PhoenixNews(NewsFetcher):
 
     async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
-        if self._socket is not None and self._socket.state != State.CLOSED:
+        if self._socket is not None and self._socket.state not in (State.CLOSED, State.CLOSING):
             await self._socket.close()

@@ -32,12 +32,15 @@ ICON_MAP = {
     "blogs": ":/sources/blog",
     "usgov": ":/sources/usgov",
     "binance en": ":/sources/binance",
+    "bybit": ":/sources/bybit",
     "upbit": ":/sources/upbit",
     "telegram": ":/sources/telegram",
     "crypto": ":/sources/crypto",
     "webs": ":/sources/webs",
     "medium": ":/sources/medium",
     "terminal": ":/sources/terminal",
+    "synopticstreams": ":/sources/synoptic",
+    "onchain": ":/sources/on_chain",
 }
 
 NEWS_TIME_COLORS = {
@@ -285,7 +288,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         else:
             self.quote_frame.hide()
 
-        self.link_button.setObjectName("newsLink")
+        self.link_button.setObjectName("frameless")
         self.link_button.setFlat(True)
         self.link_button.setIcon(QPixmap(":/icons/external_link"))
         self.link_button.setIconSize(QSize(25, 25))

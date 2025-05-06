@@ -16,6 +16,7 @@ from plutus_terminal.core.db.models import UserFilter
 from plutus_terminal.core.news.filter._actions import FILTER_ACTIONS_MAP
 from plutus_terminal.core.news.filter.types import ActionType, FilterType
 from plutus_terminal.core.news.phoenix_news import PhoenixNews
+from plutus_terminal.core.news.synoptic_news import SynopticNews
 from plutus_terminal.core.news.tree_news import TreeNews
 from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
@@ -44,13 +45,21 @@ class NewsConfig(QtWidgets.QWidget):
         self._tree_text_label = QtWidgets.QLabel()
         self._tree_input = QtWidgets.QLineEdit()
         self._tree_button = QtWidgets.QPushButton("Update API Key")
+        self._tree_password_button = QtWidgets.QPushButton()
 
         self._phoenix_box = QtWidgets.QGroupBox("Phoenix API Key")
         self._phoenix_box_layout = QtWidgets.QVBoxLayout()
         self._phoenix_text_label = QtWidgets.QLabel()
         self._phoenix_input = QtWidgets.QLineEdit()
         self._phoenix_button = QtWidgets.QPushButton("Update API Key")
+        self._phoenix_password_button = QtWidgets.QPushButton()
 
+        self._synoptic_box = QtWidgets.QGroupBox("Synoptic API Key")
+        self._synoptic_box_layout = QtWidgets.QVBoxLayout()
+        self._synoptic_text_label = QtWidgets.QLabel()
+        self._synoptic_input = QtWidgets.QLineEdit()
+        self._synoptic_button = QtWidgets.QPushButton("Update API Key")
+        self._synoptic_password_button = QtWidgets.QPushButton()
 
         self._news_filters = TopBar("News Filters")
         self._news_scroll_area = QtWidgets.QScrollArea()
@@ -71,18 +80,24 @@ class NewsConfig(QtWidgets.QWidget):
         self._setup_widgets()
         self._setup_layout()
 
-    def _setup_widgets(self) -> None:
+    def _setup_widgets(self) -> None:  # noqa: PLR0915
         """Config widgets."""
         self._tree_text_label.setWordWrap(True)
         self._tree_text_label.setText(
-            """Add your TreeOfAlpha API key bellow if you are a paid subscriber.<br>"""
+            """Add your TreeOfAlpha API key below if you are a paid subscriber.<br>"""
             """To get your API key, go to """
             """<a href="https://news.treeofalpha.com/api/api_key"""
             """style="color:rgb(80, 210, 180)">"""
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
         self._tree_text_label.setOpenExternalLinks(True)
+        self._tree_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self._tree_password_button.setCheckable(True)
+        self._tree_password_button.setObjectName("frameless")
+        self._tree_password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
+        self._tree_password_button.toggled.connect(self._toggle_password_visibility)
         self._tree_button.setProperty("class", "LONG")
+        self._tree_button.setMinimumSize(120, 30)
         try:
             current_tree_key = keyring_manager.get_news_source_api_key(
                 TreeNews.NEWS_SERVICE_NAME,
@@ -96,13 +111,19 @@ class NewsConfig(QtWidgets.QWidget):
 
         self._phoenix_text_label.setWordWrap(True)
         self._phoenix_text_label.setText(
-            """Add your PhoenixNews API key bellow if you are a paid subscriber.<br>"""
+            """Add your PhoenixNews API key below if you are a paid subscriber.<br>"""
             """To get your API key, go to """
             """<a href="https://phoenixnews.io", style="color:rgb(80, 210, 180)">"""
             """https://phoenixnews.io</a>""",
         )
         self._phoenix_text_label.setOpenExternalLinks(True)
+        self._phoenix_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self._phoenix_password_button.setCheckable(True)
+        self._phoenix_password_button.setObjectName("frameless")
+        self._phoenix_password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
+        self._phoenix_password_button.toggled.connect(self._toggle_password_visibility)
         self._phoenix_button.setProperty("class", "LONG")
+        self._phoenix_button.setMinimumSize(120, 30)
         try:
             current_phoenix_key = keyring_manager.get_news_source_api_key(
                 PhoenixNews.NEWS_SERVICE_NAME,
@@ -112,12 +133,38 @@ class NewsConfig(QtWidgets.QWidget):
         except keyring_manager.KeyringPasswordNotFoundError:
             self._phoenix_input.setPlaceholderText("Enter your Phoenix API key here...")
 
+        self._synoptic_text_label.setWordWrap(True)
+        self._synoptic_text_label.setText(
+            """Add your Synoptic API key below.<br>"""
+            """To get your API key, go to """
+            """<a href="https://synoptic.com/p/settings/api-keys", style="color:rgb(80, 210, 180)">"""
+            """https://synoptic.com/p/settings/api-keys</a>""",
+        )
+        self._synoptic_text_label.setOpenExternalLinks(True)
+        self._synoptic_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self._synoptic_password_button.setCheckable(True)
+        self._synoptic_password_button.setObjectName("frameless")
+        self._synoptic_password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
+        self._synoptic_password_button.toggled.connect(self._toggle_password_visibility)
+        self._synoptic_button.setProperty("class", "LONG")
+        self._synoptic_button.setMinimumSize(120, 30)
+        try:
+            current_synoptic_key = keyring_manager.get_news_source_api_key(
+                SynopticNews.NEWS_SERVICE_NAME,
+                self._pass_guard,
+            )
+            self._synoptic_input.setText(current_synoptic_key)
+        except keyring_manager.KeyringPasswordNotFoundError:
+            self._synoptic_input.setPlaceholderText("Enter your Synoptic API key here...")
 
         self._tree_button.clicked.connect(
             partial(self.record_news_source_key, TreeNews.NEWS_SERVICE_NAME),
         )
         self._phoenix_button.clicked.connect(
             partial(self.record_news_source_key, PhoenixNews.NEWS_SERVICE_NAME),
+        )
+        self._synoptic_button.clicked.connect(
+            partial(self.record_news_source_key, SynopticNews.NEWS_SERVICE_NAME),
         )
 
         self._news_scroll_area.setWidgetResizable(True)
@@ -144,8 +191,47 @@ class NewsConfig(QtWidgets.QWidget):
             if int(user_filter.filter_type) == FilterType.DATA_MATCHING:
                 self._data_matching_layout.addWidget(DataMatchingWidget(user_filter))
 
-    def _setup_layout(self) -> None:
+    def _setup_layout(self) -> None:  # noqa: PLR0915
         """Config layout."""
+        self._main_layout.addWidget(self._news_source_bar)
+        self._tree_box_layout.addWidget(self._tree_text_label)
+        tree_input_layout = QtWidgets.QHBoxLayout()
+        tree_input_layout.addWidget(self._tree_input)
+        tree_input_layout.addWidget(self._tree_password_button)
+
+        self._tree_box_layout.addLayout(tree_input_layout)
+        tree_button_layout = QtWidgets.QHBoxLayout()
+        tree_button_layout.addStretch()
+        tree_button_layout.addWidget(self._tree_button)
+        self._tree_box_layout.addLayout(tree_button_layout)
+        self._tree_box.setLayout(self._tree_box_layout)
+        self._main_layout.addWidget(self._tree_box)
+
+        self._phoenix_box_layout.addWidget(self._phoenix_text_label)
+        phoenix_input_layout = QtWidgets.QHBoxLayout()
+        phoenix_input_layout.addWidget(self._phoenix_input)
+        phoenix_input_layout.addWidget(self._phoenix_password_button)
+
+        self._phoenix_box_layout.addLayout(phoenix_input_layout)
+        phoenix_button_layout = QtWidgets.QHBoxLayout()
+        phoenix_button_layout.addStretch()
+        phoenix_button_layout.addWidget(self._phoenix_button)
+        self._phoenix_box_layout.addLayout(phoenix_button_layout)
+        self._phoenix_box.setLayout(self._phoenix_box_layout)
+        self._main_layout.addWidget(self._phoenix_box)
+
+        self._synoptic_box_layout.addWidget(self._synoptic_text_label)
+        synoptic_input_layout = QtWidgets.QHBoxLayout()
+        synoptic_input_layout.addWidget(self._synoptic_input)
+        synoptic_input_layout.addWidget(self._synoptic_password_button)
+        self._synoptic_box_layout.addLayout(synoptic_input_layout)
+        synoptic_button_layout = QtWidgets.QHBoxLayout()
+        synoptic_button_layout.addStretch()
+        synoptic_button_layout.addWidget(self._synoptic_button)
+        self._synoptic_box_layout.addLayout(synoptic_button_layout)
+        self._synoptic_box.setLayout(self._synoptic_box_layout)
+        self._main_layout.addWidget(self._synoptic_box)
+
         self._main_layout.addWidget(self._news_filters)
 
         self._news_scroll_wdiget.setLayout(self._news_scroll_layout)
@@ -171,28 +257,7 @@ class NewsConfig(QtWidgets.QWidget):
         filter_buttons_layout.addWidget(self._save_filters_btn)
         self._news_scroll_layout.addLayout(filter_buttons_layout)
         self._news_scroll_layout.addStretch()
-
         self._main_layout.addWidget(self._news_scroll_area)
-
-        self._main_layout.addWidget(self._news_source_bar)
-        self._tree_box_layout.addWidget(self._tree_text_label)
-        self._tree_box_layout.addWidget(self._tree_input)
-        tree_button_layout = QtWidgets.QHBoxLayout()
-        tree_button_layout.addStretch()
-        tree_button_layout.addWidget(self._tree_button)
-        self._tree_box_layout.addLayout(tree_button_layout)
-        self._tree_box.setLayout(self._tree_box_layout)
-        self._main_layout.addWidget(self._tree_box)
-
-        self._phoenix_box_layout.addWidget(self._phoenix_text_label)
-        self._phoenix_box_layout.addWidget(self._phoenix_input)
-        phoenix_button_layout = QtWidgets.QHBoxLayout()
-        phoenix_button_layout.addStretch()
-        phoenix_button_layout.addWidget(self._phoenix_button)
-        self._phoenix_box_layout.addLayout(phoenix_button_layout)
-        self._phoenix_box.setLayout(self._phoenix_box_layout)
-        self._main_layout.addWidget(self._phoenix_box)
-
 
         self.setLayout(self._main_layout)
 
@@ -206,10 +271,31 @@ class NewsConfig(QtWidgets.QWidget):
         text_source = {
             TreeNews.NEWS_SERVICE_NAME: self._tree_input.text(),
             PhoenixNews.NEWS_SERVICE_NAME: self._phoenix_input.text(),
+            SynopticNews.NEWS_SERVICE_NAME: self._synoptic_input.text(),
         }
+
+        new_key = text_source[news_source].strip()
+        old_key = keyring_manager.get_news_source_api_key(
+            news_source,
+            self._pass_guard,
+        )
+        if new_key == old_key:
+            Toast.show_message(
+                "API key is equal to the old one.",
+                type_=ToastType.WARNING,
+            )
+            return
+
+        if not new_key:
+            Toast.show_message(
+                "API key cannot be empty.",
+                type_=ToastType.ERROR,
+            )
+            return
+
         keyring_manager.set_news_source_api_key(
             news_source,
-            text_source[news_source],
+            new_key,
             self._pass_guard,
         )
 
@@ -217,6 +303,37 @@ class NewsConfig(QtWidgets.QWidget):
         Toast.show_message(
             "News source API key saved successfully!",
             type_=ToastType.SUCCESS,
+        )
+
+    def _toggle_password_visibility(self, checked: bool) -> None:
+        """Toggle the password visibility.
+
+        Args:
+            checked: True if the button is checked.
+        """
+        sender = self.sender()
+        line_input = None
+        password_button = None
+        if sender == self._tree_password_button:
+            line_input = self._tree_input
+            password_button = self._tree_password_button
+        if sender == self._phoenix_password_button:
+            line_input = self._phoenix_input
+            password_button = self._phoenix_password_button
+        if sender == self._synoptic_password_button:
+            line_input = self._synoptic_input
+            password_button = self._synoptic_password_button
+
+        if line_input is None or password_button is None:
+            return
+
+        line_input.setEchoMode(
+            QtWidgets.QLineEdit.EchoMode.Normal
+            if checked
+            else QtWidgets.QLineEdit.EchoMode.Password
+        )
+        password_button.setIcon(
+            QtGui.QPixmap(":/icons/eye_closed") if checked else QtGui.QPixmap(":/icons/eye_open")
         )
 
     def _add_keyword_filter(self) -> None:

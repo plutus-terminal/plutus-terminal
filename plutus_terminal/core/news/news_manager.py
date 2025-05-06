@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from contextlib import suppress
 import logging
 import time
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING
 from qasync import asyncSlot
 
 from plutus_terminal.core.news.phoenix_news import PhoenixNews
+from plutus_terminal.core.news.synoptic_news import SynopticNews
 from plutus_terminal.core.news.tree_news import TreeNews
 
 if TYPE_CHECKING:
@@ -47,8 +49,9 @@ class NewsManager:
         self.news_sources: list[NewsFetcher] = [
             TreeNews(self._pass_guard),
             PhoenixNews(self._pass_guard),
+            SynopticNews(self._pass_guard),
         ]
-        self._seen_links: set[str] = set()
+        self._seen_links: OrderedDict[str, None] = OrderedDict()
         self._async_lock = asyncio.Lock()
         self._news_task: list[asyncio.Task] = []
 
@@ -85,15 +88,12 @@ class NewsManager:
         old_news = [item for sublist in old_news_results for item in sublist]
 
         unique: list[NewsData] = []
-        seen: set[str] = set()
 
         for item in old_news:
             link = item["link"].removesuffix("/")
-            if link and link not in seen:
-                seen.add(item["link"])
+            if link and link not in self._seen_links:
+                self._seen_links[link] = None
                 unique.append(item)
-
-        self._seen_links.update(seen)
 
         for news in unique:
             self._filter_manager.filter(news)
@@ -122,10 +122,11 @@ class NewsManager:
 
         async with self._async_lock:
             # Store displayed news to avoid duplicates
-            self._seen_links.add(raw_news["link"])
+            if raw_news["link"]:
+                self._seen_links[raw_news["link"]] = None
 
             if len(self._seen_links) > self._SEEN_CACHE_MAX:
-                self._seen_links.pop()
+                self._seen_links.popitem(last=False)
 
         raw_news = self._filter_manager.filter(raw_news)
 
