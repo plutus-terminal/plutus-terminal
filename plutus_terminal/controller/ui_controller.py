@@ -261,3 +261,9 @@ class UIController(QObject):
             type_=level_map[message.level],
             message_id=message.message_id,
         )
+
+    @asyncSlot()
+    async def restart_news_manager(self) -> None:
+        """Force news login."""
+        await self.news_manager.stop_async()
+        await self.news_manager.fetch_news()

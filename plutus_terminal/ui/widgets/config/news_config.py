@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtMultimedia import QSoundEffect
+from qasync import asyncSlot
 
 from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.config import AppConfig
@@ -42,10 +43,14 @@ class NewsConfig(QtWidgets.QWidget):
         self._tree_box_layout = QtWidgets.QVBoxLayout()
         self._tree_text_label = QtWidgets.QLabel()
         self._tree_input = QtWidgets.QLineEdit()
+        self._tree_button = QtWidgets.QPushButton("Update API Key")
+
         self._phoenix_box = QtWidgets.QGroupBox("Phoenix API Key")
         self._phoenix_box_layout = QtWidgets.QVBoxLayout()
         self._phoenix_text_label = QtWidgets.QLabel()
         self._phoenix_input = QtWidgets.QLineEdit()
+        self._phoenix_button = QtWidgets.QPushButton("Update API Key")
+
 
         self._news_filters = TopBar("News Filters")
         self._news_scroll_area = QtWidgets.QScrollArea()
@@ -69,7 +74,6 @@ class NewsConfig(QtWidgets.QWidget):
     def _setup_widgets(self) -> None:
         """Config widgets."""
         self._tree_text_label.setWordWrap(True)
-        self._tree_text_label.setOpenExternalLinks(True)
         self._tree_text_label.setText(
             """Add your TreeOfAlpha API key bellow if you are a paid subscriber.<br>"""
             """To get your API key, go to """
@@ -77,6 +81,8 @@ class NewsConfig(QtWidgets.QWidget):
             """style="color:rgb(80, 210, 180)">"""
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
+        self._tree_text_label.setOpenExternalLinks(True)
+        self._tree_button.setProperty("class", "LONG")
         try:
             current_tree_key = keyring_manager.get_news_source_api_key(
                 TreeNews.NEWS_SERVICE_NAME,
@@ -96,7 +102,7 @@ class NewsConfig(QtWidgets.QWidget):
             """https://phoenixnews.io</a>""",
         )
         self._phoenix_text_label.setOpenExternalLinks(True)
-
+        self._phoenix_button.setProperty("class", "LONG")
         try:
             current_phoenix_key = keyring_manager.get_news_source_api_key(
                 PhoenixNews.NEWS_SERVICE_NAME,
@@ -106,10 +112,11 @@ class NewsConfig(QtWidgets.QWidget):
         except keyring_manager.KeyringPasswordNotFoundError:
             self._phoenix_input.setPlaceholderText("Enter your Phoenix API key here...")
 
-        self._tree_input.editingFinished.connect(
+
+        self._tree_button.clicked.connect(
             partial(self.record_news_source_key, TreeNews.NEWS_SERVICE_NAME),
         )
-        self._phoenix_input.editingFinished.connect(
+        self._phoenix_button.clicked.connect(
             partial(self.record_news_source_key, PhoenixNews.NEWS_SERVICE_NAME),
         )
 
@@ -139,17 +146,6 @@ class NewsConfig(QtWidgets.QWidget):
 
     def _setup_layout(self) -> None:
         """Config layout."""
-        self._main_layout.addWidget(self._news_source_bar)
-        self._tree_box_layout.addWidget(self._tree_text_label)
-        self._tree_box_layout.addWidget(self._tree_input)
-        self._tree_box.setLayout(self._tree_box_layout)
-        self._main_layout.addWidget(self._tree_box)
-
-        self._phoenix_box_layout.addWidget(self._phoenix_text_label)
-        self._phoenix_box_layout.addWidget(self._phoenix_input)
-        self._phoenix_box.setLayout(self._phoenix_box_layout)
-        self._main_layout.addWidget(self._phoenix_box)
-
         self._main_layout.addWidget(self._news_filters)
 
         self._news_scroll_wdiget.setLayout(self._news_scroll_layout)
@@ -177,9 +173,31 @@ class NewsConfig(QtWidgets.QWidget):
         self._news_scroll_layout.addStretch()
 
         self._main_layout.addWidget(self._news_scroll_area)
+
+        self._main_layout.addWidget(self._news_source_bar)
+        self._tree_box_layout.addWidget(self._tree_text_label)
+        self._tree_box_layout.addWidget(self._tree_input)
+        tree_button_layout = QtWidgets.QHBoxLayout()
+        tree_button_layout.addStretch()
+        tree_button_layout.addWidget(self._tree_button)
+        self._tree_box_layout.addLayout(tree_button_layout)
+        self._tree_box.setLayout(self._tree_box_layout)
+        self._main_layout.addWidget(self._tree_box)
+
+        self._phoenix_box_layout.addWidget(self._phoenix_text_label)
+        self._phoenix_box_layout.addWidget(self._phoenix_input)
+        phoenix_button_layout = QtWidgets.QHBoxLayout()
+        phoenix_button_layout.addStretch()
+        phoenix_button_layout.addWidget(self._phoenix_button)
+        self._phoenix_box_layout.addLayout(phoenix_button_layout)
+        self._phoenix_box.setLayout(self._phoenix_box_layout)
+        self._main_layout.addWidget(self._phoenix_box)
+
+
         self.setLayout(self._main_layout)
 
-    def record_news_source_key(self, news_source: str) -> None:
+    @asyncSlot()
+    async def record_news_source_key(self, news_source: str) -> None:
         """Record the news source API key in keyring.
 
         Args:
@@ -194,6 +212,8 @@ class NewsConfig(QtWidgets.QWidget):
             text_source[news_source],
             self._pass_guard,
         )
+
+        await self._ui_controller.restart_news_manager()
         Toast.show_message(
             "News source API key saved successfully!",
             type_=ToastType.SUCCESS,

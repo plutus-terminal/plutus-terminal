@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import NewsData
     from plutus_terminal.message_bus import MessageBus
 
