@@ -224,19 +224,19 @@ ImageDisplayModal, SearchPairModal {
 }
 
 
-QPushButton#newsLink {
-    background-color: transparent;
+QPushButton#frameless {
+   background-color: transparent;
     border: none;
     border-color: #767676;
     border-radius: 5px;
     padding: 3px;
 }
 
-QPushButton#newsLink:hover {
+QPushButton#frameless:hover {
     background-color: rgba(255, 255, 255, 30);
 }
 
-QPushButton#newsLink:pressed {
+QPushButton#frameless:pressed {
     background-color: rgba(255, 255, 255, 100);
 }
 

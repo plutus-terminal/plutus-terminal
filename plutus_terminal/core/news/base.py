@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.core.types_ import NewsData
     from plutus_terminal.message_bus import MessageBus
 
 
 class NewsFetcher(Protocol):
     """News fetcher protocol."""
+
+    NEWS_SERVICE_NAME: str
 
     async def subscribe_to_wss(self, message_bus: MessageBus) -> None:
         """Subscribe to news wss and emit news signal on new entry.
@@ -31,14 +32,6 @@ class NewsFetcher(Protocol):
         Returns:
             list[NewsData]: List of old news. This list is expected to be ordered.
             from latest to oldest.
-        """
-        ...
-
-    async def login(self, pass_guard: PasswordGuard) -> None:
-        """Login to news source.
-
-        Args:
-            pass_guard (PasswordGuard): Password guard
         """
         ...
 

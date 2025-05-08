@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import TYPE_CHECKING, Optional
@@ -15,7 +16,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-from websockets.client import WebSocketClientProtocol, connect
+from websockets import ClientConnection, State, connect
 
 from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
@@ -29,29 +30,33 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-PHOENIX_KEY_NAME = "PhoenixNews"
-
 
 class PhoenixNews(NewsFetcher):
     """News fetcher for Phoenix News."""
 
-    def __init__(self) -> None:
-        """Initialize shared variables."""
+    NEWS_SERVICE_NAME = "PhoenixNews"
+
+    def __init__(self, pass_guard: PasswordGuard) -> None:
+        """Initialize shared variables.
+
+        Args:
+            pass_guard (PasswordGuard): Password guard
+        """
+        self._pass_guard = pass_guard
         self.wss = "wss://wss.phoenixnews.io/"
-        self._socket: Optional[WebSocketClientProtocol] = None
+        self._socket: Optional[ClientConnection] = None
         self._compiled_pattern_quote = re2.compile(r"&gt;&gt;QUOTE\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_reply = re2.compile(r"&gt;&gt;REPLY\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_retweet = re2.compile(r"&gt;&gt;RT\s+.+?\s*[^\(@]*\((@\w+)\)")
 
-    async def websocket_connect(self) -> WebSocketClientProtocol:
-        """Connect to websocket to fetch prices.
+    async def websocket_connect(self) -> ClientConnection:
+        """Connect to websocket to fetch news.
 
         Returns:
-            WebSocketClientProtocol: Websocket connection.
+            ClientConnection: Websocket connection.
         """
-        if self._socket is None or self._socket.closed:
-            self._socket = await connect(self.wss, ping_interval=5, ping_timeout=10)
-            LOGGER.info("Connected to PhoenixNews Websocket")
+        self._socket = await connect(self.wss, ping_interval=5, ping_timeout=10)
+        LOGGER.info("Connected to %s Websocket", self.NEWS_SERVICE_NAME)
         return self._socket
 
     @retry(
@@ -61,11 +66,13 @@ class PhoenixNews(NewsFetcher):
     )
     async def _ensure_websocket_connection(self) -> None:
         """Ensure websocket is connected."""
-        if self._socket is None or self._socket.closed:
+        if self._socket is None or self._socket.state == State.CLOSED:
             LOGGER.warning(
-                "PhoenixNews Websocket disconnected. Attempting to reconnect websocket...",
+                "%s Websocket disconnected. Attempting to reconnect websocket...",
+                self.NEWS_SERVICE_NAME,
             )
             await self.websocket_connect()
+            await self._login()
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.4, max=5),
@@ -82,37 +89,35 @@ class PhoenixNews(NewsFetcher):
         """
         await self._ensure_websocket_connection()
 
-        LOGGER.info("Subscribed to PhoenixNews news source.")
+        LOGGER.info("Subscribed to %s news source.", self.NEWS_SERVICE_NAME)
         async for message in self._socket:  # type: ignore
-            LOGGER.debug("New raw message received from PhonixNews")
+            LOGGER.debug("New raw message received from %s", self.NEWS_SERVICE_NAME)
             json_message = json.loads(message)
             formated_message = self.format_news(json_message)
             message_bus.raw_news.emit(formated_message)
 
-    async def login(self, pass_guard: PasswordGuard) -> None:
-        """Login to news source.
-
-        Args:
-            pass_guard (PasswordGuard): Password guard
-        """
-        LOGGER.info("Logging in to PhoenixNews...")
+    async def _login(self) -> None:
+        """Login to news source."""
+        LOGGER.info("Logging in to %s...", self.NEWS_SERVICE_NAME)
         try:
             phoenix_api_key = keyring_manager.get_news_source_api_key(
-                PHOENIX_KEY_NAME,
-                pass_guard=pass_guard,
+                self.NEWS_SERVICE_NAME,
+                pass_guard=self._pass_guard,
             )
         except KeyringPasswordNotFoundError:
-            LOGGER.warning("PhoenixNews API key not found")
+            LOGGER.warning("%s API key not found", self.NEWS_SERVICE_NAME)
             return
-        await self._ensure_websocket_connection()
         if not self._socket:
             return
         await self._socket.send(f"login {phoenix_api_key}")
-        login_attempt = await self._socket.recv()
-        login_attempt = json.loads(login_attempt)
-        login_attempt.pop("apiKey", None)
-        login_attempt.pop("address", None)
-        LOGGER.info("PhoenixNews login result: %s", login_attempt)
+        try:
+            login_attempt = await asyncio.wait_for(self._socket.recv(), timeout=1)
+            login_attempt = json.loads(login_attempt)
+            login_attempt.pop("apiKey", None)
+            login_attempt.pop("address", None)
+            LOGGER.info("%s login result: %s", self.NEWS_SERVICE_NAME, login_attempt)
+        except TimeoutError:
+            LOGGER.warning("%s login timed out", self.NEWS_SERVICE_NAME)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=0.4, max=2),
@@ -226,12 +231,12 @@ class PhoenixNews(NewsFetcher):
             source=source,
             time=time,
             coin=coin,
-            feed="Phoenix News",
+            feed=self.NEWS_SERVICE_NAME,
             sfx=":/sfx/coin",
             ignored=False,
         )
 
     async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
-        if self._socket is not None:
+        if self._socket is not None and self._socket.state not in (State.CLOSED, State.CLOSING):
             await self._socket.close()
