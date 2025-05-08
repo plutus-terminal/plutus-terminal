@@ -13,6 +13,7 @@ from qasync import asyncSlot
 from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.db.models import UserFilter
+from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
 from plutus_terminal.core.news.filter._actions import FILTER_ACTIONS_MAP
 from plutus_terminal.core.news.filter.types import ActionType, FilterType
 from plutus_terminal.core.news.phoenix_news import PhoenixNews
@@ -104,7 +105,7 @@ class NewsConfig(QtWidgets.QWidget):
                 self._pass_guard,
             )
             self._tree_input.setText(current_tree_key)
-        except keyring_manager.KeyringPasswordNotFoundError:
+        except KeyringPasswordNotFoundError:
             self._tree_input.setPlaceholderText(
                 "Enter your TreeOfAlpha API key here...",
             )
@@ -130,7 +131,7 @@ class NewsConfig(QtWidgets.QWidget):
                 self._pass_guard,
             )
             self._phoenix_input.setText(current_phoenix_key)
-        except keyring_manager.KeyringPasswordNotFoundError:
+        except KeyringPasswordNotFoundError:
             self._phoenix_input.setPlaceholderText("Enter your Phoenix API key here...")
 
         self._synoptic_text_label.setWordWrap(True)
@@ -154,7 +155,7 @@ class NewsConfig(QtWidgets.QWidget):
                 self._pass_guard,
             )
             self._synoptic_input.setText(current_synoptic_key)
-        except keyring_manager.KeyringPasswordNotFoundError:
+        except KeyringPasswordNotFoundError:
             self._synoptic_input.setPlaceholderText("Enter your Synoptic API key here...")
 
         self._tree_button.clicked.connect(
@@ -275,10 +276,14 @@ class NewsConfig(QtWidgets.QWidget):
         }
 
         new_key = text_source[news_source].strip()
-        old_key = keyring_manager.get_news_source_api_key(
-            news_source,
-            self._pass_guard,
-        )
+        try:
+            old_key = keyring_manager.get_news_source_api_key(
+                news_source,
+                self._pass_guard,
+            )
+        except KeyringPasswordNotFoundError:
+            old_key = ""
+
         if new_key == old_key:
             Toast.show_message(
                 "API key is equal to the old one.",
