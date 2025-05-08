@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Optional
 
+import keyring
 import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtMultimedia import QSoundEffect
@@ -292,9 +293,13 @@ class NewsConfig(QtWidgets.QWidget):
             return
 
         if not new_key:
+            keyring.delete_password(
+                f"{AppConfig.SERVICE_NAME}:news-source",
+                news_source,
+            )
             Toast.show_message(
-                "API key cannot be empty.",
-                type_=ToastType.ERROR,
+                "API key deleted.",
+                type_=ToastType.WARNING,
             )
             return
 
