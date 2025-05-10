@@ -93,10 +93,9 @@ class NewsManager:
             link = item["link"].removesuffix("/")
             if link and link not in self._seen_links:
                 self._seen_links[link] = None
-                unique.append(item)
-
-        for news in unique:
-            self._filter_manager.filter(news)
+                news = self._filter_manager.filter(item)
+                news = self._global_format(item)
+                unique.append(news)
 
         return unique[len(unique) - limit :]
 
@@ -128,9 +127,10 @@ class NewsManager:
             if len(self._seen_links) > self._SEEN_CACHE_MAX:
                 self._seen_links.popitem(last=False)
 
-        raw_news = self._filter_manager.filter(raw_news)
+        formatted_news = self._filter_manager.filter(raw_news)
+        formatted_news = self._global_format(formatted_news)
 
-        self.message_bus.formatted_news.emit(raw_news)
+        self.message_bus.formatted_news.emit(formatted_news)
 
         if LOGGER.isEnabledFor(logging.DEBUG):
             end_time_ms = time.time_ns() / 1000000
@@ -138,8 +138,30 @@ class NewsManager:
             LOGGER.debug(
                 "Processed message received. Process time: %f ms message: %s",
                 processed_time_ms,
-                raw_news,
+                formatted_news,
             )
+
+    def _global_format(self, news: NewsData) -> NewsData:
+        """Apply global formatting to news.
+
+        Replace /n with <br> and consecutive line breaks with <p>
+
+        Args:
+            news (NewsData): News to format.
+
+        Returns:
+            NewsData: Formatted news
+        """
+        for part in ("body", "quote_message", "reply_message"):
+            if not news.get(part, ""):
+                continue
+            # Line breaks as <br>
+            news[part] = news[part].replace("\n", "<br>")
+
+            # Consecutive line-breaks as <p> start <p> with zero margin
+            news[part] = news[part].replace("<br><br>", "</p><p style='margin:0'>")
+
+        return news
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""

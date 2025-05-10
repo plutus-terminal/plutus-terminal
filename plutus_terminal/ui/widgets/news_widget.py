@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QMouseEvent, QPixmap, QPixmapCache
+from PySide6.QtGui import QDesktopServices, QMouseEvent, QPixmap, QPixmapCache, QShowEvent
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 import re2  # type: ignore
 
@@ -81,6 +81,8 @@ class NewsWidget(QtWidgets.QGroupBox):
         self._price_change: dict[str, str] = {}
         self._initial_prices: dict[str, Decimal] = {}
         self._icon_scale = 50
+        self._news_width = 500
+        self._is_label_size_updated = False
 
         self.main_layout = QtWidgets.QHBoxLayout()
         self.icon_layout = QtWidgets.QVBoxLayout()
@@ -161,6 +163,10 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.title_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
+        self.title_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Maximum,
+        )
 
         self.stop_watch_label.hide()
         self.stop_watch_label.setObjectName("newsStopWatch")
@@ -193,8 +199,6 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.retweet_title.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
-        else:
-            self.retweet_frame.hide()
 
         if self.news_data["is_reply"] or self.news_data["is_self_reply"]:
             self.reply_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
@@ -207,8 +211,6 @@ class NewsWidget(QtWidgets.QGroupBox):
                 self.reply_body.setTextInteractionFlags(
                     Qt.TextInteractionFlag.TextSelectableByMouse,
                 )
-            else:
-                self.reply_body.hide()
 
             if self.news_data["reply_image"]:
                 self.reply_image.set_image(self.news_data["reply_image"])
@@ -232,8 +234,6 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.reply_title.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
-        else:
-            self.reply_frame.hide()
 
         if self.news_data["body"] or self.news_data["image"]:
             self.body_label.setObjectName("newsBody")
@@ -243,14 +243,10 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.body_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
-
             if self.news_data["image"]:
                 self.body_image.set_image(self.news_data["image"])
             else:
                 self.body_image.deleteLater()
-        else:
-            self.body_frame.hide()
-            self.body_label.hide()
 
         if self.news_data["is_quote"] and any(
             (self.news_data["quote_message"], self.news_data["quote_image"]),
@@ -285,8 +281,6 @@ class NewsWidget(QtWidgets.QGroupBox):
                 self.quote_image.set_image(self.news_data["quote_image"])
             else:
                 self.quote_image.deleteLater()
-        else:
-            self.quote_frame.hide()
 
         self.link_button.setObjectName("frameless")
         self.link_button.setFlat(True)
@@ -304,7 +298,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             f"Source Time: {converted_time.strftime('%H:%M:%S:%f')[:-3]}",
         )
         self.time_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
         )
         self.time_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
@@ -318,14 +312,11 @@ class NewsWidget(QtWidgets.QGroupBox):
                 f"Delay: {delay_time:.2f} ms",
             )
             self.time_delay.setAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
             )
             self.time_delay.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
-        else:
-            self.time_delay.hide()
-            self.time_delay.deleteLater()
 
         self.feed_label.setObjectName("newsFeed")
         self.feed_label.setText(f"Feed: {self.news_data['feed']}")
@@ -349,7 +340,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.coin_label.setObjectName("newsCoin")
             self.coin_label.setText(f"Suggestions: {', '.join(self.news_data['coin'])}")
 
-        self.setFixedWidth(500)
+        self.setFixedWidth(self._news_width)
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Preferred,
@@ -388,17 +379,20 @@ class NewsWidget(QtWidgets.QGroupBox):
         QPixmapCache.insert(self.news_data["icon"], pixmap)
         target_label.setPixmap(pixmap)
 
-    def _setup_layout(self) -> None:
+    def _setup_layout(self) -> None:  # noqa: C901, PLR0915
         """Connect widgets to layouts."""
         self.icon_layout.addWidget(self.icon_label)
         self.icon_layout.addWidget(self.stop_watch_label)
-        self.icon_layout.addStretch()
+        self.icon_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
         self.time_layout.addWidget(self.time_label)
-        self.time_layout.addWidget(self.time_delay)
+        if self._display_delay:
+            self.time_layout.addWidget(self.time_delay)
+        self.time_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
         self.title_layout.addWidget(self.title_label)
         self.title_layout.addLayout(self.time_layout)
+        self.title_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.info_layout.addLayout(self.title_layout)
 
         self.retweet_frame.setLayout(self.retweet_layout)
@@ -409,31 +403,46 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.quote_title_layout.addWidget(self.quote_icon_up)
         self.quote_title_layout.addWidget(self.quote_title)
         self.quote_layout.addLayout(self.quote_title_layout)
-        self.quote_layout.addWidget(self.quote_label)
-        self.quote_layout.addWidget(self.quote_image)
+        if self.news_data["quote_message"]:
+            self.quote_layout.addWidget(self.quote_label)
+        if self.news_data["quote_image"]:
+            self.quote_layout.addWidget(self.quote_image)
 
         self.reply_frame.setLayout(self.reply_layout)
-        self.reply_layout.addWidget(self.reply_body)
-        self.reply_layout.addWidget(self.reply_image)
+        if self.news_data["reply_message"]:
+            self.reply_layout.addWidget(self.reply_body)
+        if self.news_data["reply_image"]:
+            self.reply_layout.addWidget(self.reply_image)
         self.reply_title_layout.addWidget(self.reply_icon)
         self.reply_title_layout.addWidget(self.reply_title)
         self.reply_layout.addLayout(self.reply_title_layout)
 
         self.body_frame.setLayout(self.body_layout)
-        self.body_layout.addWidget(self.retweet_frame)
-        self.body_layout.addWidget(self.reply_frame)
-        self.body_layout.addWidget(self.body_label)
-        self.body_layout.addWidget(self.body_image)
-        self.body_layout.addWidget(self.quote_frame)
+        if self.news_data["is_retweet"]:
+            self.body_layout.addWidget(self.retweet_frame)
+        if self.news_data["is_reply"] or self.news_data["is_self_reply"]:
+            self.body_layout.addWidget(self.reply_frame)
+        if self.news_data["body"]:
+            self.body_layout.addWidget(self.body_label)
+        if self.news_data["image"]:
+            self.body_layout.addWidget(self.body_image)
+        if self.news_data["is_quote"] and any(
+            (self.news_data["quote_message"], self.news_data["quote_image"]),
+        ):
+            self.body_layout.addWidget(self.quote_frame)
 
-        self.info_layout.addWidget(self.body_frame)
+        if self.news_data["body"] or self.news_data["image"]:
+            self.info_layout.addWidget(self.body_frame)
+
         self.metadata_layout.addWidget(self.feed_label)
         self.metadata_layout.addWidget(self.source_label)
         self.metadata_layout.addWidget(self.link_button)
         self.info_layout.addLayout(self.metadata_layout)
-        self.info_layout.addWidget(self.coin_label)
+        if self.news_data["coin"]:
+            self.info_layout.addWidget(self.coin_label)
 
         self.info_layout.addLayout(self.interactions_layout)
+        self.info_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.main_layout.addLayout(self.icon_layout)
         self.main_layout.addLayout(self.info_layout)
@@ -723,6 +732,42 @@ class NewsWidget(QtWidgets.QGroupBox):
                 widget.setText(f"-${value_map[index]}")
             for widget in self.findChildren(QtWidgets.QPushButton, f"LONG_{index}"):
                 widget.setText(f"${value_map[index]}")
+
+    def showEvent(self, event: QShowEvent) -> None:
+        """Show event.
+
+        Override to update height of labels. This is a hack because a
+        QLabel with rich text and word wrap will only calculate it's width
+        after the the layouts are resolved. God damit Qt!
+
+        Args:
+            event (QShowEvent): Show event
+        """
+        # Hide widget until height is calculated to avoid flickering
+        if not self._is_label_size_updated:
+            self.setVisible(False)
+
+        super().showEvent(event)
+
+        if not self._is_label_size_updated:
+            # Update body label
+            body_minimum_height = self.body_label.heightForWidth(self.body_label.width())
+            body_minimum_height = max(0, body_minimum_height)
+            self.body_label.setMinimumHeight(body_minimum_height)
+
+            # Update reply body
+            reply_body_minimum_height = self.reply_body.heightForWidth(self.reply_body.width())
+            reply_body_minimum_height = max(0, reply_body_minimum_height)
+            self.reply_body.setMinimumHeight(reply_body_minimum_height)
+
+            # Update quote label
+            quote_minimum_height = self.quote_label.heightForWidth(self.quote_label.width())
+            quote_minimum_height = max(0, quote_minimum_height)
+            self.quote_label.setMinimumHeight(quote_minimum_height)
+
+            # Only update once
+            self._is_label_size_updated = True
+            self.setVisible(True)
 
 
 class ClickableGroupBox(QtWidgets.QGroupBox):

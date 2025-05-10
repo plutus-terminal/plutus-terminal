@@ -291,9 +291,8 @@ class NewsList(QtWidgets.QWidget):
                     self.max_news - 1,
                 ).widget()  # type: ignore
             old_widget.deleteLater()
-        self._scroll_area.blockSignals(False)
-
         self._scroll_layout.insertWidget(0, news_widget)
+        self._scroll_area.blockSignals(False)
 
         return news_widget
 
