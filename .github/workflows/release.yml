@@ -18,19 +18,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Setup Python and Poetry
+      # Setup Python and UV
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-
           python-version: 3.12
 
-      - name: Setup poetry
-        uses: Gr1N/setup-poetry@v9
+      - name: Install UV
+        run: pip install uv
 
       # Install dependencies
-      - name: Install dependencies with Poetry
-        run: poetry install
+      - name: Install dependencies with UV
+        run: uv pip sync requirements.lock
 
       # Set Git user information
       - name: Set Git identity
@@ -42,7 +41,7 @@ jobs:
         id: version_tag
 
         run: |
-          app_version=$(poetry version -s)
+          app_version=$(grep '^version =' pyproject.toml | awk -F'"' '{print $2}')
           echo "version=$app_version" >> "$GITHUB_OUTPUT"
           git tag -a v$app_version -m "Version $app_version"
           git push origin v$app_version
@@ -51,7 +50,7 @@ jobs:
       - name: Extract Changelog for current version
         id: changelog
         run: |
-          current_version=$(poetry version -s)
+          current_version=$(grep '^version =' pyproject.toml | awk -F'"' '{print $2}')
           changelog=$(awk "/^## ${current_version}/{flag=1;next}/^##/{flag=0}flag" CHANGELOG.md | sed '$d')
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "${changelog}" >> $GITHUB_OUTPUT
@@ -60,9 +59,7 @@ jobs:
 
       # Publish to PyPi
       - name: Publish to PyPi
-        run: |
-          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
-          poetry publish --build
+        run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -74,6 +71,11 @@ jobs:
         os: [ubuntu-latest, windows-latest]
 
     steps:
+      - name: Checkout plutus-terminal code
+        uses: actions/checkout@v4
+        with:
+          path: plutus_terminal_src # Checkout to 'plutus_terminal_src' directory
+
       # Install Rust
       - name: Instal Rust
 
@@ -85,31 +87,41 @@ jobs:
         run: |
           version=${{ needs.build_and_release.outputs.version }}
 
+          # Download pyapp source (existing)
           curl https://github.com/ofek/pyapp/releases/latest/download/source.tar.gz -Lo pyapp-source.tar.gz
-
           tar -xzf pyapp-source.tar.gz
           mv pyapp-v* pyapp-latest
-          cd pyapp-latest
+          cd pyapp-latest # Now inside pyapp-latest
+
           if [[ "${{ github.ref }}" == "refs/heads/unstable" ]]; then
             echo "Building unstable release v$version"
-            echo "git+https://github.com/plutus-terminal/plutus-terminal.git@unstable" >> plutus_terminal_requirements.txt
+            echo "git+https://github.com/plutus-terminal/plutus-terminal.git@unstable" > ./plutus_terminal_requirements.txt
             output_file="plutus_terminal_unstable"
-          else
+          else # Typically refs/heads/main
             echo "Building stable release v$version"
-            echo "git+https://github.com/plutus-terminal/plutus-terminal.git@main" >> plutus_terminal_requirements.txt
+            echo "git+https://github.com/plutus-terminal/plutus-terminal.git@main" > ./plutus_terminal_requirements.txt
             output_file="plutus_terminal_main"
           fi
-          export PYAPP_PROJECT_NAME="plutus-terminal"
 
+          # Core PyApp variables
+          export PYAPP_PROJECT_NAME="plutus-terminal" 
           export PYAPP_PROJECT_VERSION="v$version"
           export PYAPP_EXEC_SPEC="plutus_terminal.run:run"
-          export PYAPP_PROJECT_DEPENDENCY_FILE="./plutus_terminal_requirements.txt"
+          export PYAPP_PROJECT_DEPENDENCY_FILE="./plutus_terminal_requirements.txt" 
 
-          echo "Running cargo build --release..."
+          # --- Instruct PyApp to use UV ---
+          export PYAPP_UV_ENABLED="true"
+
+          echo "PyApp will build plutus-terminal fetched from Git branch specified in $PYAPP_PROJECT_DEPENDENCY_FILE"
+          echo "Targeting version $PYAPP_PROJECT_VERSION for PyApp executable."
+          echo "PyApp will use UV internally for environment and installation (PYAPP_UV_ENABLED=${PYAPP_UV_ENABLED})."
+          echo "This should respect the requirements.lock in the fetched plutus-terminal repository."
+          echo "Self-update will also use the original Git source."
+
           cargo build --release
 
-          echo "Moving the executable to the desired location..."
-          cd ..
+          # (Rest of the script for moving/uploading artifacts - existing)
+          cd .. # Back to the job's workspace root
           if [[ "${{ matrix.os }}" == 'ubuntu-latest' ]]; then
             mv pyapp-latest/target/release/pyapp $output_file
             tar -czvf PlutusTerminal-Linux.tar.gz $output_file
