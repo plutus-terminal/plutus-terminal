@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from plutus_terminal import __version__
+from plutus_terminal.ui.presenter.account_info_presenter import AccountInfoPresenter
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.config import ConfigDialog
 from plutus_terminal.ui.widgets.news_list import NewsList
@@ -89,10 +90,12 @@ class PlutusMainWindow(QMainWindow):
         self._trade_table = TradeTable(self._ui_controller)
 
         # Init account info widget
-        self._account_info = AccountInfo(
-            self._ui_controller,
-            parent=self,
+        self._account_info = AccountInfo(parent=self)
+        self._account_info_presenter = AccountInfoPresenter(
+            self._account_info,
+            self._ui_controller.session,
         )
+        self._account_info.set_presenter(self._account_info_presenter)
 
         # Init perps trading
         self._perps_trade = PerpsTradeWidget(self._ui_controller)
@@ -109,9 +112,6 @@ class PlutusMainWindow(QMainWindow):
         self.main_widget.setLayout(self.main_layout)
         self.setWindowTitle(f"Plutus Terminal - {__version__}")
         self.setWindowIcon(QPixmap(":/icons/plutus_icon"))
-
-        # Setup account info
-        await self._account_info.set_approve_btn_visibility()
 
         self._right_scroll.setSizePolicy(
             QSizePolicy.Policy.Fixed,

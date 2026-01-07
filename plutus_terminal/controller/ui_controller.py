@@ -1,20 +1,20 @@
 """Controller to create link between UI and Exchange."""
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import pandas
 from PySide6.QtCore import QObject, Signal
-from qasync import asyncio, asyncSlot
+from qasync import asyncSlot
 
+from plutus_terminal.core import utils
 from plutus_terminal.core.config import AppConfig
-from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
 from plutus_terminal.core.password_guard import PasswordGuard
+from plutus_terminal.core.session import Session
 from plutus_terminal.core.types_ import MessageLevel, UserMessage
 from plutus_terminal.message_bus import MessageBus
-from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
@@ -24,7 +24,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 class UIController(QObject):
-    """Controller to create link between UI and Exchange."""
+    """Controller to create link between UI and Exchange.
+
+    Acts as a facade/adapter for Session to keep backward compatibility.
+    """
 
     exchange_changed = Signal()
     """Signal to notify about exchange change."""
@@ -50,23 +53,15 @@ class UIController(QObject):
         pass_guard: PasswordGuard,
         app_config: AppConfig,
     ) -> None:
-        """Initialize shared variables.
-
-        Args:
-            message_bus (MessageBus): Message bus to send signals.
-            filter_manager (FilterManager): Filter manager.
-            pass_guard (PasswordGuard): Password guard.
-            app_config (AppConfig): App config.
-        """
+        """Initialize shared variables."""
         super().__init__()
         self.message_bus = message_bus
         self.news_filter_manager = filter_manager
         self.pass_guard = pass_guard
         self.app_config = app_config
-        self.current_timeframe: str = "1"
-        self.news_manager: NewsManager
-        self.current_exchange: ExchangeBase
-        self.current_pair: str
+
+        # Initialize Session
+        self.session = Session(message_bus, filter_manager, pass_guard, app_config)
 
         self._connect_signals()
 
@@ -74,121 +69,88 @@ class UIController(QObject):
         """Connect signals."""
         self.message_bus.send_message.connect(self.show_toast_message)
 
+        # Forward Session signals
+        self.session.exchange_changed.connect(self.exchange_changed.emit)
+        self.session.pair_changed.connect(self.pair_changed.emit)
+        self.session.timeframe_changed.connect(self.timeframe_changed.emit)
+
     async def init_async(self) -> None:
         """Initialize async shared variables."""
-        keyring_account = self.app_config.current_keyring_account
-        self.current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
-            self.message_bus,
-            self.pass_guard,
-            self.app_config,
-        )
-        await self.current_exchange.fetch_prices()
-        self.current_pair = self.current_exchange.default_pair
+        await self.session.init_async()
 
-        self.news_manager = NewsManager(self.message_bus, self.news_filter_manager, self.pass_guard)
-        asyncio.create_task(self.news_manager.fetch_news())
+    @property
+    def current_exchange(self) -> Optional["ExchangeBase"]:
+        """Get current exchange from session."""
+        return self.session.current_exchange
 
-        self.app_config.current_account_id_changed.connect(self.change_current_exchange)
+    @current_exchange.setter
+    def current_exchange(self, value: "ExchangeBase") -> None:
+        """Set current exchange in session."""
+        self.session.current_exchange = value
+
+    @property
+    def current_pair(self) -> str:
+        """Get current pair from session."""
+        return self.session.current_pair
+
+    @current_pair.setter
+    def current_pair(self, value: str) -> None:
+        """Set current pair in session."""
+        self.session.current_pair = value
+
+    @property
+    def current_timeframe(self) -> str:
+        """Get current timeframe from session."""
+        return self.session.current_timeframe
+
+    @current_timeframe.setter
+    def current_timeframe(self, value: str) -> None:
+        """Set current timeframe in session."""
+        self.session.current_timeframe = value
+
+    @property
+    def news_manager(self) -> Optional[NewsManager]:
+        """Get news manager from session."""
+        return self.session.news_manager
 
     @property
     def exchange_available_pairs(self) -> set[str]:
         """Get Exchange available pairs."""
-        return self.current_exchange.available_pairs
+        return self.session.exchange_available_pairs
 
     @asyncSlot()
     async def change_current_exchange(self) -> None:
         """Change current exchange."""
-        LOGGER.info("Changing current exchange...")
-        self.message_bus.blockSignals(True)
-        await self.current_exchange.stop_async()
-
-        keyring_account = self.app_config.current_keyring_account
-        self.current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
-            self.message_bus,
-            self.pass_guard,
-            self.app_config,
-        )
-
-        # Init price fetching loops
-        await self.current_exchange.fetch_prices()
-
-        if self.current_pair in self.current_exchange.available_pairs:
-            await self.change_current_pair(self.current_pair)
-        else:
-            await self.change_current_pair(self.current_exchange.default_pair)
-
-        self.exchange_changed.emit()
-        self.message_bus.blockSignals(False)
+        await self.session.change_current_exchange()
 
     @asyncSlot()
     async def change_current_pair(self, pair: str) -> None:
-        """Change current pair.
-
-        Unsubscribe from current pair and subscribe to new pair. Update chart.
-
-        Args:
-            pair (str): Pair name e.g Crypto.BTC/USD.
-        """
-        await self.current_exchange.fetcher.unsubscribe_to_price(self.current_pair)
-        await self.current_exchange.fetcher.subscribe_to_price(pair)
-
-        self.current_pair = pair
-        self.pair_changed.emit(pair)
+        """Change current pair."""
+        await self.session.change_current_pair(pair)
 
     async def fetch_price_history(self) -> tuple[pandas.DataFrame, int]:
-        """Fetch price history.
-
-        Returns:
-            tuple[pandas.DataFrame, int]: History dataframe and minimal digits.
-        """
-        history = await self.current_exchange.fetch_price_history(
-            self.current_pair,
-            self.current_timeframe,
-            bars_num=ui_utils.DEFAULT_BAR_NUMBERS,
-        )
-        history_dataframe = pandas.DataFrame(history)
-        minimal_digits = ui_utils.get_minimal_digits(history["low"][0], 4)
-        return history_dataframe, minimal_digits
+        """Fetch price history."""
+        return await self.session.fetch_price_history()
 
     def update_news_filters(self) -> None:
         """Update news filters."""
         self.news_filter_manager.update_filters()
 
     async def change_timeframe(self, resolution: str) -> None:
-        """Change chart timeframe.
-
-        If timeframe is same as current, do nothing.
-        """
-        self.current_timeframe = resolution
-        self.timeframe_changed.emit(resolution)
+        """Change chart timeframe."""
+        await self.session.change_timeframe(resolution)
 
     async def fetch_price_history_for_timeframe(self, resolution: str) -> pandas.DataFrame:
-        """Fetch price history for timeframe.
-
-        Args:
-            resolution (str): Timeframe to fetch.
-
-        Returns:
-            pandas.DataFrame: History dataframe.
-        """
-        history = await self.current_exchange.fetch_price_history(
-            self.current_pair,
-            resolution,
-            bars_num=ui_utils.DEFAULT_BAR_NUMBERS,
-        )
-        return pandas.DataFrame(history)
+        """Fetch price history for timeframe."""
+        return await self.session.fetch_price_history_for_timeframe(resolution)
 
     def format_simple_pair_from_pair(self, pair: str) -> str:
         """Format pair to simple pair."""
-        return self.current_exchange.format_simple_pair_from_pair(pair)
+        return self.session.format_simple_pair_from_pair(pair)
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""
-        LOGGER.debug("Stopping Plutus Terminal async")
-        await asyncio.gather(
-            self.news_manager.stop_async(),
-            self.current_exchange.stop_async(),
-        )
+        await self.session.stop_async()
 
     async def set_leverage(self, coin: str, leverage: int) -> None:
         """Set leverage for current pair.
@@ -197,16 +159,19 @@ class UIController(QObject):
             coin (str): Coin to set leverage for.
             leverage (int): Leverage to set.
         """
-        await self.current_exchange.set_leverage(self.current_pair, leverage)
-        pair = self.current_exchange.format_pair_from_coin(coin)
-        if leverage < self.current_exchange.min_leverage:
+        if not self.session.current_exchange:
+            return
+
+        await self.session.current_exchange.set_leverage(self.session.current_pair, leverage)
+        pair = self.session.current_exchange.format_pair_from_coin(coin)
+        if leverage < self.session.current_exchange.min_leverage:
             Toast.show_message(
-                f"Leverage of {pair} is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
+                f"Leverage of {pair} is too low. Set minimum leverage: {self.session.current_exchange.min_leverage}x",
                 type_=ToastType.WARNING,
             )
-        elif leverage > self.current_exchange.max_leverage:
+        elif leverage > self.session.current_exchange.max_leverage:
             Toast.show_message(
-                f"Leverage of {pair} is too high. Set maximum leverage: {self.current_exchange.max_leverage}x",
+                f"Leverage of {pair} is too high. Set maximum leverage: {self.session.current_exchange.max_leverage}x",
                 type_=ToastType.WARNING,
             )
         else:
@@ -222,15 +187,18 @@ class UIController(QObject):
         Args:
             leverage (int): Leverage to set.
         """
-        await self.current_exchange.set_all_leverage(leverage)
-        if leverage < self.current_exchange.min_leverage:
+        if not self.session.current_exchange:
+            return
+
+        await self.session.current_exchange.set_all_leverage(leverage)
+        if leverage < self.session.current_exchange.min_leverage:
             Toast.show_message(
-                f"Leverage is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
+                f"Leverage is too low. Set minimum leverage: {self.session.current_exchange.min_leverage}x",
                 type_=ToastType.WARNING,
             )
-        elif leverage > self.current_exchange.max_leverage:
+        elif leverage > self.session.current_exchange.max_leverage:
             Toast.show_message(
-                f"Leverage is too high. Set maximum leverage: {self.current_exchange.max_leverage}x",
+                f"Leverage is too high. Set maximum leverage: {self.session.current_exchange.max_leverage}x",
                 type_=ToastType.WARNING,
             )
         else:
@@ -265,5 +233,6 @@ class UIController(QObject):
     @asyncSlot()
     async def restart_news_manager(self) -> None:
         """Force news login."""
-        await self.news_manager.stop_async()
-        await self.news_manager.fetch_news()
+        if self.session.news_manager:
+            await self.session.news_manager.stop_async()
+            await self.session.news_manager.fetch_news()

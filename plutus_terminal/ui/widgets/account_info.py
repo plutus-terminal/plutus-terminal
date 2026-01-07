@@ -7,27 +7,24 @@ from typing import TYPE_CHECKING, Optional
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from qasync import asyncSlot
 
+from plutus_terminal.ui.presenter.account_info_presenter import AccountInfoView
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from decimal import Decimal
-
-    from plutus_terminal.controller.ui_controller import UIController
+    from plutus_terminal.ui.presenter.account_info_presenter import AccountInfoPresenter
 
 
-class AccountInfo(QtWidgets.QWidget):
+class AccountInfo(QtWidgets.QWidget, AccountInfoView):
     """Widget to display account info."""
 
     def __init__(
         self,
-        ui_controller: UIController,
         parent: Optional[QtWidgets.QWidget] = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent)
-        self._ui_controller = ui_controller
+        self._presenter: Optional[AccountInfoPresenter] = None
 
         self.main_layout = QtWidgets.QGridLayout(self)
         self.top_bar = TopBar("Account Info")
@@ -43,6 +40,11 @@ class AccountInfo(QtWidgets.QWidget):
         self._connect_signals()
         self._setup_layout()
 
+    def set_presenter(self, presenter: AccountInfoPresenter) -> None:
+        """Set the presenter."""
+        self._presenter = presenter
+        self._presenter.start()
+
     def _setup_widgets(self) -> None:
         """Configure widgets."""
         self.top_bar.icon.setPixmap(
@@ -55,25 +57,41 @@ class AccountInfo(QtWidgets.QWidget):
         self.approve_btn.setMinimumHeight(30)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.refresh_exchange_account_info()
-
     def _connect_signals(self) -> None:
         """Connect signals."""
-        self.approve_btn.clicked.connect(self._on_approve_for_trading)
+        self.approve_btn.clicked.connect(self._on_approve_clicked)
 
-        self._ui_controller.message_bus.balance_fetched.connect(self.update_balance)
+    def _on_approve_clicked(self) -> None:
+        """Handle approve click."""
+        if self._presenter:
+            self._presenter.on_approve_clicked()
 
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+    def _setup_layout(self) -> None:
+        """Configure layout."""
+        self.main_layout.addWidget(self.top_bar, 0, 0, 1, 2)
 
-    def refresh_exchange_account_info(self) -> None:
-        """Refresh exchange account info."""
+        self._frame_layout.addWidget(self._balance_label, 0, 0)
+        self._frame_layout.addWidget(self._balance_value, 0, 1)
+        self._frame_layout.addLayout(self._exchange_account_info_layout, 1, 0, 1, 2)
+        self._frame.setLayout(self._frame_layout)
+        self.main_layout.addWidget(self._frame, 1, 0, 1, 2)
+        self.main_layout.addWidget(self.approve_btn, 2, 0, 1, 2)
+
+        self.setLayout(self.main_layout)
+
+    def set_balance(self, balance: str) -> None:
+        """Set balance text."""
+        self._balance_value.setText(balance)
+
+    def set_exchange_info(self, info: dict[str, str]) -> None:
+        """Set exchange info."""
         while self._exchange_account_info_layout.count():
             old_widget = self._exchange_account_info_layout.takeAt(
                 self._exchange_account_info_layout.count() - 1,
             ).widget()
             old_widget.deleteLater()
 
-        for label, value in self._ui_controller.current_exchange.account_info.items():
+        for label, value in info.items():
             label_widget = QtWidgets.QLabel(label)
             value_widget = QtWidgets.QLabel(str(value))
             value_widget.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -90,43 +108,12 @@ class AccountInfo(QtWidgets.QWidget):
                 1,
             )
 
-    def _setup_layout(self) -> None:
-        """Configure layout."""
-        self.main_layout.addWidget(self.top_bar, 0, 0, 1, 2)
-
-        self._frame_layout.addWidget(self._balance_label, 0, 0)
-        self._frame_layout.addWidget(self._balance_value, 0, 1)
-        self._frame_layout.addLayout(self._exchange_account_info_layout, 1, 0, 1, 2)
-        self._frame.setLayout(self._frame_layout)
-        self.main_layout.addWidget(self._frame, 1, 0, 1, 2)
-        self.main_layout.addWidget(self.approve_btn, 2, 0, 1, 2)
-
-        self.setLayout(self.main_layout)
-
-    def update_balance(self, balance: Decimal) -> None:
-        """Update balance."""
-        self._balance_value.setText(f"${balance:.3f} USD")
-
-    @asyncSlot()
-    async def set_approve_btn_visibility(self) -> None:
+    def set_approve_button_visible(self, visible: bool) -> None:
         """Set approve button visibility."""
-        if await self._ui_controller.current_exchange.is_ready_to_trade():
-            self.approve_btn.setVisible(False)
-        else:
-            self.approve_btn.setVisible(True)
+        self.approve_btn.setVisible(visible)
 
-    @asyncSlot()
-    async def _on_approve_for_trading(self) -> None:
-        """Approve for trading."""
-        await self._ui_controller.current_exchange.approve_for_trading()
-        await self.set_approve_btn_visibility()
-
-    @asyncSlot()
-    async def _on_new_exchange(self) -> None:
-        """Update widget on new exchange.
-
-        * Refresh exchange account info
-        * Set approve button visibility
-        """
-        self.refresh_exchange_account_info()
-        await self.set_approve_btn_visibility()
+    def closeEvent(self, event) -> None:
+        """Stop presenter on close."""
+        if self._presenter:
+            self._presenter.stop()
+        super().closeEvent(event)
