@@ -21,7 +21,7 @@ class ManageOrderController(QObject):
     """Controller for ManageOrder Dialog."""
 
     update_pnl = Signal(str, str, str, str, str, str)  # pnl_label, pnl_usd_before, funding, pos_fee, pnl_after, pnl_percent
-    update_liquidation = Signal(str) # liq price text
+    update_liquidation = Signal(Decimal)
     execute_order_signal = Signal(OrderData)
 
     def __init__(
@@ -67,26 +67,15 @@ class ManageOrderController(QObject):
     def calculate_liquidation_price(self) -> None:
         """Calculate and emit Liquidation Price."""
         if self.associated_position is None:
-            self.update_liquidation.emit("--")
+            # Emit 0 or handle None in view? The view expects a value to format.
+            # If I emit 0, it might show $0.0000.
+            # I will emit Decimal(0) and let view handle it, or maybe None?
+            # Signal is Decimal.
+            self.update_liquidation.emit(Decimal(0))
             return
 
         liquidation_price = self.exchange.calculate_liquidation_price(self.associated_position)
-        # Formatting can be done here or in View. Let's do partial formatting here.
-        # But View has `ui_utils`.
-        # Let's pass the float/decimal value and let View format it?
-        # Or format it here.
-        # "minimal_digits" logic uses ui_utils.
-        # I'll let the View handle formatting to keep Controller simpler regarding UI imports,
-        # BUT the goal is to decouple business logic.
-        # Calculating liquidation price IS business logic. Formatting is View logic.
-        # So emitting the value (Decimal) is better.
-        # However, for simplicity and since I don't want to import ui_utils in controller if possible (though I can),
-        # I will emit the value.
-        # Wait, the signal signature above is `str`. I should probably change it or format it here.
-        # I'll import ui_utils here if needed, or just let View format.
-        # Let's emit the raw value as string or Decimal.
-        # I'll change signal to emit Decimal/float.
-        self.update_liquidation.emit(str(liquidation_price))
+        self.update_liquidation.emit(liquidation_price)
 
     def update_position_size(self, new_size: Decimal) -> None:
         """Update associated position size (local copy).

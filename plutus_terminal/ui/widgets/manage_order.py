@@ -203,13 +203,12 @@ class ManageOrder(QtWidgets.QDialog):
             push_tool_tip=False,
         )
 
-    def _on_update_liquidation(self, price_str: str) -> None:
+    def _on_update_liquidation(self, price: Decimal) -> None:
         """Update liquidation price."""
-        if price_str == "--":
+        if price == 0:
             self._liq_price_value.setText("--")
         else:
-            price = float(price_str)
-            minimal_digits = ui_utils.get_minimal_digits(price, 4)
+            minimal_digits = ui_utils.get_minimal_digits(float(price), 4)
             self._liq_price_value.setText(f"${price:,.{minimal_digits}f}")
 
     def on_quantity_change(self, new_quantity: Decimal) -> None:
