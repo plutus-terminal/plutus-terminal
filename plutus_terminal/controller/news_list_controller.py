@@ -91,8 +91,8 @@ class NewsListController(QObject):
 
         # Cleanup logic
         if len(self.active_news_controllers) > self.max_news:
-            # Simple list management - in reality we might want to link controller life to widget life
-            pass
+            # Remove oldest controller to prevent memory leak
+            self.active_news_controllers.pop(0)
 
         self.add_news_widget.emit(controller, display_delay)
         controller.create_interactions()
