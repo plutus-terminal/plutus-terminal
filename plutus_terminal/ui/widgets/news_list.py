@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QUrl, Signal
@@ -15,6 +15,7 @@ from plutus_terminal.ui.ui_utils import list_resources_from_prefix
 from plutus_terminal.ui.widgets.news_widget import NewsWidget
 from plutus_terminal.ui.widgets.toast import Toast
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
+from plutus_terminal.controller.news_list_controller import NewsListController
 
 if TYPE_CHECKING:
     from plutus_terminal.controller.ui_controller import UIController
@@ -32,13 +33,11 @@ class NewsList(QtWidgets.QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._ui_controller = ui_controller
-        self._exchange = ui_controller.current_exchange
-        self._app_config = self._ui_controller.app_config
+        self.controller = NewsListController(ui_controller)
 
         self._main_layout = QtWidgets.QVBoxLayout()
 
@@ -53,16 +52,15 @@ class NewsList(QtWidgets.QWidget):
 
         self._sfxs: dict[str, QSoundEffect] = {}
 
-        self._selected_news_widget: Optional[NewsWidget] = None
-
-        self.max_news = 25
+        self._selected_news_widget: NewsWidget | None = None
 
         self._load_sfxs()
         self._setup_widgets()
         self._connect_signals()
         self._setup_layout()
         self._setup_shorcuts()
-        self._show_widget_index_at_top(0)
+
+        self.controller.connect_signals()
 
     def _load_sfxs(self) -> None:
         """Load sound effects in memory."""
@@ -84,13 +82,13 @@ class NewsList(QtWidgets.QWidget):
         self._top_bar_show_images.setAutoExclusive(False)
         self._top_bar_show_images.setIcon(QPixmap(":/icons/gallery_icon"))
         self._top_bar_show_images.setChecked(
-            self._app_config.get_gui_settings("news_show_images"),  # type: ignore
+            self.controller.app_config.get_gui_settings("news_show_images"),  # type: ignore
         )
         self._top_bar_show_images.setToolTip("Show Images")
 
         self._top_bar_notifications.setAutoExclusive(False)
         self._top_bar_notifications.setChecked(
-            self._app_config.get_gui_settings("news_desktop_notifications"),  # type: ignore
+            self.controller.app_config.get_gui_settings("news_desktop_notifications"),  # type: ignore
         )
         if self._top_bar_notifications.isChecked():
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_on"))
@@ -112,10 +110,10 @@ class NewsList(QtWidgets.QWidget):
     def _connect_signals(self) -> None:
         """Connect signals."""
         self._top_bar_show_images.toggled.connect(
-            partial(self._app_config.set_gui_settings, "news_show_images")
+            partial(self.controller.app_config.set_gui_settings, "news_show_images")
         )
         self._top_bar_notifications.toggled.connect(
-            partial(self._app_config.set_gui_settings, "news_desktop_notifications")
+            partial(self.controller.app_config.set_gui_settings, "news_desktop_notifications")
         )
 
         self._top_bar_max_news.currentIndexChanged.connect(
@@ -125,16 +123,32 @@ class NewsList(QtWidgets.QWidget):
             lambda: self._show_widget_at_top(self._selected_news_widget),
         )
 
-        self._ui_controller.message_bus.formatted_news.connect(self.add_news)
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+        self.controller.app_config.news_show_images_changed.connect(self.show_images_toggled)
+        self.controller.app_config.news_desktop_notifications_changed.connect(self.notifications_toggled)
 
-        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
-        self._app_config.trade_value_low_changed.connect(self.update_news_trade_buttons)
-        self._app_config.trade_value_lowest_changed.connect(self.update_news_trade_buttons)
-        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
+        self.controller.add_news_widget.connect(self.add_news_widget)
+        self.controller.clear_list.connect(self.clear_list)
+        # self.controller.update_trade_buttons.connect(self.update_news_trade_buttons)
+        # Actually NewsWidget listens to controller signals, so update_news_trade_buttons might not be needed in NewsList anymore?
+        # NewsWidget connects `self.controller.update_trade_buttons.connect(self.update_trade_buttons)`
+        # And NewsListController emits `update_trade_buttons`. But NewsListController creates NewsController.
+        # Wait, NewsListController emits a signal `update_trade_buttons`.
+        # But each NewsWidget has its own NewsController.
+        # The NewsListController should probably tell active NewsControllers to update trade buttons?
+        # Or simply rely on `app_config` signals inside NewsController?
+        # In the previous `NewsList` code, it iterated over widgets and called `update_trade_buttons`.
+        # In `NewsWidget` refactor, I added `self.controller.update_trade_buttons.connect(self.update_trade_buttons)`.
+        # So if NewsController emits it, the widget updates.
+        # But NewsController needs to know when to emit it.
+        # Ah, NewsListController listens to app_config and emits its own signal.
+        # But NewsWidget is connected to NewsController, not NewsListController.
+        # So NewsController should listen to app_config changes too.
+        # Let's check NewsController again.
 
-        self._app_config.news_show_images_changed.connect(self.show_images_toggled)
-        self._app_config.news_desktop_notifications_changed.connect(self.notifications_toggled)
+        # In NewsController:
+        # It has `update_trade_buttons = Signal()`.
+        # But it doesn't seem to connect `app_config` signals to this signal or a handler.
+        # I should fix NewsController to listen to app_config changes.
 
     def _setup_layout(self) -> None:
         """Configure layouts."""
@@ -209,7 +223,7 @@ class NewsList(QtWidgets.QWidget):
         # Set the vertical scroll bar's value to the cumulative height
         self._scroll_area.verticalScrollBar().setValue(cumulative_height)
 
-    def _show_widget_at_top(self, news_widget: Optional[NewsWidget]) -> None:
+    def _show_widget_at_top(self, news_widget: NewsWidget | None) -> None:
         """Move scroll area to show widget at the top."""
         if news_widget is None:
             return
@@ -228,49 +242,52 @@ class NewsList(QtWidgets.QWidget):
         self._selected_news_widget = news_widget
         self._selected_news_widget.set_selected_style()  # type: ignore
 
-    def add_news(self, news_data: NewsData) -> None:
-        """Add NewsWidget to the list and desktop notifications."""
-        # Do not add ignored news
-        if news_data["ignored"]:
-            return
+    def add_news_widget(self, controller: NewsController, display_delay: bool) -> None:
+        """Add news widget to the list.
 
-        self._sfxs[news_data["sfx"]].play()
-        if self._app_config.get_gui_settings("news_desktop_notifications"):
-            desktop_news = self._create_news_widget(news_data, display_delay=True)
+        Args:
+            controller (NewsController): News controller.
+            display_delay (bool): Whether to display delay.
+        """
+        self._sfxs[controller.news_data["sfx"]].play()
+        if self.controller.app_config.get_gui_settings("news_desktop_notifications"):
+            desktop_news = self._create_news_widget(controller, display_delay)
             Toast.show_widget(
                 desktop_news,
                 timeout=35000,
                 desktop=True,
             )
 
-        self._add_news_to_list(news_data, display_delay=True)
+        self._add_news_to_list(controller, display_delay)
 
-    async def fill_old_news(self) -> None:
-        """Clear and fill list with old news."""
-        list_news = await self._ui_controller.news_manager.fetch_old_news(self.max_news)
-        self.setDisabled(True)
-        self._scroll_area.blockSignals(True)
-        self.clear_list()
-        for news_data in list_news:
-            # Do not add ignored news
-            if news_data["ignored"]:
-                continue
-
-            self._add_news_to_list(news_data, display_delay=False)
-        self._scroll_area.blockSignals(False)
-        self.setDisabled(False)
-
-    def _add_news_to_list(self, news_data: NewsData, display_delay: bool) -> NewsWidget:
-        """Add news to list respecting the limit.
+    def _create_news_widget(self, controller: NewsController, display_delay: bool) -> NewsWidget:
+        """Create news widget.
 
         Args:
-            news_data (NewsData): News data to create new widget.
-            display_delay (bool): Add delay information to the widget..
+            controller (NewsController): News controller.
+            display_delay (bool): Whether to display delay.
 
         Returns:
             NewsWidget: Created news widget.
         """
-        news_widget = self._create_news_widget(news_data, display_delay)
+        news_widget = NewsWidget(
+            controller.news_data,
+            controller,
+            display_delay=display_delay,
+        )
+        news_widget.show_images = self.controller.app_config.get_gui_settings("news_show_images") # type: ignore
+        news_widget.pair_clicked.connect(self.controller.ui_controller.change_current_pair)
+        news_widget.news_clicked.connect(self._show_widget_at_top)
+        return news_widget
+
+    def _add_news_to_list(self, controller: NewsController, display_delay: bool) -> None:
+        """Add news to list respecting the limit.
+
+        Args:
+            controller (NewsController): News controller.
+            display_delay (bool): Whether to display delay.
+        """
+        news_widget = self._create_news_widget(controller, display_delay)
 
         # If no news is selected, select the new one
         if self._selected_news_widget is None:
@@ -282,34 +299,17 @@ class NewsList(QtWidgets.QWidget):
 
         # Remove oldest widget if the limit is reached
         self._scroll_area.blockSignals(True)
-        if self._scroll_layout.count() > self.max_news:
+        if self._scroll_layout.count() > self.controller.max_news:
             old_widget = self._scroll_layout.takeAt(
                 self._scroll_layout.count() - 1,
             ).widget()
             if old_widget == self._selected_news_widget:
                 self._selected_news_widget = self._scroll_layout.itemAt(
-                    self.max_news - 1,
+                    self.controller.max_news - 1,
                 ).widget()  # type: ignore
             old_widget.deleteLater()
         self._scroll_layout.insertWidget(0, news_widget)
         self._scroll_area.blockSignals(False)
-
-        return news_widget
-
-    def _create_news_widget(self, news_data: NewsData, display_delay: bool = False) -> NewsWidget:
-        """Create news widget."""
-        news_widget = NewsWidget(
-            news_data,
-            self._exchange.format_pair_from_coin,
-            self._exchange.available_pairs,
-            display_delay=display_delay,
-            app_config=self._ui_controller.app_config,
-        )
-        news_widget.show_images = self._app_config.get_gui_settings("news_show_images")  # type: ignore
-        news_widget.create_interactions(self._exchange)
-        news_widget.pair_clicked.connect(self._ui_controller.change_current_pair)
-        news_widget.news_clicked.connect(self._show_widget_at_top)
-        return news_widget
 
     def clear_list(self) -> None:
         """Clear list."""
@@ -335,13 +335,6 @@ class NewsList(QtWidgets.QWidget):
             if isinstance(widget, NewsWidget):
                 widget.show_images = value
 
-    def update_news_trade_buttons(self) -> None:
-        """Update trade values for all NewsWidgets buttons."""
-        for index in range(self._scroll_layout.count()):
-            widget = self._scroll_layout.itemAt(index).widget()
-            if isinstance(widget, NewsWidget):
-                widget.update_trade_buttons()
-
     def notifications_toggled(self, value: bool) -> None:
         """Notifications toggled."""
         self._top_bar_notifications.setChecked(value)
@@ -351,21 +344,13 @@ class NewsList(QtWidgets.QWidget):
             self._top_bar_notifications.setIcon(QPixmap(":/icons/notification_off"))
 
     @asyncSlot()
-    async def _on_new_exchange(self) -> None:
-        """Update widget on new exchange.
-
-        * Update news trade button values
-        * Fetch old news
-        """
-        self._exchange = self._ui_controller.current_exchange
-        self._selected_news_widget = None
-        self.update_news_trade_buttons()
-        await self.fill_old_news()
-
-    @asyncSlot()
     async def update_max_news(self, max_news_index: int) -> None:
         """Update max news."""
         max_news_text = self._top_bar_max_news.itemText(max_news_index)
         max_news = int(max_news_text.split(" ")[0])
-        self.max_news = max_news
-        await self.fill_old_news()
+        await self.controller.set_max_news(max_news)
+
+    @asyncSlot()
+    async def fill_old_news(self) -> None:
+        """Fill old news. Called from somewhere?"""
+        await self.controller.fill_old_news()

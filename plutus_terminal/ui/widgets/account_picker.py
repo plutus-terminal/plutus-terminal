@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class AccountPicker(QComboBox):
     """Combo box to select account."""
 
-    def __init__(self, ui_controller: UIController, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, ui_controller: UIController, parent: QWidget | None = None) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller

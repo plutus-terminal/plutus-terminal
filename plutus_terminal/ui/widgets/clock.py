@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import logging
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 from PySide6 import QtWidgets
@@ -18,7 +17,7 @@ class Clock(QtWidgets.QLabel):
 
     def __init__(
         self,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget.
 

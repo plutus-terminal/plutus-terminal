@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt
@@ -13,8 +12,8 @@ class TopBar(QtWidgets.QWidget):
 
     def __init__(
         self,
-        title: Optional[str] = None,
-        parent: Optional[QtWidgets.QWidget] = None,
+        title: str | None = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent)

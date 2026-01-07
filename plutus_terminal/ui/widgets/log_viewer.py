@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -13,7 +12,7 @@ from plutus_terminal.ui.widgets.toast import Toast, ToastType
 class LogViewer(QtWidgets.QDialog):
     """Log viewer dialog to display log data."""
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize dialog."""
         super().__init__(parent)
         self._log_path = LOG_PATH

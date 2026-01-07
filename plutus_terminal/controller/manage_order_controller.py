@@ -1,0 +1,118 @@
+"""Controller for ManageOrder Dialog."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QObject, Signal
+
+from plutus_terminal.core.exchange.types import (
+    OrderData,
+    PerpsTradeType,
+)
+
+if TYPE_CHECKING:
+    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.core.types_ import PerpsPosition
+
+
+class ManageOrderController(QObject):
+    """Controller for ManageOrder Dialog."""
+
+    update_pnl = Signal(str, str, str, str, str, str)  # pnl_label, pnl_usd_before, funding, pos_fee, pnl_after, pnl_percent
+    update_liquidation = Signal(str) # liq price text
+    execute_order_signal = Signal(OrderData)
+
+    def __init__(
+        self,
+        order_data: OrderData,
+        exchange: ExchangeBase,
+        associated_position: PerpsPosition | None,
+    ) -> None:
+        """Initialize controller.
+
+        Args:
+            order_data (OrderData): Order data.
+            exchange (ExchangeBase): Exchange instance.
+            associated_position (PerpsPosition | None): Associated position.
+        """
+        super().__init__()
+        self.order_data = order_data
+        self.exchange = exchange
+        self.associated_position = associated_position
+
+    def calculate_pnl(self, trigger_price: float) -> None:
+        """Calculate and emit PnL updates.
+
+        Args:
+            trigger_price (float): Trigger price.
+        """
+        if self.associated_position is None:
+            # Emit empty/default values
+            self.update_pnl.emit("--", "", "", "", "", "")
+            return
+
+        pnl_details = self.exchange.calculate_pnl(self.associated_position, Decimal(trigger_price))
+
+        self.update_pnl.emit(
+            "--", # pnl_label text is set by view, usually just "Est. PnL:"
+            f"${pnl_details['pnl_usd_before_fees']:.2f}",
+            f"${pnl_details['funding_fee_usd']:.2f}",
+            f"${pnl_details['position_fee_usd']:.2f}",
+            f"${pnl_details['pnl_usd_after_fees']:.2f}",
+            f"{pnl_details['pnl_percentage_after_fees']:.2f}%",
+        )
+
+    def calculate_liquidation_price(self) -> None:
+        """Calculate and emit Liquidation Price."""
+        if self.associated_position is None:
+            self.update_liquidation.emit("--")
+            return
+
+        liquidation_price = self.exchange.calculate_liquidation_price(self.associated_position)
+        # Formatting can be done here or in View. Let's do partial formatting here.
+        # But View has `ui_utils`.
+        # Let's pass the float/decimal value and let View format it?
+        # Or format it here.
+        # "minimal_digits" logic uses ui_utils.
+        # I'll let the View handle formatting to keep Controller simpler regarding UI imports,
+        # BUT the goal is to decouple business logic.
+        # Calculating liquidation price IS business logic. Formatting is View logic.
+        # So emitting the value (Decimal) is better.
+        # However, for simplicity and since I don't want to import ui_utils in controller if possible (though I can),
+        # I will emit the value.
+        # Wait, the signal signature above is `str`. I should probably change it or format it here.
+        # I'll import ui_utils here if needed, or just let View format.
+        # Let's emit the raw value as string or Decimal.
+        # I'll change signal to emit Decimal/float.
+        self.update_liquidation.emit(str(liquidation_price))
+
+    def update_position_size(self, new_size: Decimal) -> None:
+        """Update associated position size (local copy).
+
+        Args:
+            new_size (Decimal): New size.
+        """
+        if self.associated_position is not None:
+            self.associated_position["position_size_stable"] = new_size
+
+    def execute_order(self, trigger_price: Decimal, amount: Decimal, order_type_value: int) -> None:
+        """Execute the order.
+
+        Args:
+            trigger_price (Decimal): Trigger price.
+            amount (Decimal): Amount.
+            order_type_value (int): Order type value.
+        """
+        order_type = PerpsTradeType(order_type_value)
+        order = OrderData(
+            id=self.order_data["id"],
+            pair=self.order_data["pair"],
+            trade_direction=self.order_data["trade_direction"],
+            order_type=order_type,
+            trigger_price=trigger_price,
+            size_stable=amount,
+            reduce_only=self.order_data["reduce_only"],
+        )
+        self.execute_order_signal.emit(order)

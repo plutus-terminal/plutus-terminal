@@ -2,51 +2,21 @@
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime
 from functools import partial
-import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QMouseEvent, QPixmap, QPixmapCache, QShowEvent
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-import re2  # type: ignore
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QMouseEvent, QPixmap, QPixmapCache, QShowEvent
 
-from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.types import PerpsTradeType
-from plutus_terminal.core.types_ import NewsData, PerpsTradeDirection
+from plutus_terminal.core.types_ import PerpsTradeDirection
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.image_web_viewer import ImageWebViewer
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
+from plutus_terminal.controller.news_controller import NewsController
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from decimal import Decimal
-
-    from plutus_terminal.core.config import AppConfig
-    from plutus_terminal.core.exchange.base import ExchangeBase, ExchangeFetcher
-
-ICON_MAP = {
-    "blogs": ":/sources/blog",
-    "usgov": ":/sources/usgov",
-    "binance en": ":/sources/binance",
-    "bybit": ":/sources/bybit",
-    "upbit": ":/sources/upbit",
-    "telegram": ":/sources/telegram",
-    "crypto": ":/sources/crypto",
-    "webs": ":/sources/webs",
-    "medium": ":/sources/medium",
-    "terminal": ":/sources/terminal",
-    "synopticstreams": ":/sources/synoptic",
-    "onchain": ":/sources/on_chain",
-}
-
-NEWS_TIME_COLORS = {
-    "green": 10,
-    "yellow": 20,
-}
+    from plutus_terminal.core.types_ import NewsData
 
 
 class NewsWidget(QtWidgets.QGroupBox):
@@ -54,32 +24,22 @@ class NewsWidget(QtWidgets.QGroupBox):
 
     news_clicked = Signal(object)
     pair_clicked = Signal(str)
-    timer_end = Signal()
 
     def __init__(  # noqa: PLR0915
         self,
         news_data: NewsData,
-        format_to_pair: Callable,
-        available_pairs: set,
+        controller: NewsController,
         display_delay: bool,
-        app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared variables."""
         super().__init__(parent=parent)
         self.news_data = news_data
-        self.format_to_pair = format_to_pair
-        self._available_pairs = available_pairs
+        self.controller = controller
+
         self._show_images = True
         self._display_delay = display_delay
-        self._app_config = app_config
-        self._re_percent_complied = re2.compile(r"\(([^)]+)%\)")
-        self._async_tasks: list[asyncio.Task] = []
 
-        self._max_time = 60
-        self._elapsed_time = 0
-        self._price_change: dict[str, str] = {}
-        self._initial_prices: dict[str, Decimal] = {}
         self._icon_scale = 50
         self._news_width = 500
         self._is_label_size_updated = False
@@ -90,7 +50,6 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.info_layout = QtWidgets.QVBoxLayout()
         self.title_layout = QtWidgets.QHBoxLayout()
         self.title_label = QtWidgets.QLabel()
-        self.timer = QTimer(self)
         self.stop_watch_label = QtWidgets.QLabel()
         self.body_frame = QtWidgets.QFrame()
         self.retweet_frame = QtWidgets.QFrame()
@@ -128,8 +87,10 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.percent_label: dict[str, QtWidgets.QLabel] = {}
 
         self._setup_widgets()
-        self._set_news_icon()
+        self._connect_controller_signals()
         self._setup_layout()
+
+        self.controller.load_icon()
 
     @property
     def show_images(self) -> bool:
@@ -287,7 +248,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.link_button.setIcon(QPixmap(":/icons/external_link"))
         self.link_button.setIconSize(QSize(25, 25))
         self.link_button.setFixedSize(25, 25)
-        self.link_button.clicked.connect(self.open_link)
+        self.link_button.clicked.connect(self.controller.open_link)
 
         self.time_label.setObjectName("newsTime")
         # Convert to local timezone
@@ -345,39 +306,6 @@ class NewsWidget(QtWidgets.QGroupBox):
             QtWidgets.QSizePolicy.Policy.Fixed,
             QtWidgets.QSizePolicy.Policy.Preferred,
         )
-
-    def _set_news_icon(self) -> None:
-        """Set icon to news, fetch from the internet if source is twitter."""
-        source = self.news_data["source"].lower()
-        if source == "twitter":
-            icon_pixmap = QPixmap()
-            # Try to get from cache if available
-            QPixmapCache.find(self.news_data["icon"], icon_pixmap)
-
-            # If not in cache, set temp icon and fetch from internet
-            if not icon_pixmap:
-                icon_pixmap = QPixmap(":/icons/no_token")
-                network_manager = QNetworkAccessManager(self)
-                network_manager.finished.connect(
-                    partial(self._set_network_icon, self.icon_label),
-                )
-                network_manager.get(QNetworkRequest(QUrl(self.news_data["icon"])))
-        else:
-            icon_pixmap = QPixmap()
-            QPixmapCache.find(source, icon_pixmap)
-            if not icon_pixmap:
-                icon_pixmap = QPixmap(ICON_MAP.get(source, ":/icons/no_token"))
-                QPixmapCache.insert(source, icon_pixmap)
-
-        self.icon_label.setPixmap(icon_pixmap)
-
-    def _set_network_icon(self, target_label: QtWidgets.QLabel, reply: QNetworkReply) -> None:
-        """Set icon pixmap from network reply."""
-        image_data = reply.readAll()
-        pixmap = QPixmap()
-        pixmap.loadFromData(image_data)
-        QPixmapCache.insert(self.news_data["icon"], pixmap)
-        target_label.setPixmap(pixmap)
 
     def _setup_layout(self) -> None:  # noqa: C901, PLR0915
         """Connect widgets to layouts."""
@@ -449,261 +377,141 @@ class NewsWidget(QtWidgets.QGroupBox):
 
         self.setLayout(self.main_layout)
 
+    def _connect_controller_signals(self) -> None:
+        """Connect controller signals."""
+        self.controller.update_icon.connect(self.icon_label.setPixmap)
+        self.controller.update_timer.connect(self._on_update_timer)
+        self.controller.timer_finished.connect(self._on_timer_finished)
+        self.controller.update_price_percent.connect(self._on_update_price_percent)
+        self.controller.update_initial_price.connect(self._on_update_initial_price)
+        self.controller.show_interaction_widgets.connect(self._create_interaction_widget)
+        self.controller.update_trade_buttons.connect(self.update_trade_buttons)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Emit signal when clicked."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.news_clicked.emit(self)
         return super().mousePressEvent(event)
 
-    async def set_initial_prices(self, fetch_price_at_time: Callable) -> None:
-        """Set initial prices for coins in data."""
-        for coin in self.news_data["coin"]:
-            pair = self.format_to_pair(coin)
-            if pair in self._available_pairs:
-                current_price = await fetch_price_at_time(
-                    pair,
-                    self.news_data["time"].timestamp(),
-                )
-                current_price = current_price["price"]
-                self._initial_prices[pair] = current_price
-                minimal_digits = ui_utils.get_minimal_digits(current_price, 4)
-                initial_price_label = QtWidgets.QLabel(
-                    f"Price at news: {current_price:,.{minimal_digits}f}",
-                )
-                percent_layout = self.group_box_layout[coin].itemAt(0).layout()
-                percent_layout.insertWidget(1, initial_price_label)  # type: ignore
+    def _on_update_initial_price(self, coin: str, text: str) -> None:
+        """Update initial price label."""
+        # Note: This logic assumes that _create_interaction_widget was called before
+        # and created the group box and layout.
+        if coin in self.group_box_layout:
+             initial_price_label = QtWidgets.QLabel(text)
+             # Index 0 is percent_layout (HBox), so inserting at index 1 is inserting after percent_layout?
+             # In original code: percent_layout = self.group_box_layout[coin].itemAt(0).layout()
+             # percent_layout.insertWidget(1, initial_price_label)
 
-    def create_interactions(self, exchange: ExchangeBase) -> bool:  # noqa: C901, PLR0915
-        """Create buttons for interactions.
+             # The layout is:
+             # VBox (group_box_layout)
+             #   -> HBox (percent_layout)
+             #       -> Label (percent)
+             #   -> GridLayout (buttons)
 
-        Args:
-            exchange (ExchangeBase): Exchange instance.
+             percent_layout_item = self.group_box_layout[coin].itemAt(0)
+             if percent_layout_item and percent_layout_item.layout():
+                 percent_layout_item.layout().insertWidget(1, initial_price_label) # type: ignore
 
-        Returns:
-            bool: If an interaction was created.
-        """
-        interaction_created = False
-        interaction_pairs = set()
-        for coin in self.news_data["coin"]:
-            pair = self.format_to_pair(coin)
+    def _create_interaction_widget(self, coin: str) -> None:
+        """Create buttons for interactions."""
+        pair = self.controller.exchange.format_pair_from_coin(coin)
 
-            if pair not in self._available_pairs:
-                continue
-            interaction_pairs.add(pair)
+        button_group_box = ClickableGroupBox(coin)
+        button_group_box.clicked.connect(partial(self.pair_clicked.emit, pair))
+        self.group_box_layout[coin] = QtWidgets.QVBoxLayout()
+        self.percent_label[pair] = QtWidgets.QLabel("0%")
+        self.percent_label[pair].hide()
+        button_layout = QtWidgets.QGridLayout()
 
-            button_group_box = ClickableGroupBox(coin)
-            button_group_box.clicked.connect(partial(self.pair_clicked.emit, pair))
-            self.group_box_layout[coin] = QtWidgets.QVBoxLayout()
-            self.percent_label[pair] = QtWidgets.QLabel("0%")
-            self.percent_label[pair].hide()
-            button_layout = QtWidgets.QGridLayout()
+        percent_layout = QtWidgets.QHBoxLayout()
+        percent_layout.addWidget(self.percent_label[pair])
+        self.group_box_layout[coin].addLayout(percent_layout)
+        self.group_box_layout[coin].addLayout(button_layout)
+        button_group_box.setLayout(self.group_box_layout[coin])
 
-            percent_layout = QtWidgets.QHBoxLayout()
-            percent_layout.addWidget(self.percent_label[pair])
-            self.group_box_layout[coin].addLayout(percent_layout)
-            self.group_box_layout[coin].addLayout(button_layout)
-            button_group_box.setLayout(self.group_box_layout[coin])
+        option_keys = (
+            "trade_value_lowest",
+            "trade_value_low",
+            "trade_value_medium",
+            "trade_value_high",
+        )
 
-            option_keys = (
-                "trade_value_lowest",
-                "trade_value_low",
-                "trade_value_medium",
-                "trade_value_high",
-            )
-            for index, option_key in enumerate(option_keys):
-                value = getattr(
-                    self._app_config,
+        # We need values from controller/config
+        for index, option_key in enumerate(option_keys):
+            value = self.controller.get_trade_value(index)
+            button_long = QtWidgets.QPushButton(f"${value}")
+            button_long.setObjectName(f"LONG_{index}")
+            button_long.setMinimumHeight(25)
+            button_long.clicked.connect(
+                partial(
+                    self.controller.handle_interaction_click,
+                    coin,
                     option_key,
-                )
-                button_long = QtWidgets.QPushButton(f"${value}")
-                button_long.setObjectName(f"LONG_{index}")
-                button_long.setMinimumHeight(25)
-                button_long.clicked.connect(
-                    partial(
-                        self.handle_interaction_click,
-                        exchange.create_order,
-                        pair,
-                        option_key,
-                        PerpsTradeDirection.LONG,
-                        PerpsTradeType.MARKET,
-                    ),
-                )
-                button_long.setProperty("class", "LONG")
-                match index:
-                    case 0:
-                        button_layout.addWidget(button_long, 0, 0)
-                    case 1:
-                        button_layout.addWidget(button_long, 0, 1)
-                    case 2:
-                        button_layout.addWidget(button_long, 1, 0)
-                    case 3:
-                        button_layout.addWidget(button_long, 1, 1)
-
-            for index, option_key in enumerate(option_keys):
-                value = getattr(
-                    self._app_config,
-                    option_key,
-                )
-                button_short = QtWidgets.QPushButton(f"-${value}")
-                button_short.setObjectName(f"SHORT_{index}")
-                button_short.setMinimumHeight(25)
-                button_short.clicked.connect(
-                    partial(
-                        self.handle_interaction_click,
-                        exchange.create_order,
-                        pair,
-                        option_key,
-                        PerpsTradeDirection.SHORT,
-                        PerpsTradeType.MARKET,
-                    ),
-                )
-                button_short.setProperty("class", "SHORT")
-                match index:
-                    case 0:
-                        button_layout.addWidget(button_short, 0, 2)
-                    case 1:
-                        button_layout.addWidget(button_short, 0, 3)
-                    case 2:
-                        button_layout.addWidget(button_short, 1, 2)
-                    case 3:
-                        button_layout.addWidget(button_short, 1, 3)
-
-            self.interactions_layout.addWidget(button_group_box)
-            interaction_created = True
-
-        if interaction_created:
-            # Set price of news at source time
-            self._async_tasks.append(
-                asyncio.create_task(
-                    self.set_initial_prices(exchange.fetcher.fetch_price_at_time),
+                    PerpsTradeDirection.LONG,
+                    PerpsTradeType.MARKET,
                 ),
             )
+            button_long.setProperty("class", "LONG")
+            match index:
+                case 0:
+                    button_layout.addWidget(button_long, 0, 0)
+                case 1:
+                    button_layout.addWidget(button_long, 0, 1)
+                case 2:
+                    button_layout.addWidget(button_long, 1, 0)
+                case 3:
+                    button_layout.addWidget(button_long, 1, 1)
 
-            if self.news_data["time"].timestamp() > time.time() - 60:
-                for pair in interaction_pairs:
-                    self.percent_label[pair].show()
-                    self._async_tasks.append(
-                        asyncio.create_task(exchange.fetcher.subscribe_to_price(pair)),
-                    )
-
-                exchange.message_bus.subscribed_prices_fetched.connect(
-                    self.update_percents,
-                )
-                self.timer_end.connect(
-                    partial(
-                        exchange.message_bus.subscribed_prices_fetched.disconnect,
-                        self.update_percents,
-                    ),
-                )
-                self.timer_end.connect(
-                    partial(
-                        self._unsubscribe_from_price_updates,
-                        interaction_pairs,
-                        exchange.fetcher,
-                    ),
-                )
-
-                self.start_timer()
-        return interaction_created
-
-    def handle_interaction_click(
-        self,
-        trade_function: Callable,
-        coin: str,
-        config_key_value: str,
-        trade_direction: PerpsTradeDirection,
-        trade_type: PerpsTradeType,
-    ) -> None:
-        """Handle buys/sells from interaction buttons.
-
-        This will ensure that the amount is updated dynamically at button press.
-
-        Args:
-            trade_function (Callable): Trade function.
-            coin (str): Coin to trade.
-            config_key_value (str): Config key value to get amount from.
-            trade_direction (PerpsTradeDirection): Trade direction.
-            trade_type (PerpsTradeType): Trade type.
-        """
-        amount = getattr(self._app_config, config_key_value)
-        try:
-            trade_function(coin, amount, trade_direction, trade_type)
-        except InvalidOrderSizeError as error:
-            Toast.show_message(
-                f"{error}",
-                type_=ToastType.ERROR,
+        for index, option_key in enumerate(option_keys):
+            value = self.controller.get_trade_value(index)
+            button_short = QtWidgets.QPushButton(f"-${value}")
+            button_short.setObjectName(f"SHORT_{index}")
+            button_short.setMinimumHeight(25)
+            button_short.clicked.connect(
+                partial(
+                    self.controller.handle_interaction_click,
+                    coin,
+                    option_key,
+                    PerpsTradeDirection.SHORT,
+                    PerpsTradeType.MARKET,
+                ),
             )
+            button_short.setProperty("class", "SHORT")
+            match index:
+                case 0:
+                    button_layout.addWidget(button_short, 0, 2)
+                case 1:
+                    button_layout.addWidget(button_short, 0, 3)
+                case 2:
+                    button_layout.addWidget(button_short, 1, 2)
+                case 3:
+                    button_layout.addWidget(button_short, 1, 3)
 
-    def _unsubscribe_from_price_updates(
-        self,
-        pairs: set[str],
-        exchange_fetcher: ExchangeFetcher,
-    ) -> None:
-        """Unsubscribe from price updates.
+        self.interactions_layout.addWidget(button_group_box)
 
-        Args:
-            pairs (set[str]): Pairs to unsubscribe.
-            exchange_fetcher (ExchangeFetcher): Exchange fetcher.
-        """
-        for pair in pairs:
-            self._async_tasks.append(
-                asyncio.create_task(exchange_fetcher.unsubscribe_to_price(pair)),
-            )
-
-    def start_timer(self) -> None:
-        """Start time for each 1 second."""
-        self.timer.timeout.connect(self._update_on_timer)
-        self.stop_watch_label.setVisible(True)
-        self.timer.start(1000)
-
-    def _update_on_timer(self) -> None:
+    def _on_update_timer(self, text: str, style_class: str) -> None:
         """Update label with time."""
-        self._elapsed_time += 1
-        if self._elapsed_time < NEWS_TIME_COLORS["green"]:
-            self.stop_watch_label.setProperty("class", "success")
-            self.stop_watch_label.style().polish(self.stop_watch_label)
-        elif self._elapsed_time < NEWS_TIME_COLORS["yellow"]:
-            self.stop_watch_label.setProperty("class", "warning")
-            self.stop_watch_label.style().polish(self.stop_watch_label)
-        else:
-            self.stop_watch_label.setProperty("class", "danger")
-            self.stop_watch_label.style().polish(self.stop_watch_label)
+        if not self.stop_watch_label.isVisible():
+            self.stop_watch_label.setVisible(True)
 
-        self.stop_watch_label.setText(str(self._elapsed_time))
-        for pair in self._initial_prices:
-            try:
-                price_change = self._price_change.get(pair, "(0.00%)")
-                percent_change = self._re_percent_complied.search(price_change)
-                # Slice to get digits only
-                if float(percent_change.group(1)) > 0:  # type: ignore
-                    self.percent_label[pair].setStyleSheet("color: rgb(100, 255, 100);")
-                else:
-                    self.percent_label[pair].setStyleSheet("color: red;")
-                self.percent_label[pair].setText(price_change)
-            except KeyError:
-                continue
+        self.stop_watch_label.setProperty("class", style_class)
+        self.stop_watch_label.style().polish(self.stop_watch_label)
+        self.stop_watch_label.setText(text)
 
-        if self._elapsed_time >= self._max_time:
-            self.timer.stop()
-            self.stop_watch_label.setVisible(False)
-            for pair in self._initial_prices:
-                try:
-                    self.percent_label[pair].hide()
-                except KeyError:
-                    continue
-            self.timer_end.emit()
+    def _on_update_price_percent(self, pair: str, text: str, style_sheet: str) -> None:
+        """Update percent label."""
+        if pair in self.percent_label:
+            if not self.percent_label[pair].isVisible():
+                self.percent_label[pair].show()
+            self.percent_label[pair].setStyleSheet(style_sheet)
+            self.percent_label[pair].setText(text)
 
-    def update_percents(self, cached_prices: dict) -> None:
-        """Update percents labels for tokens."""
-        for pair, initial_price in self._initial_prices.items():
-            # In case the websocket reply is a bit late
-            pair_data = cached_prices.get(pair, {"price": initial_price})
-            current_price = pair_data["price"]
-            percentage = ((current_price / initial_price) - 1) * 100
-            minimal_digits = ui_utils.get_minimal_digits(current_price, 4)
-            self._price_change[pair] = (
-                f"{current_price:,.{minimal_digits}f} ({round(percentage, 3):.3f}%)"
-            )
+    def _on_timer_finished(self) -> None:
+        """Hide timer and percents."""
+        self.stop_watch_label.setVisible(False)
+        for label in self.percent_label.values():
+            label.hide()
 
     def set_selected_style(self) -> None:
         """Set border to selected style."""
@@ -717,21 +525,16 @@ class NewsWidget(QtWidgets.QGroupBox):
 
     def open_link(self) -> None:
         """Open link in browser."""
-        QDesktopServices.openUrl(self.news_data["link"])
+        self.controller.open_link()
 
     def update_trade_buttons(self) -> None:
         """Update trade values."""
-        value_map = {
-            0: self._app_config.trade_value_lowest,
-            1: self._app_config.trade_value_low,
-            2: self._app_config.trade_value_medium,
-            3: self._app_config.trade_value_high,
-        }
         for index in range(4):
+            value = self.controller.get_trade_value(index)
             for widget in self.findChildren(QtWidgets.QPushButton, f"SHORT_{index}"):
-                widget.setText(f"-${value_map[index]}")
+                widget.setText(f"-${value}")
             for widget in self.findChildren(QtWidgets.QPushButton, f"LONG_{index}"):
-                widget.setText(f"${value_map[index]}")
+                widget.setText(f"${value}")
 
     def showEvent(self, event: QShowEvent) -> None:
         """Show event.
@@ -775,7 +578,7 @@ class ClickableGroupBox(QtWidgets.QGroupBox):
 
     clicked = Signal()
 
-    def __init__(self, title: str, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, title: str, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(title, parent=parent)
         self.installEventFilter(self)

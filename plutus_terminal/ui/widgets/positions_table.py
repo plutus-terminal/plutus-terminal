@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import (
     QAbstractItemModel,
@@ -39,11 +39,13 @@ from plutus_terminal.ui.widgets.decimal_spin_box import (
 )
 from plutus_terminal.ui.widgets.manage_order import ManageOrder
 from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
+from plutus_terminal.controller.positions_controller import PositionsController
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
 
 HEADER_MAP = {
     "pair": "Pair",
@@ -66,7 +68,7 @@ class PositionsTableModel(QAbstractTableModel):
     def __init__(
         self,
         format_simple_pair: Callable[[str], str],
-        data: Optional[list[PerpsPosition]] = None,
+        data: list[PerpsPosition | None] = None,
     ) -> None:
         """Initialize shared variables."""
         super().__init__()
@@ -159,12 +161,12 @@ class PositionsTableView(QTableView):
 
     def __init__(
         self,
-        exchange: ExchangeBase,
-        parent: Optional[QWidget] = None,
+        ui_controller: UIController,
+        parent: QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
-        self._exchange = exchange
+        self.controller = PositionsController(ui_controller)
         self._close_index = list(HEADER_MAP).index("close")
         self._pnl_index = list(HEADER_MAP).index("pnl")
         self._pnl_widgets: dict[str, dict[bool, PnlBreakdown]] = {}
@@ -172,6 +174,7 @@ class PositionsTableView(QTableView):
         self._cached_prices: dict[str, PriceData] = {}
         self.clicked.connect(self.on_row_click)
         self._setup_style()
+        self._connect_controller_signals()
 
     def _setup_style(self) -> None:
         """Set Table style."""
@@ -181,6 +184,17 @@ class PositionsTableView(QTableView):
         self.verticalHeader().setVisible(False)
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setShowGrid(False)
+
+    def _connect_controller_signals(self) -> None:
+        """Connect signals."""
+        self.controller.refresh_table.connect(self.update_table_data)
+        self.controller.update_pnl.connect(self.update_cached_prices)
+        self.controller.exchange_updated.connect(self.on_new_exchange)
+
+    def update_table_data(self) -> None:
+        """Update table data from controller."""
+        if self.model():
+            self.model().update_positions(self.controller.positions)
 
     def setModel(self, model: QAbstractItemModel) -> None:
         """Override setModel to add close buttons."""
@@ -201,7 +215,8 @@ class PositionsTableView(QTableView):
                 data["pair"],
                 data["trade_direction"],
                 position=data,
-                exchange=self._exchange,
+                controller=self.controller,
+                exchange=self.controller.exchange,
                 parent=self,
             )
 
@@ -249,7 +264,7 @@ class PositionsTableView(QTableView):
 
             pnl_index = self.model().index(row, self._pnl_index)
 
-            pnl_details = self._exchange.calculate_pnl(data, current_price)
+            pnl_details = self.controller.calculate_pnl(data, current_price)
 
             trade_direction = data["trade_direction"]
 
@@ -259,7 +274,7 @@ class PositionsTableView(QTableView):
                 data["pair"],
                 trade_direction,
                 position=data,
-                exchange=self._exchange,
+                exchange=self.controller.exchange,
                 parent=self,
             )
             if pnl_widget is None or not isinstance(pnl_widget, PnlBreakdown):
@@ -297,9 +312,12 @@ class PositionsTableView(QTableView):
         Args:
             new_exchange (ExchangeBase): New exchangeBase.
         """
-        self._exchange = new_exchange
+        # self._exchange = new_exchange # Controlled by controller
         self._position_manager_widgets = {}
         self._pnl_widgets = {}
+        if self.model():
+             if hasattr(self.model(), "on_new_exchange"):
+                 self.model().on_new_exchange(new_exchange)
 
 
 class PositionManager(QWidget):
@@ -309,19 +327,21 @@ class PositionManager(QWidget):
         self,
         position: PerpsPosition,
         exchange: ExchangeBase,
-        parent: Optional[QWidget] = None,
+        controller: PositionsController,
+        parent: QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent)
         self._position = position
         self._exchange = exchange
+        self.controller = controller
 
         self._main_layout = QHBoxLayout()
         self.close_button = QPushButton("Close")
         self.tp_sl_button = QPushButton("TP/SL")
 
         self._menu = QMenu(self)
-        self._close_action = PositionCloseAction(self._position, self)
+        self._close_action = PositionCloseAction(self._position, self.controller.exchange, self)
 
         self._setup_widgets()
         self._setup_layout()
@@ -361,28 +381,26 @@ class PositionManager(QWidget):
     def set_price_limit(self) -> None:
         """Set price for limit trade."""
         self._close_action.set_price_limit(
-            self._exchange.cached_prices[self._position["pair"]]["price"],
+            self.controller.exchange.cached_prices[self._position["pair"]]["price"],
         )
 
     @asyncSlot()
     async def close_position(self) -> None:
         """Close position."""
-        await self._exchange.close_position(self._position)
+        await self.controller.close_position(self._position)
 
     @asyncSlot()
     async def _on_close_reduce_clicked(self, kwargs: dict) -> None:
         """Handle click on reduce."""
         # Close position if size matches
         if self._position["position_size_stable"] == kwargs["size"]:
-            await self._exchange.close_position(self._position)
+            await self.controller.close_position(self._position)
             return
 
         # Calculate collateral delta based on reduced size
-        kwargs["collateral_delta"] = (kwargs["size"] * self._position["collateral_stable"]) / (
-            self._position["position_size_stable"]
-        )
+        kwargs["collateral_delta"] = self.controller.calculate_collateral_delta(self._position, kwargs["size"])
 
-        await self._exchange.create_reduce_order(**kwargs)
+        await self.controller.create_reduce_order(**kwargs)
 
     def on_tp_sl_clicked(self) -> None:
         """Handle click on TP/SL."""
@@ -398,7 +416,7 @@ class PositionManager(QWidget):
                     "trade_direction": self._position["trade_direction"],
                 },
             ),
-            exchange=self._exchange,
+            exchange=self.controller.exchange,
             associated_position=deepcopy(self._position),
             parent=self,
         )
@@ -415,11 +433,9 @@ class PositionManager(QWidget):
         if order_data["size_stable"] == self._position["position_size_stable"]:
             collateral_delta = Decimal(0)
         else:
-            collateral_delta = (order_data["size_stable"] * self._position["collateral_stable"]) / (
-                self._position["position_size_stable"]
-            )
+             collateral_delta = self.controller.calculate_collateral_delta(self._position, order_data["size_stable"])
 
-        await self._exchange.create_reduce_order(
+        await self.controller.create_reduce_order(
             pair=order_data["pair"],
             size=order_data["size_stable"],
             collateral_delta=collateral_delta,
@@ -435,10 +451,11 @@ class PositionCloseAction(QWidgetAction):
     reduce_clicked = Signal(dict)
     set_price_clicked = Signal()
 
-    def __init__(self, position: PerpsPosition, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, position: PerpsPosition, exchange: ExchangeBase, parent: QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(parent)  # type: ignore
         self._position = position
+        self.exchange = exchange # Store exchange here for simplicity? Or controller?
 
         self._default_widget = QWidget(parent)
         self._main_layout = QGridLayout()

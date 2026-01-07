@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from decimal import Decimal
 from functools import partial
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
     QAbstractItemModel,
@@ -31,11 +31,13 @@ from plutus_terminal.core.exchange.types import (
     PerpsTradeType,
 )
 from plutus_terminal.ui.widgets.manage_order import ManageOrder
+from plutus_terminal.controller.orders_controller import OrdersController
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.controller.ui_controller import UIController
 
 HEADER_MAP = {
     "pair": "Pair",
@@ -56,7 +58,7 @@ class OrdersTableModel(QAbstractTableModel):
     def __init__(
         self,
         format_simple_pair: Callable[[str], str],
-        data: Optional[list[OrderData]] = None,
+        data: list[OrderData | None] = None,
     ) -> None:
         """Initialize shared variables."""
         super().__init__()
@@ -153,14 +155,21 @@ class OrdersTableView(QTableView):
 
     def __init__(
         self,
-        exchange: ExchangeBase,
-        parent: Optional[QWidget] = None,
+        ui_controller: UIController,
+        parent: QWidget | None = None,
     ) -> None:
         """Initialize shared viarables."""
         super().__init__(parent)
-        self._exchange = exchange
+        self.controller = OrdersController(ui_controller)
+
+        # Need to set initial exchange from controller or ui_controller.
+        # However, OrdersTableView constructor previously took `exchange`.
+        # Now it takes `ui_controller` so controller can be initialized.
+        # But we need to initialize the model which needs formatting function.
+
         self.clicked.connect(self.on_row_click)
         self._setup_style()
+        self._connect_controller_signals()
 
     def _setup_style(self) -> None:
         """Configure table style."""
@@ -170,6 +179,17 @@ class OrdersTableView(QTableView):
         self.verticalHeader().setVisible(False)
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setShowGrid(False)
+
+    def _connect_controller_signals(self) -> None:
+        """Connect signals."""
+        self.controller.refresh_table.connect(self.update_table_data)
+        self.controller.exchange_updated.connect(self.on_new_exchange)
+
+    def update_table_data(self) -> None:
+        """Update table data from controller."""
+        # We need to access the model.
+        if self.model():
+            self.model().update_orders(self.controller.orders)
 
     def setModel(self, model: QAbstractItemModel) -> None:
         """Override setModel to add edit and cancel buttons."""
@@ -204,7 +224,7 @@ class OrdersTableView(QTableView):
     @asyncSlot(OrderData)
     async def cancel_order(self, order_data: OrderData) -> None:
         """Cancel order."""
-        await self._exchange.cancel_order(order_data)
+        await self.controller.cancel_order(order_data)
 
     def _on_edit_order(self, order_data: OrderData) -> None:
         """Handle edit button click.
@@ -214,10 +234,10 @@ class OrdersTableView(QTableView):
         Args:
             order_data (OrderData): Order to edit.
         """
-        associated_position = self._exchange.get_position_associated_with_order(order_data)
+        associated_position = self.controller.get_associated_position(order_data)
         order_dialog = ManageOrder(
             order_data=deepcopy(order_data),
-            exchange=self._exchange,
+            exchange=self.controller.exchange,
             associated_position=associated_position,
             parent=self,
         )
@@ -235,11 +255,7 @@ class OrdersTableView(QTableView):
             old_order_data (OrderData): Old order data.
             new_order_data (OrderData): New order data.
         """
-        await self._exchange.edit_order(
-            order_data=old_order_data,
-            new_size_stable=new_order_data["size_stable"],
-            new_execution_price=new_order_data["trigger_price"],
-        )
+        await self.controller.edit_order(old_order_data, new_order_data)
 
     def on_row_click(self, index: QModelIndex) -> None:
         """Handle click on row."""
@@ -248,16 +264,31 @@ class OrdersTableView(QTableView):
     def on_new_exchange(self, new_exchange: ExchangeBase) -> None:
         """Update info based on new exchange.
 
-        Args:
-            new_exchange (ExchangeBase): New exchangeBase.
+        Called by UIController or whoever manages this widget?
+        Wait, previously UIController called `orders_table.on_new_exchange`.
+        In `UIController.py`:
+        It connects `self.exchange_changed.connect(self.main_window.on_exchange_changed)` (implicitly via message bus or similar).
+        Actually let's check who calls `on_new_exchange` on `OrdersTableView`.
+        In `PlutusMainWindow`, it connects `self._ui_controller.exchange_changed.connect(self.on_exchange_changed)`.
+        And `PlutusMainWindow` probably propagates it.
+
+        Since I changed `OrdersTableView` to use `OrdersController`, and `OrdersController` listens to `exchange_changed`,
+        I don't strictly need `on_new_exchange` here unless the Model needs it.
+        The Model needs it to update formatter.
         """
-        self._exchange = new_exchange
+        # This is called by MainWindow usually?
+        # Let's keep it to update the model.
+        if self.model():
+             if hasattr(self.model(), "on_new_exchange"):
+                 self.model().on_new_exchange(new_exchange)
+
+        # Controller already handles it internally for itself.
 
 
 class OrderButtons(QWidget):
     """Button to center."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize shared attributes."""
         super().__init__(parent)
         layout = QHBoxLayout()

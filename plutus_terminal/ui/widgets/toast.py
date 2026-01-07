@@ -3,7 +3,7 @@
 from enum import Enum
 import logging
 import os
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from PySide6.QtCore import (
     QEvent,
@@ -57,7 +57,7 @@ class Toast(QFrame):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         desktop: bool = False,
         message_id: bytes | None = None,
     ) -> None:

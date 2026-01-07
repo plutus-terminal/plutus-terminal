@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtGui import QPixmap
@@ -19,7 +19,7 @@ class BasePasswordDialog(QtWidgets.QDialog):
     def __init__(
         self,
         pass_guard: PasswordGuard,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -88,7 +88,7 @@ class CreatePasswordDialog(BasePasswordDialog):
     def __init__(
         self,
         pass_guard: PasswordGuard,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         self._confirm_label = QtWidgets.QLabel("Confirm Password")
@@ -140,7 +140,7 @@ class UnlockPasswordDialog(BasePasswordDialog):
     def __init__(
         self,
         pass_guard: PasswordGuard,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         self._unlock_btn = QtWidgets.QPushButton("Unlock Password")

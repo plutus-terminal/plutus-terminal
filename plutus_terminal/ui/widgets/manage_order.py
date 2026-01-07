@@ -2,16 +2,13 @@
 
 from decimal import Decimal
 from functools import partial
-from typing import Optional
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 
-from plutus_terminal.core.exchange.base import ExchangeBase
 from plutus_terminal.core.exchange.types import (
     OrderData,
-    PerpsPosition,
     PerpsTradeDirection,
     PerpsTradeType,
 )
@@ -19,7 +16,11 @@ from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.decimal_spin_box import DecimalSpinBoxWithButton
 from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
+from plutus_terminal.controller.manage_order_controller import ManageOrderController
 
+if TYPE_CHECKING:
+    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.core.types_ import PerpsPosition
 
 class ManageOrder(QtWidgets.QDialog):
     """Dialog to manage orders."""
@@ -30,14 +31,12 @@ class ManageOrder(QtWidgets.QDialog):
         self,
         order_data: OrderData,
         exchange: ExchangeBase,
-        associated_position: Optional[PerpsPosition],
-        parent: Optional[QtWidgets.QWidget] = None,
+        associated_position: PerpsPosition | None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize dialog."""
         super().__init__(parent)
-        self._order_data = order_data
-        self._exchange = exchange
-        self._associated_position = associated_position
+        self.controller = ManageOrderController(order_data, exchange, associated_position)
 
         self._main_layout = QtWidgets.QGridLayout()
 
@@ -70,6 +69,7 @@ class ManageOrder(QtWidgets.QDialog):
 
         self._setup_widgets()
         self._setup_layout()
+        self._connect_signals()
 
         self.setMinimumHeight(self.sizeHint().height())
         self.setMinimumWidth(int(self.sizeHint().width() * 1.75))
@@ -82,46 +82,46 @@ class ManageOrder(QtWidgets.QDialog):
 
         title_color = (
             "color: rgb(255, 100, 100);"
-            if self._order_data["trade_direction"].value == PerpsTradeDirection.SHORT.value
+            if self.controller.order_data["trade_direction"].value == PerpsTradeDirection.SHORT.value
             else "color: rgb(100, 255, 100);"
         )
         self.top_bar.title.setText(
-            f"{self._exchange.format_simple_pair_from_pair(self._order_data['pair'])} | "
-            f"<span style='{title_color};'>{self._order_data['trade_direction'].name}</span>",
+            f"{self.controller.exchange.format_simple_pair_from_pair(self.controller.order_data['pair'])} | "
+            f"<span style='{title_color};'>{self.controller.order_data['trade_direction'].name}</span>",
         )
 
-        minimum_digits = ui_utils.get_minimal_digits(float(self._order_data["trigger_price"]), 4)
-        self._open_price_value.setText(f"${self._order_data['trigger_price']:,.{minimum_digits}f}")
+        minimum_digits = ui_utils.get_minimal_digits(float(self.controller.order_data["trigger_price"]), 4)
+        self._open_price_value.setText(f"${self.controller.order_data['trigger_price']:,.{minimum_digits}f}")
         self._open_price_value.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._liq_price_value.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         self._type_group.addButton(self.limit_button, PerpsTradeType.LIMIT.value)
         self._type_group.addButton(self.tp_button, PerpsTradeType.TRIGGER_TP.value)
         self._type_group.addButton(self.sl_button, PerpsTradeType.TRIGGER_SL.value)
-        self._type_group.button(self._order_data["order_type"].value).click()
+        self._type_group.button(self.controller.order_data["order_type"].value).click()
 
         self._type_group.button(PerpsTradeType.LIMIT.value).setDisabled(
-            self._order_data["reduce_only"],
+            self.controller.order_data["reduce_only"],
         )
 
         trigger_minimum_digits = ui_utils.get_minimal_digits(
-            float(self._order_data["trigger_price"]),
+            float(self.controller.order_data["trigger_price"]),
             4,
         )
         self.trigger_box.setDecimals(trigger_minimum_digits)
-        self.trigger_box.decimalValueChanged.connect(self.update_pnl)
-        self.trigger_box.setValue(self._order_data["trigger_price"])
+        self.trigger_box.decimalValueChanged.connect(lambda val: self.controller.calculate_pnl(val))
+        self.trigger_box.setValue(self.controller.order_data["trigger_price"])
 
         self.trigger_max_button.setObjectName("actionButton")
         self.trigger_max_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.trigger_max_button.setFixedWidth(50)
         self.trigger_max_button.clicked.connect(
-            partial(self.trigger_box.setValue, self._order_data["trigger_price"]),
+            partial(self.trigger_box.setValue, self.controller.order_data["trigger_price"]),
         )
 
         self.amount_box.setDecimals(4)
-        self.amount_box.setValue(self._order_data["size_stable"])
-        self.amount_box.setMaximum(self._order_data["size_stable"])
+        self.amount_box.setValue(self.controller.order_data["size_stable"])
+        self.amount_box.setMaximum(self.controller.order_data["size_stable"])
         self.amount_box.decimalValueChanged.connect(self.on_quantity_change)
 
         self.amount_max_button.setObjectName("actionButton")
@@ -132,7 +132,7 @@ class ManageOrder(QtWidgets.QDialog):
         )
 
         self._info_frame.setObjectName("newsFrameQuote")
-        if not self._order_data["reduce_only"]:
+        if not self.controller.order_data["reduce_only"]:
             self._info_frame.hide()
         self._pnl_value.pnl_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -140,7 +140,7 @@ class ManageOrder(QtWidgets.QDialog):
         self.execute_order_button.setMinimumHeight(30)
         self.execute_order_button.clicked.connect(self.on_execute_order)
 
-        self.update_liquidation_price()
+        self.controller.calculate_liquidation_price()
 
     def _setup_layout(self) -> None:
         """Configure layouts."""
@@ -170,55 +170,55 @@ class ManageOrder(QtWidgets.QDialog):
 
         self.setLayout(self._main_layout)
 
-    def update_liquidation_price(self) -> None:
-        """Update liquidation price."""
-        if self._associated_position is None:
-            self._liq_price_value.setText("--")
-            return
+    def _connect_signals(self) -> None:
+        """Connect controller signals."""
+        self.controller.update_pnl.connect(self._on_update_pnl)
+        self.controller.update_liquidation.connect(self._on_update_liquidation)
+        self.controller.execute_order_signal.connect(self._on_order_executed)
 
-        liquidation_price = self._exchange.calculate_liquidation_price(self._associated_position)
-        minimal_digits = ui_utils.get_minimal_digits(float(liquidation_price), 4)
-        self._liq_price_value.setText(
-            f"${liquidation_price:,.{minimal_digits}f}",
-        )
+    def _on_update_pnl(self, label: str, usd_before: str, funding: str, pos_fee: str, usd_after: str, percent: str) -> None:
+        """Update pnl display."""
+        if label == "--":
+             self._pnl_value.pnl_label.setText("--")
+        else:
+             # Actually update_pnl emits values even if one is "--" in my implementation.
+             # Wait, controller logic: if no associated_position, emits "--", "", ...
+             # View logic:
+             pass
 
-    def update_pnl(self, price: Decimal) -> None:
-        """Update pnl."""
-        if self._associated_position is None:
+        # If usd_after is empty, it means no position.
+        if not usd_after:
             self._pnl_value.pnl_label.setText("--")
             return
 
-        pnl_details = self._exchange.calculate_pnl(self._associated_position, price)
-
         self._pnl_value.set_pnl(
-            pnl_details["pnl_usd_after_fees"],
-            pnl_details["pnl_percentage_after_fees"],
+            Decimal(usd_after.replace("$", "")),
+            Decimal(percent.replace("%", "")),
         )
         self._pnl_value.set_tooltip_content(
-            pnl_details["pnl_usd_before_fees"],
-            pnl_details["funding_fee_usd"],
-            pnl_details["position_fee_usd"],
-            pnl_details["pnl_usd_after_fees"],
+            Decimal(usd_before.replace("$", "")),
+            Decimal(funding.replace("$", "")),
+            Decimal(pos_fee.replace("$", "")),
+            Decimal(usd_after.replace("$", "")),
             push_tool_tip=False,
         )
 
-    def on_quantity_change(self, new_quantity: Decimal) -> None:
-        """Handle quantity change.
+    def _on_update_liquidation(self, price_str: str) -> None:
+        """Update liquidation price."""
+        if price_str == "--":
+            self._liq_price_value.setText("--")
+        else:
+            price = float(price_str)
+            minimal_digits = ui_utils.get_minimal_digits(price, 4)
+            self._liq_price_value.setText(f"${price:,.{minimal_digits}f}")
 
-        Args:
-            new_quantity (float): New quantity.
-        """
-        # If order is associated with a position, update position size
-        if self._associated_position is not None:
-            self._associated_position["position_size_stable"] = new_quantity
-        self.update_pnl(self.trigger_box.value())
+    def on_quantity_change(self, new_quantity: Decimal) -> None:
+        """Handle quantity change."""
+        self.controller.update_position_size(new_quantity)
+        self.controller.calculate_pnl(self.trigger_box.value())
 
     def set_edit_mode(self, edit_mode: bool) -> None:
-        """Set if the widget is editing or creating order.
-
-        Args:
-            edit_mode (bool): If true, the widget is in edit mode.
-        """
+        """Set if the widget is editing or creating order."""
         self.amount_box.setDisabled(edit_mode)
         self.amount_max_button.setDisabled(edit_mode)
         for button in self._type_group.buttons():
@@ -226,18 +226,14 @@ class ManageOrder(QtWidgets.QDialog):
 
     def on_execute_order(self) -> None:
         """Handle execute order button click."""
-        # Create order to execture based on current state
-        type_button_id = self._type_group.id(self._type_group.checkedButton())
-        order_type = PerpsTradeType(type_button_id)
-        order = OrderData(
-            id=self._order_data["id"],
-            pair=self._order_data["pair"],
-            trade_direction=self._order_data["trade_direction"],
-            order_type=order_type,
-            trigger_price=Decimal(self.trigger_box.value()),
-            size_stable=Decimal(self.amount_box.value()),
-            reduce_only=self._order_data["reduce_only"],
+        self.controller.execute_order(
+            Decimal(self.trigger_box.value()),
+            Decimal(self.amount_box.value()),
+            self._type_group.id(self._type_group.checkedButton())
         )
+
+    def _on_order_executed(self, order: OrderData) -> None:
+        """Handle execution signal from controller."""
         self.execute_order.emit(order)
         self.close()
 

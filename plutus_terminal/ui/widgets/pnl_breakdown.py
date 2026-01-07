@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
     QEvent,
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class PnlBreakdown(QWidget):
     """Pnl breakdown widget."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(parent)
         self._tooltip_content = ""
