@@ -1,0 +1,8 @@
+{
+    "PERP_BTC_USDC": "BTC",
+    "PERP_ETH_USDC": "ETH",
+    "PERP_ARB_USDC": "ARB",
+    "PERP_SOL_USDC": "SOL",
+    "PERP_BNB_USDC": "BNB",
+    "PERP_DOGE_USDC": "DOGE"
+}

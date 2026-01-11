@@ -25,6 +25,7 @@ dependencies = [
     "setproctitle == 1.3.5",
     "cryptography == 44.0.2",
     "plutus-lightweight-charts == 2.2.0",
+    "base58 (>=2.1.1,<3.0.0)",
 ]
 
 [tool.poetry.group.dev.dependencies]
