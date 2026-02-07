@@ -236,10 +236,15 @@ class TradingChart(QWidget):
         tick["price"] = float(tick["price"])
         # Convert to local timezone
         tick["date"] = ui_utils.convert_timestamp_to_local_timezone(tick["date"])
-        self._main_chart.update_from_tick(tick)
-
         minimal_digits = ui_utils.get_minimal_digits(tick["price"], 4)
         self._price_label.setText(f"${tick['price']:,.{minimal_digits}f}")
+
+        candle_data = self._main_chart.candle_data
+        if candle_data is None or candle_data.empty:
+            LOGGER.debug("Skipping tick candle update before chart history is initialized.")
+            return
+
+        self._main_chart.update_from_tick(tick)
 
     def draw_positions(self, all_positions: list[PerpsPosition]) -> None:
         """Draw positions lines on the chart.

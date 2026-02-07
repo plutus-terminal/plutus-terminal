@@ -35,8 +35,7 @@ class PnlBreakdown(QWidget):
         self.pnl_label.setObjectName("pnl")
         self._main_layout.addWidget(self.pnl_label)
         self.setLayout(self._main_layout)
-
-        self._show_tooltip = False
+        self.setToolTipDuration(0)
 
     def set_pnl(self, usd: Decimal, percent: Decimal) -> None:
         """Set pnl."""
@@ -62,32 +61,15 @@ class PnlBreakdown(QWidget):
             f"Closing Fee: -{round(position_fee, 3)}<br><br>"
             f"PnL After Fees: {round(pnl_after_fee, 3)}"
         )
-        if self._show_tooltip and push_tool_tip:
-            QToolTip.showText(
-                self.mapToGlobal(self.rect().center()),
-                self._tooltip_content,
-            )
-        elif not push_tool_tip:
-            self.setToolTip(self._tooltip_content)
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Override event to show tooltip."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._show_tooltip = True
-            return None
-        return super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Override event to hide tooltip."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._show_tooltip = False
-            QToolTip.hideText()
-            return None
-        return super().mouseReleaseEvent(event)
+        self.setToolTip(self._tooltip_content)
+        if push_tool_tip and self.underMouse():
+            QToolTip.showText(self.mapToGlobal(self.rect().center()), self._tooltip_content, self)
 
     def enterEvent(self, event: QEnterEvent) -> None:
         """Override event to change cursor on hover."""
         self.setCursor(Qt.CursorShape.WhatsThisCursor)
+        if self._tooltip_content:
+            QToolTip.showText(self.mapToGlobal(self.rect().center()), self._tooltip_content, self)
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:

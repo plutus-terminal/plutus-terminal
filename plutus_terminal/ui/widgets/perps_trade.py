@@ -156,7 +156,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_group.buttonClicked.connect(self._set_leverage_button)
 
         self._leverage_spin.setMinimum(1)
-        self._leverage_spin.setMaximum(50)
+        self._leverage_spin.setMaximum(self._exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
         self._leverage_spin.editingFinished.connect(
             lambda: self._set_leverage_spin(
@@ -266,6 +266,9 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         """Connect signals."""
         self._ui_controller.message_bus.subscribed_prices_fetched.connect(
             self.update_liquidation_info
+        )
+        self._ui_controller.message_bus.balance_fetched.connect(
+            lambda *_: self.update_liquidation_info(),
         )
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
@@ -393,6 +396,13 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         leverage_value = self._leverage_spin.value()
         pair = self._pair_combo_box.currentData()
+        position_size = Decimal(amount * leverage_value)
+        available_balance = self._exchange.stable_balance
+        collateral = available_balance if available_balance > Decimal(0) else Decimal(amount)
+        effective_leverage = Decimal(leverage_value)
+        if collateral > Decimal(0):
+            effective_leverage = position_size / collateral
+
         if isinstance(current_widget, LimitTradeWidget):
             open_price = Decimal(current_widget.target_price_box.value())
         else:
@@ -406,11 +416,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 {
                     "pair": pair,
                     "id": 0,
-                    "position_size_stable": Decimal(amount * leverage_value),
-                    "collateral_stable": Decimal(amount),
+                    "position_size_stable": position_size,
+                    "collateral_stable": collateral,
                     "open_price": open_price,
                     "trade_direction": PerpsTradeDirection.LONG,
-                    "leverage": Decimal(leverage_value),
+                    "leverage": effective_leverage,
                     "liquidation_price": Decimal(0),
                 },
             ),
@@ -426,11 +436,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 {
                     "pair": pair,
                     "id": 0,
-                    "position_size_stable": Decimal(amount * leverage_value),
-                    "collateral_stable": Decimal(amount),
+                    "position_size_stable": position_size,
+                    "collateral_stable": collateral,
                     "open_price": open_price,
                     "trade_direction": PerpsTradeDirection.SHORT,
-                    "leverage": Decimal(leverage_value),
+                    "leverage": effective_leverage,
                     "liquidation_price": Decimal(0),
                 },
             ),
@@ -576,6 +586,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self.update_trade_buttons()
 
         self.blockSignals(True)
+        self._leverage_spin.setMaximum(self._exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
         self._update_leverage_buttons(self._app_config.leverage)
         self.blockSignals(False)

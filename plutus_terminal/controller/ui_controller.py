@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, Signal
 from qasync import asyncio, asyncSlot
 
 from plutus_terminal.core.config import AppConfig
+from plutus_terminal.core.exceptions import TransactionFailedError
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
@@ -197,8 +198,16 @@ class UIController(QObject):
             coin (str): Coin to set leverage for.
             leverage (int): Leverage to set.
         """
-        await self.current_exchange.set_leverage(self.current_pair, leverage)
+        try:
+            await self.current_exchange.set_leverage(coin, leverage)
+        except TransactionFailedError as error:
+            Toast.show_message(
+                f"Failed to set leverage: {error}",
+                type_=ToastType.ERROR,
+            )
+            return
         pair = self.current_exchange.format_pair_from_coin(coin)
+        applied_leverage = self.app_config.leverage
         if leverage < self.current_exchange.min_leverage:
             Toast.show_message(
                 f"Leverage of {pair} is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
@@ -209,9 +218,14 @@ class UIController(QObject):
                 f"Leverage of {pair} is too high. Set maximum leverage: {self.current_exchange.max_leverage}x",
                 type_=ToastType.WARNING,
             )
+        elif applied_leverage != leverage:
+            Toast.show_message(
+                f"Leverage of {pair} adjusted to: {applied_leverage}x",
+                type_=ToastType.WARNING,
+            )
         else:
             Toast.show_message(
-                f"Leverage of {pair} set to: {leverage}x",
+                f"Leverage of {pair} set to: {applied_leverage}x",
                 type_=ToastType.SUCCESS,
             )
 
@@ -222,7 +236,8 @@ class UIController(QObject):
         Args:
             leverage (int): Leverage to set.
         """
-        await self.current_exchange.set_all_leverage(leverage)
+        bounded = max(self.current_exchange.min_leverage, min(self.current_exchange.max_leverage, leverage))
+        await self.current_exchange.set_all_leverage(bounded)
         if leverage < self.current_exchange.min_leverage:
             Toast.show_message(
                 f"Leverage is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
@@ -235,7 +250,7 @@ class UIController(QObject):
             )
         else:
             Toast.show_message(
-                f"Leverage set to all pairs: {leverage}x",
+                f"Leverage set to all pairs: {bounded}x",
                 type_=ToastType.SUCCESS,
             )
 

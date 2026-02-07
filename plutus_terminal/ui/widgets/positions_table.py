@@ -57,7 +57,7 @@ HEADER_MAP = {
     "close": "Close",
 }
 
-FILL_LATER = {"close", "pnl"}
+FILL_LATER = {"close", "pnl", "liquidation_price"}
 
 
 class PositionsTableModel(QAbstractTableModel):
@@ -152,6 +152,28 @@ class PositionsTableModel(QAbstractTableModel):
         self.format_simple_pair = new_exchange.format_simple_pair_from_pair
 
 
+class LiquidationPriceWidget(QWidget):
+    """Widget to display liquidation price without cell flicker."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        """Initialize widget with stable text state."""
+        super().__init__(parent)
+        self._price_label = QLabel("--", self)
+        self._price_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._main_layout = QHBoxLayout(self)
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout.addWidget(self._price_label)
+
+    def set_price(self, price: Optional[Decimal]) -> None:
+        """Update shown liquidation price while preserving prior value on missing input."""
+        if price is None:
+            return
+
+        minimal_digits = ui_utils.get_minimal_digits(float(price), 3)
+        self._price_label.setText(f"<span style='color:orange'>${price:,.{minimal_digits}f}</span>")
+
+
 class PositionsTableView(QTableView):
     """Table view to display open positions."""
 
@@ -167,9 +189,13 @@ class PositionsTableView(QTableView):
         self._exchange = exchange
         self._close_index = list(HEADER_MAP).index("close")
         self._pnl_index = list(HEADER_MAP).index("pnl")
+        self._liquidation_index = list(HEADER_MAP).index("liquidation_price")
         self._pnl_widgets: dict[str, dict[bool, PnlBreakdown]] = {}
+        self._liquidation_widgets: dict[str, dict[bool, LiquidationPriceWidget]] = {}
         self._position_manager_widgets: dict[str, dict[bool, PositionManager]] = {}
         self._cached_prices: dict[str, PriceData] = {}
+        self._pnl_column_width: int | None = None
+        self._liquidation_column_width: int | None = None
         self.clicked.connect(self.on_row_click)
         self._setup_style()
 
@@ -187,6 +213,7 @@ class PositionsTableView(QTableView):
         super().setModel(model)
         model.modelReset.connect(self.add_position_manager)
         model.modelReset.connect(self.create_pnl_breakdowns)
+        model.modelReset.connect(self.create_liquidation_widgets)
 
     def add_position_manager(self) -> None:
         """Add position manager for each row."""
@@ -238,6 +265,39 @@ class PositionsTableView(QTableView):
 
         self.blockSignals(False)
 
+    def create_liquidation_widgets(self) -> None:
+        """Create liquidation widgets and attach them to rows."""
+        self.blockSignals(True)
+        for row in range(self.model().rowCount()):
+            data = self.model().index(row, 0).data(Qt.ItemDataRole.UserRole)
+            liquidation_index = self.model().index(row, self._liquidation_index)
+            trade_direction = data["trade_direction"]
+
+            widget = ui_utils.get_or_create_stored_widget(
+                LiquidationPriceWidget,
+                self._liquidation_widgets,
+                data["pair"],
+                trade_direction,
+                parent=self,
+            )
+            if widget is None or not isinstance(widget, LiquidationPriceWidget):
+                continue
+
+            widget.set_price(data.get("liquidation_price"))
+            if self.indexWidget(liquidation_index) is not widget:
+                self.setIndexWidget(liquidation_index, widget)
+
+        self.horizontalHeader().setSectionResizeMode(
+            self._liquidation_index,
+            QHeaderView.ResizeMode.Fixed,
+        )
+        if self._liquidation_column_width is None and self.model().rowCount() > 0:
+            widget = self.indexWidget(self.model().index(0, self._liquidation_index))
+            if widget is not None:
+                self._liquidation_column_width = int(widget.sizeHint().width() * 1.1)
+                self.setColumnWidth(self._liquidation_index, self._liquidation_column_width)
+        self.blockSignals(False)
+
     def update_pnl(self, cached_prices: dict[str, PriceData]) -> None:
         """Update pries for open positions."""
         for row in range(self.model().rowCount()):
@@ -245,7 +305,7 @@ class PositionsTableView(QTableView):
             try:
                 current_price = cached_prices[data["pair"]]["price"]
             except KeyError:
-                return
+                continue
 
             pnl_index = self.model().index(row, self._pnl_index)
 
@@ -263,7 +323,7 @@ class PositionsTableView(QTableView):
                 parent=self,
             )
             if pnl_widget is None or not isinstance(pnl_widget, PnlBreakdown):
-                return
+                continue
 
             pnl_widget.set_pnl(
                 pnl_details["pnl_usd_after_fees"],
@@ -275,17 +335,20 @@ class PositionsTableView(QTableView):
                 pnl_details["position_fee_usd"],
                 pnl_details["pnl_usd_after_fees"],
             )
-            self.setIndexWidget(pnl_index, pnl_widget)
-            # Set row height to 2x to make it fit in the table
-            self.setRowHeight(row, int(self.sizeHintForRow(row) * 2))
+            if self.indexWidget(pnl_index) is not pnl_widget:
+                self.setIndexWidget(pnl_index, pnl_widget)
+                # Set row height to 2x to make it fit in the table
+                self.setRowHeight(row, int(self.sizeHintForRow(row) * 2))
         self.horizontalHeader().setSectionResizeMode(
             self._pnl_index,
             QHeaderView.ResizeMode.Fixed,
         )
 
-        widget = self.indexWidget(self.model().index(0, self._pnl_index))
-        if widget is not None:
-            self.setColumnWidth(self._pnl_index, int(widget.sizeHint().width() * 1.2))
+        if self._pnl_column_width is None and self.model().rowCount() > 0:
+            widget = self.indexWidget(self.model().index(0, self._pnl_index))
+            if widget is not None:
+                self._pnl_column_width = int(widget.sizeHint().width() * 1.2)
+                self.setColumnWidth(self._pnl_index, self._pnl_column_width)
 
     def on_row_click(self, index: QModelIndex) -> None:
         """Handle click on row."""
@@ -300,6 +363,31 @@ class PositionsTableView(QTableView):
         self._exchange = new_exchange
         self._position_manager_widgets = {}
         self._pnl_widgets = {}
+        self._liquidation_widgets = {}
+        self._pnl_column_width = None
+        self._liquidation_column_width = None
+
+    def refresh_liquidation_prices(self) -> None:
+        """Refresh liquidation widget values for current rows."""
+        for row in range(self.model().rowCount()):
+            data = self.model().index(row, 0).data(Qt.ItemDataRole.UserRole)
+            trade_direction = data["trade_direction"]
+            widget = ui_utils.get_or_create_stored_widget(
+                LiquidationPriceWidget,
+                self._liquidation_widgets,
+                data["pair"],
+                trade_direction,
+                parent=self,
+            )
+            if widget is None or not isinstance(widget, LiquidationPriceWidget):
+                continue
+
+            price = self._exchange.calculate_liquidation_price(data)
+            widget.set_price(price)
+
+            liquidation_index = self.model().index(row, self._liquidation_index)
+            if self.indexWidget(liquidation_index) is not widget:
+                self.setIndexWidget(liquidation_index, widget)
 
 
 class PositionManager(QWidget):
