@@ -83,7 +83,6 @@ class TradeTable(QtWidgets.QWidget):
         """Update positions."""
         self._tab_widget.setTabText(0, f"Positions ({len(positions)})")
         self._positions_model.update_positions(positions)
-        self._positions_table.refresh_liquidation_prices()
 
     def update_orders(self, orders: list[OrderData]) -> None:
         """Update orders."""
