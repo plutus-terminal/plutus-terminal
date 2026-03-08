@@ -268,16 +268,20 @@ class OrderlyExchange(ExchangeBase):
         price = await self._resolve_execution_price(pair, trade_type, execution_price)
         order_size_stable = amount * self.app_config.leverage
         symbol = self._market_registry.get_symbol_for_pair(pair)
+        take_profit_target, stop_loss_target = self._resolve_attached_tp_sl_targets(
+            execution_price=price,
+            trade_direction=trade_direction,
+            take_profit=take_profit,
+            stop_loss=stop_loss,
+        )
         trade_arguments = {
             "symbol": symbol,
             "trade_direction": trade_direction,
             "trade_type": trade_type,
             "price": price,
             "size_stable": order_size_stable,
-            "take_profit": exchange_helpers.get_take_profit_target(
-                price, take_profit, trade_direction
-            ),
-            "stop_loss": exchange_helpers.get_stop_loss_target(price, stop_loss, trade_direction),
+            "take_profit": take_profit_target,
+            "stop_loss": stop_loss_target,
         }
 
         try:
@@ -376,8 +380,13 @@ class OrderlyExchange(ExchangeBase):
     async def cancel_order(self, order_data: OrderData) -> None:
         """Cancel one open order."""
         symbol = self._symbol_from_order(order_data)
+        cancel_arguments = {
+            "order_id": order_data["id"],
+            "symbol": symbol,
+            "trade_type": order_data["order_type"],
+        }
         try:
-            await self.trader.cancel_order({"order_id": order_data["id"], "symbol": symbol})
+            await self.trader.cancel_order(cancel_arguments)
         except TransactionFailedError as error:
             self.message_bus.send_message.emit(
                 UserMessage(
@@ -451,6 +460,62 @@ class OrderlyExchange(ExchangeBase):
         if isinstance(max_leverage, str) and max_leverage:
             return int(max_leverage)
         return 50
+
+    def _resolve_attached_tp_sl_targets(
+        self,
+        *,
+        execution_price: Decimal,
+        trade_direction: PerpsTradeDirection,
+        take_profit: Optional[float],
+        stop_loss: Optional[float],
+    ) -> tuple[Decimal, Decimal]:
+        """Resolve attached TP/SL targets while keeping paired submission explicit.
+
+        If the caller explicitly passes both TP and SL percentages and both are non-zero,
+        both targets are forwarded so the trader can build one native `TP_SL` payload.
+        Otherwise only one attached exit target is emitted to preserve the existing
+        single-order-at-a-time behavior.
+        """
+        take_profit_target = Decimal(0)
+        stop_loss_target = Decimal(0)
+
+        if take_profit is None and stop_loss is None:
+            if self.app_config.take_profit != 0:
+                take_profit_target = exchange_helpers.get_take_profit_target(
+                    execution_price,
+                    self.app_config.take_profit,
+                    trade_direction,
+                )
+            elif self.app_config.stop_loss != 0:
+                stop_loss_target = exchange_helpers.get_stop_loss_target(
+                    execution_price,
+                    self.app_config.stop_loss,
+                    trade_direction,
+                )
+            return take_profit_target, stop_loss_target
+
+        take_profit_target = exchange_helpers.get_take_profit_target(
+            execution_price,
+            take_profit,
+            trade_direction,
+        )
+        stop_loss_target = exchange_helpers.get_stop_loss_target(
+            execution_price,
+            stop_loss,
+            trade_direction,
+        )
+        if (
+            take_profit is not None
+            and stop_loss is not None
+            and take_profit_target > 0
+            and stop_loss_target > 0
+        ):
+            return take_profit_target, stop_loss_target
+        if take_profit_target > 0:
+            stop_loss_target = Decimal(0)
+        elif stop_loss_target > 0:
+            take_profit_target = Decimal(0)
+        return take_profit_target, stop_loss_target
 
     def _symbol_from_order(self, order_data: OrderData) -> str:
         """Resolve orderly symbol from order data payload."""

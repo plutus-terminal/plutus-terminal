@@ -1,7 +1,8 @@
 """Controller to create link between UI and Exchange."""
 
+from decimal import Decimal
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas
 from PySide6.QtCore import QObject, Signal
@@ -9,6 +10,7 @@ from qasync import asyncio, asyncSlot
 
 from plutus_terminal.core.config import AppConfig
 from plutus_terminal.core.exceptions import TransactionFailedError
+from plutus_terminal.core.exchange.types import PerpsTradeType
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
 from plutus_terminal.core.news.filter.filter_manager import FilterManager
 from plutus_terminal.core.news.news_manager import NewsManager
@@ -130,7 +132,8 @@ class UIController(QObject):
         Args:
             pair (str): Pair name e.g Crypto.BTC/USD.
         """
-        await self.current_exchange.fetcher.unsubscribe_to_price(self.current_pair)
+        if pair != self.current_pair:
+            await self.current_exchange.fetcher.unsubscribe_to_price(self.current_pair)
         await self.current_exchange.fetcher.subscribe_to_price(pair)
 
         self.current_pair = pair
@@ -236,7 +239,9 @@ class UIController(QObject):
         Args:
             leverage (int): Leverage to set.
         """
-        bounded = max(self.current_exchange.min_leverage, min(self.current_exchange.max_leverage, leverage))
+        bounded = max(
+            self.current_exchange.min_leverage, min(self.current_exchange.max_leverage, leverage)
+        )
         await self.current_exchange.set_all_leverage(bounded)
         if leverage < self.current_exchange.min_leverage:
             Toast.show_message(
@@ -253,6 +258,126 @@ class UIController(QObject):
                 f"Leverage set to all pairs: {bounded}x",
                 type_=ToastType.SUCCESS,
             )
+
+    async def submit_position_tp_sl(self, order_request: dict[str, Any]) -> None:
+        """Submit single or paired TP/SL reduce orders for the current position flow."""
+        take_profit_price = self._optional_decimal(order_request.get("take_profit_price"))
+        stop_loss_price = self._optional_decimal(order_request.get("stop_loss_price"))
+        if take_profit_price is None and stop_loss_price is None:
+            return
+
+        if self.current_exchange.name() == "orderly":
+            await self._submit_orderly_position_tp_sl(
+                order_request, take_profit_price, stop_loss_price
+            )
+            return
+
+        execution_price = take_profit_price if take_profit_price is not None else stop_loss_price
+        trade_type = (
+            PerpsTradeType.TRIGGER_TP
+            if take_profit_price is not None
+            else PerpsTradeType.TRIGGER_SL
+        )
+        await self.current_exchange.create_reduce_order(
+            pair=str(order_request["pair"]),
+            size=Decimal(str(order_request["size_stable"])),
+            collateral_delta=Decimal(str(order_request["collateral_delta"])),
+            trade_direction=order_request["trade_direction"],
+            trade_type=trade_type,
+            execution_price=execution_price,
+        )
+
+    async def _submit_orderly_position_tp_sl(
+        self,
+        order_request: dict[str, Any],
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+    ) -> None:
+        """Send native Orderly TP/SL reduce-order payloads through the existing exchange services."""
+        market_registry = getattr(self.current_exchange, "_market_registry", None)
+        trader = getattr(self.current_exchange, "trader", None)
+        fetcher = getattr(self.current_exchange, "fetcher", None)
+        if market_registry is None or trader is None or fetcher is None:
+            execution_price = (
+                take_profit_price if take_profit_price is not None else stop_loss_price
+            )
+            trade_type = (
+                PerpsTradeType.TRIGGER_TP
+                if take_profit_price is not None
+                else PerpsTradeType.TRIGGER_SL
+            )
+            await self.current_exchange.create_reduce_order(
+                pair=str(order_request["pair"]),
+                size=Decimal(str(order_request["size_stable"])),
+                collateral_delta=Decimal(str(order_request["collateral_delta"])),
+                trade_direction=order_request["trade_direction"],
+                trade_type=trade_type,
+                execution_price=execution_price,
+            )
+            return
+
+        trade_arguments = {
+            "symbol": market_registry.get_symbol_for_pair(str(order_request["pair"])),
+            "trade_direction": order_request["trade_direction"],
+            "trade_type": (
+                PerpsTradeType.TRIGGER_TP
+                if take_profit_price is not None
+                else PerpsTradeType.TRIGGER_SL
+            ),
+            "price": Decimal(str(order_request["reference_price"])),
+            "size_stable": Decimal(str(order_request["size_stable"])),
+            "reduce_only": True,
+            "take_profit": take_profit_price or Decimal(0),
+            "stop_loss": stop_loss_price or Decimal(0),
+        }
+
+        try:
+            await trader.create_reduce_order(trade_arguments)
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=self._tp_sl_submission_message(
+                        pair=str(order_request["pair"]),
+                        take_profit_price=take_profit_price,
+                        stop_loss_price=stop_loss_price,
+                    ),
+                    level=MessageLevel.INFO,
+                    timeout_ms=5000,
+                ),
+            )
+        except TransactionFailedError as error:
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Failed to create reduce order: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
+            )
+            return
+
+        await asyncio.gather(fetcher.fetch_all_orders(), fetcher.fetch_all_positions())
+        self.message_bus.orders_fetched.emit(fetcher._cached_orders)  # noqa: SLF001
+        self.message_bus.positions_fetched.emit(fetcher._cached_positions)  # noqa: SLF001
+
+    def _tp_sl_submission_message(
+        self,
+        *,
+        pair: str,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+    ) -> str:
+        """Build user-facing message for single or paired TP/SL submission."""
+        if take_profit_price is not None and stop_loss_price is not None:
+            return f"Creating TP and SL order for {pair}"
+        if take_profit_price is not None:
+            return f"Creating take-profit order for {pair}"
+        return f"Creating stop-loss order for {pair}"
+
+    @staticmethod
+    def _optional_decimal(value: object | None) -> Decimal | None:
+        """Convert optional numeric payload fields to Decimal."""
+        if value is None:
+            return None
+        return Decimal(str(value))
 
     def show_toast_message(self, message: UserMessage) -> None:
         """Handle user message.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtWidgets
@@ -12,9 +13,58 @@ from qasync import asyncSlot
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
-    from decimal import Decimal
-
     from plutus_terminal.controller.ui_controller import UIController
+
+
+def _humanize_label(label: str) -> str:
+    normalized = label.replace("_", " ")
+    humanized: list[str] = []
+    for character in normalized:
+        if humanized and character.isupper() and humanized[-1] not in {" ", "/"}:
+            humanized.append(" ")
+        humanized.append(character)
+    return " ".join("".join(humanized).split()).title()
+
+
+def _format_decimal_value(value: Decimal, label: str) -> str:
+    label_key = label.lower()
+    if "fee rate" in label_key or "fee_rate" in label_key:
+        return f"{value * Decimal(100):.4f}%"
+    if "leverage" in label_key:
+        return f"{_plain_decimal_text(value)}x"
+    if any(keyword in label_key for keyword in ("balance", "equity", "margin", "pnl", "fee")):
+        return f"{value:,.4f}".rstrip("0").rstrip(".")
+    return _plain_decimal_text(value)
+
+
+def _plain_decimal_text(value: Decimal) -> str:
+    value_text = f"{value:f}"
+    if "." in value_text:
+        return value_text.rstrip("0").rstrip(".")
+    return value_text
+
+
+def _decimal_label_value(label: str, value_text: str) -> str | None:
+    normalized_label = label.lower()
+    if not any(keyword in normalized_label for keyword in ("fee_rate", "fee rate", "leverage")):
+        return None
+    try:
+        return _format_decimal_value(Decimal(value_text), label)
+    except ArithmeticError:
+        return None
+
+
+def _format_account_value(label: str, value: object) -> str:
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, Decimal):
+        return _format_decimal_value(value, label)
+    if value in (None, ""):
+        return "-"
+
+    value_text = str(value)
+    decimal_value = _decimal_label_value(label, value_text)
+    return value_text if decimal_value is None else decimal_value
 
 
 class AccountInfo(QtWidgets.QWidget):
@@ -37,6 +87,8 @@ class AccountInfo(QtWidgets.QWidget):
         self._balance_label = QtWidgets.QLabel("Available Balance:")
         self._balance_value = QtWidgets.QLabel("$0.00 USD")
         self._exchange_account_info_layout = QtWidgets.QGridLayout()
+        self._exchange_account_info_layout.setColumnStretch(0, 1)
+        self._exchange_account_info_layout.setColumnStretch(1, 1)
         self.approve_btn = QtWidgets.QPushButton("Approve For Trading")
 
         self._setup_widgets()
@@ -51,6 +103,7 @@ class AccountInfo(QtWidgets.QWidget):
         self._frame.setObjectName("newsFrameQuote")
         self._balance_value.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._balance_value.setObjectName("subTitle")
+        self._balance_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.approve_btn.setProperty("class", "LONG")
         self.approve_btn.setMinimumHeight(30)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -74,10 +127,13 @@ class AccountInfo(QtWidgets.QWidget):
             old_widget.deleteLater()
 
         for label, value in self._ui_controller.current_exchange.account_info.items():
-            label_widget = QtWidgets.QLabel(label)
-            value_widget = QtWidgets.QLabel(str(value))
-            value_widget.setAlignment(Qt.AlignmentFlag.AlignRight)
+            label_widget = QtWidgets.QLabel(_humanize_label(label))
+            label_widget.setWordWrap(True)
+            value_widget = QtWidgets.QLabel(_format_account_value(label, value))
+            value_widget.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             value_widget.setObjectName("subTitle")
+            value_widget.setWordWrap(True)
+            value_widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             row_count = self._exchange_account_info_layout.rowCount()
             self._exchange_account_info_layout.addWidget(
                 label_widget,
@@ -105,7 +161,7 @@ class AccountInfo(QtWidgets.QWidget):
 
     def update_balance(self, balance: Decimal) -> None:
         """Update balance."""
-        self._balance_value.setText(f"${balance:.3f} USD")
+        self._balance_value.setText(f"${balance:,.3f} USD")
 
     @asyncSlot()
     async def set_approve_btn_visibility(self) -> None:

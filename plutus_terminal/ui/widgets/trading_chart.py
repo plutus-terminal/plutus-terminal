@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from lightweight_charts.widgets import QtChart
 import pandas
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 from qasync import asyncSlot
 
+from plutus_terminal.core.exchange.types import PerpsTradeType
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
@@ -53,6 +54,42 @@ class ChartDrawingStorage:
     def value(self) -> str:
         """Returns: Storage value."""
         return self.tag
+
+
+def _order_extra(order: OrderData) -> dict[str, Any]:
+    extra = order.get("extra", {})
+    if isinstance(extra, dict):
+        return extra
+    return {}
+
+
+def _format_chart_order_label(order: OrderData) -> str:
+    order_type = order["order_type"]
+    order_extra = _order_extra(order)
+
+    if order_type is PerpsTradeType.TRIGGER_TP:
+        return "Take Profit"
+    if order_type is PerpsTradeType.TRIGGER_SL:
+        return "Stop Loss"
+    if order_type.is_stop_order:
+        trigger_price_type = str(order_extra.get("trigger_price_type", "")).replace("_", " ")
+        trigger_suffix = f" ({trigger_price_type})" if trigger_price_type else ""
+        order_type_label = order_type.name.replace("_", " ").title()
+        return f"{order_type_label}{trigger_suffix}"
+    return order_type.name.replace("_", " ").title()
+
+
+def _order_line_style(order: OrderData) -> tuple[str, str]:
+    order_type = order["order_type"]
+    if order_type is PerpsTradeType.TRIGGER_TP:
+        return "rgb(40, 167, 69)", "dashed"
+    if order_type in {
+        PerpsTradeType.TRIGGER_SL,
+        PerpsTradeType.STOP_MARKET,
+        PerpsTradeType.STOP_LIMIT,
+    }:
+        return "rgb(225, 140, 40)", "dashed"
+    return "rgb(255, 80, 80)", "dotted"
 
 
 class TradingChart(QWidget):
@@ -290,7 +327,7 @@ class TradingChart(QWidget):
                     width=1,
                     color="rgb(225, 110, 30)",
                     style="solid",
-                    text=f"Liq. {position['trade_direction'].name.capitalize()}",
+                    text=f"Est. Liq {position['trade_direction'].name.capitalize()}",
                     axis_label_visible=False,
                 )
                 self._liquidation_lines[pos_id] = new_liquidation_line
@@ -315,25 +352,23 @@ class TradingChart(QWidget):
         new_orders = {
             order["id"]: order
             for order in all_orders
-            if order["pair"] == self._ui_controller.current_pair
+            if order["pair"] == self._ui_controller.current_pair and order["trigger_price"] > 0
         }
 
         for order_id, order in new_orders.items():
+            order_label = _format_chart_order_label(order)
+            line_color, line_style = _order_line_style(order)
             if order_id in self._order_lines:
-                # Update order if price has changed
-                current_line = self._order_lines[order_id]
-                if float(order["trigger_price"]) != current_line.price:
-                    current_line.update(float(order["trigger_price"]))
-            else:
-                # Create new order line
-                self._order_lines[order_id] = self._main_chart.horizontal_line(
-                    float(order["trigger_price"]),
-                    width=1,
-                    color="rgb(255, 80, 80)",
-                    style="dashed",
-                    text=f"{order['order_type'].name.replace('_', ' ').capitalize()}",
-                    axis_label_visible=False,
-                )
+                self._order_lines[order_id].delete()
+
+            self._order_lines[order_id] = self._main_chart.horizontal_line(
+                float(order["trigger_price"]),
+                width=1,
+                color=line_color,
+                style=line_style,
+                text=order_label,
+                axis_label_visible=False,
+            )
 
         # Delete old lines
         order_to_delete = [order_id for order_id in self._order_lines if order_id not in new_orders]

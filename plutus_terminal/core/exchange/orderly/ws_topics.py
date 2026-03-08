@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 USDC_SETTLEMENT_TOKEN = "USDC"  # noqa: S105
+EXECUTION_REPORT_TOPIC = "executionreport"
+ALGO_EXECUTION_REPORT_TOPIC = "algoexecutionreport"
+ACKABLE_WS_EVENTS = frozenset({"auth", "subscribe", "unsubscribe"})
 
 
 def mark_price_topic(symbol: str) -> str:
@@ -18,6 +26,21 @@ def bbo_topic(symbol: str) -> str:
 ACCOUNT_TOPICS: tuple[str, ...] = (
     "account",
     "balance",
-    "executionreport",
+    EXECUTION_REPORT_TOPIC,
+    ALGO_EXECUTION_REPORT_TOPIC,
     "position",
 )
+
+
+def build_topic_command_message(
+    request_id: str,
+    event: str,
+    topic: str,
+    *,
+    params: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build websocket command payload for topic subscribe/unsubscribe calls."""
+    payload: dict[str, Any] = {"id": request_id, "event": event, "topic": topic}
+    if params:
+        payload["params"] = dict(params)
+    return payload

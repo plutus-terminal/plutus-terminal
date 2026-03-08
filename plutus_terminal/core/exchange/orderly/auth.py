@@ -5,13 +5,12 @@ from __future__ import annotations
 from base64 import urlsafe_b64encode
 import json
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from typing import Any
 
     from plutus_terminal.core.exchange.orderly.models import OrderlyCredentials
 
@@ -49,8 +48,7 @@ def _decode_orderly_secret(secret: str) -> bytes:
     decoded_secret = _decode_base58(secret)
     if len(decoded_secret) != _ED25519_PRIVATE_KEY_BYTES:
         msg = (
-            "Orderly secret must decode to "
-            f"{_ED25519_PRIVATE_KEY_BYTES} bytes for ed25519 signing."
+            f"Orderly secret must decode to {_ED25519_PRIVATE_KEY_BYTES} bytes for ed25519 signing."
         )
         raise ValueError(msg)
     return decoded_secret
@@ -117,4 +115,18 @@ def build_ws_auth_payload(
         "orderly_key": credentials.orderly_key,
         "timestamp": timestamp,
         "sign": signature,
+    }
+
+
+def build_ws_auth_message(
+    credentials: OrderlyCredentials,
+    request_id: str,
+    *,
+    timestamp_ms: int | None = None,
+) -> dict[str, Any]:
+    """Build authenticated websocket request envelope for private streams."""
+    return {
+        "id": request_id,
+        "event": "auth",
+        "params": build_ws_auth_payload(credentials, timestamp_ms=timestamp_ms),
     }

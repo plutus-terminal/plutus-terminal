@@ -17,10 +17,11 @@ class OrderTableColumn:
 ORDER_TABLE_COLUMNS = (
     OrderTableColumn("pair", "Pair"),
     OrderTableColumn("trade_direction", "Side"),
-    OrderTableColumn("order_type", "Order Type"),
+    OrderTableColumn("order_kind", "Order"),
+    OrderTableColumn("order_type", "Type"),
     OrderTableColumn("size_stable", "Size"),
     OrderTableColumn("reduce_only", "Reduce Only"),
-    OrderTableColumn("trigger_price", "Trigger Price"),
+    OrderTableColumn("trigger_price", "Price / Trigger"),
     OrderTableColumn("buttons", "", uses_widget=True),
 )
 

@@ -35,6 +35,12 @@ from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
     from plutus_terminal.core.exchange.orderly.markets import OrderlyMarketRegistry
+    from plutus_terminal.core.exchange.orderly.models import (
+        OrderlyAlgoChildOrderRow,
+        OrderlyAlgoOrderRow,
+        OrderlyPositionRow,
+        OrderlyRegularOrderRow,
+    )
     from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRestClient
     from plutus_terminal.core.exchange.orderly.websocket import OrderlyWebsocketManager
     from plutus_terminal.message_bus import MessageBus
@@ -52,6 +58,19 @@ _KLINE_HISTORY_RATE_LIMIT_INTERVAL_SECONDS = 0.25
 _KLINE_HISTORY_RETRY_BASE_SECONDS = 0.5
 _KLINE_HISTORY_RETRY_MAX_SECONDS = 12.0
 _KLINE_HISTORY_429_MIN_BACKOFF_SECONDS = 1.0
+_DEFAULT_FUTURES_TAKER_FEE_RATE = Decimal("0.0006")
+_TERMINAL_ORDER_STATUSES = {
+    "CANCELLED",
+    "CANCELED",
+    "COMPLETED",
+    "DEACTIVATED",
+    "EXECUTED",
+    "FAILED",
+    "FILLED",
+    "INACTIVE",
+    "REJECTED",
+    "TRIGGERED",
+}
 
 
 def _is_retryable_history_status_error(exception: BaseException) -> bool:
@@ -119,6 +138,7 @@ class OrderlyFetcher(ExchangeFetcher):
         self._cached_unsettled_pnl = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_orders: list[OrderData] = []
+        self._futures_taker_fee_rate = _DEFAULT_FUTURES_TAKER_FEE_RATE
         self._connection_count: dict[str, int] = defaultdict(int)
         self._in_flight_history_requests: dict[
             tuple[str, str, int, int],
@@ -129,14 +149,21 @@ class OrderlyFetcher(ExchangeFetcher):
         self._last_history_request_monotonic = 0.0
         self._history_rate_limited_until_monotonic = 0.0
         self._stop_event = asyncio.Event()
+        self._start_lock = asyncio.Lock()
+        self._started = False
         self._private_consumer_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """Connect sockets and subscribe default private topics."""
-        await self._ws.ensure_connections()
-        await self._ws.subscribe_private(ACCOUNT_TOPICS)
-        if self._private_consumer_task is None:
-            self._private_consumer_task = asyncio.create_task(self._consume_private_events())
+        async with self._start_lock:
+            if self._started:
+                return
+            await self._ws.ensure_connections()
+            await self._ws.subscribe_private(ACCOUNT_TOPICS)
+            await self._refresh_account_config()
+            if self._private_consumer_task is None:
+                self._private_consumer_task = asyncio.create_task(self._consume_private_events())
+            self._started = True
 
     async def fetch_price_history(
         self,
@@ -298,6 +325,11 @@ class OrderlyFetcher(ExchangeFetcher):
 
     async def unsubscribe_to_price(self, pair: str, force: bool = False) -> None:
         """Unsubscribe from public price topics for one pair."""
+        if self._connection_count[pair] <= 0 and not force:
+            self._connection_count[pair] = 0
+            self._cached_prices.pop(pair, None)
+            return
+
         await self.start()
         self._connection_count[pair] -= 1
         if self._connection_count[pair] > 0 and not force:
@@ -313,6 +345,9 @@ class OrderlyFetcher(ExchangeFetcher):
         await self.start()
         while not self._stop_event.is_set() and not self._ws.should_stop():
             try:
+                if not self._ws.has_public_topics():
+                    await asyncio.sleep(0.1)
+                    continue
                 event = await self._ws.next_public_event()
                 topic = str(event.get("topic", ""))
                 if not topic:
@@ -363,14 +398,35 @@ class OrderlyFetcher(ExchangeFetcher):
 
     async def fetch_all_orders(self) -> list[OrderData]:
         """Fetch all incomplete orders from private REST endpoint."""
-        payload = await self._rest_client.request_private(
-            "GET",
-            "/v1/orders",
-            params={"status": "INCOMPLETE"},
+        regular_payload, algo_payload = await asyncio.gather(
+            self._rest_client.request_private(
+                "GET",
+                "/v1/orders",
+                params={"status": "INCOMPLETE"},
+            ),
+            self._rest_client.request_private("GET", "/v1/algo/orders"),
         )
-        rows = payload.get("data", {}).get("rows", [])
-        parsed_orders = [_parse_order(row, self._market_registry) for row in rows]
-        self._cached_orders = [order for order in parsed_orders if order is not None]
+
+        regular_rows = regular_payload.get("data", {}).get("rows", [])
+        algo_rows = algo_payload.get("data", {}).get("rows", [])
+
+        parsed_regular_orders = [
+            _parse_regular_order(cast("OrderlyRegularOrderRow", row), self._market_registry)
+            for row in regular_rows
+        ]
+        parsed_algo_orders = [
+            order
+            for row in algo_rows
+            if isinstance(row, dict)
+            for order in _parse_algo_orders(cast("OrderlyAlgoOrderRow", row), self._market_registry)
+        ]
+        all_orders = [order for order in parsed_regular_orders if order is not None]
+        all_orders.extend(parsed_algo_orders)
+        self._cached_orders = sorted(
+            all_orders,
+            key=_order_sort_key,
+            reverse=True,
+        )
         return self._cached_orders
 
     async def fetch_price_at_time(self, pair: str, timestamp: int) -> PriceData:
@@ -431,19 +487,31 @@ class OrderlyFetcher(ExchangeFetcher):
         return None
 
     def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
-        """Estimate margin fee using a default taker fee rate."""
-        return position_size * Decimal("0.0006")
+        """Estimate margin fee using the native account futures taker fee rate."""
+        return position_size * self._futures_taker_fee_rate
 
-    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:  # noqa: ARG002
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
         """Return funding fee for position.
 
-        Funding values are delivered by execution/account topics on Orderly;
-        this integration currently returns zero in UI estimates.
+        Prefer native fields when present, but many Orderly position snapshots only
+        expose funding index values instead of a realized funding fee total.
         """
-        return Decimal(0)
+        position_extra = perps_position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return Decimal(0)
+        return _decimal_from_mapping(position_extra, ("funding_fee",))
 
     def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
-        """Estimate liquidation price from open price and dynamic effective leverage."""
+        """Prefer native liquidation price and fall back to local estimate."""
+        position_extra = perps_position.get("extra", {})
+        if isinstance(position_extra, dict):
+            native_liquidation_price = _decimal_from_mapping(
+                position_extra,
+                ("native_liquidation_price",),
+            )
+            if native_liquidation_price > Decimal(0):
+                return native_liquidation_price
+
         position_size = perps_position["position_size_stable"]
         collateral = perps_position["collateral_stable"]
         available_balance = self._balance_with_unsettled_pnl()
@@ -464,7 +532,15 @@ class OrderlyFetcher(ExchangeFetcher):
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
     ) -> Decimal:
-        """Calculate PnL percent before fees from current price."""
+        """Calculate PnL percent before fees from native PnL or current price."""
+        position_extra = perps_position.get("extra", {})
+        if current_price is None and isinstance(position_extra, dict):
+            native_unsettled_pnl = _decimal_from_mapping(position_extra, ("unsettled_pnl",))
+            if native_unsettled_pnl != Decimal(0) and perps_position["collateral_stable"] > Decimal(
+                0
+            ):
+                return native_unsettled_pnl * Decimal(100) / perps_position["collateral_stable"]
+
         if current_price is None:
             cached = self._cached_prices.get(perps_position["pair"])
             if cached is None:
@@ -482,10 +558,12 @@ class OrderlyFetcher(ExchangeFetcher):
     async def stop_async(self) -> None:
         """Stop loops and close websocket/rest resources."""
         self._stop_event.set()
+        self._started = False
         if self._private_consumer_task is not None:
             self._private_consumer_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._private_consumer_task
+            self._private_consumer_task = None
         await self._ws.stop()
         await self._rest_client.aclose()
 
@@ -552,12 +630,26 @@ class OrderlyFetcher(ExchangeFetcher):
         """Refresh stable balance cache from private REST endpoint."""
         try:
             self._cached_stable_balance = await self.fetch_stable_balance()
+            await self._refresh_account_config()
         except Exception:
             LOGGER.exception("Failed to refresh Orderly balance snapshot")
 
     def _balance_with_unsettled_pnl(self) -> Decimal:
         """Return available balance adjusted by unsettled PnL."""
         return self._cached_stable_balance + self._cached_unsettled_pnl
+
+    async def _refresh_account_config(self) -> None:
+        """Refresh native account fee configuration with safe fallback."""
+        try:
+            payload = await self._rest_client.request_private("GET", "/v1/client/info")
+        except (HTTPStatusError, RequestError):
+            LOGGER.debug("Unable to refresh Orderly account config", exc_info=True)
+            return
+
+        data = payload.get("data", {})
+        fee_rate = _decimal_from_mapping(data, ("futures_taker_fee_rate", "taker_fee_rate"))
+        if fee_rate > Decimal(0):
+            self._futures_taker_fee_rate = fee_rate
 
 
 def _resolution_to_orderly_resolution(resolution: str) -> str:
@@ -569,6 +661,10 @@ def _resolution_to_orderly_resolution(resolution: str) -> str:
 
 def _available_balance_from_row(row: Mapping[str, Any]) -> Decimal:
     """Compute available balance from holding and reserved amounts."""
+    available = _decimal_from_mapping(row, ("available_balance", "available", "availableBalance"))
+    if available > Decimal(0):
+        return available
+
     holding = _decimal_field(row, "holding")
     if holding == Decimal(0):
         holding = _decimal_field(row, "balance")
@@ -615,6 +711,40 @@ def _decimal_field(row: Mapping[str, Any], field: str) -> Decimal:
     return Decimal(str(row.get(field, "0")))
 
 
+def _decimal_from_mapping(row: Mapping[str, Any], fields: tuple[str, ...]) -> Decimal:
+    """Return first non-empty Decimal field from mapping."""
+    for field in fields:
+        value = row.get(field)
+        if value in (None, ""):
+            continue
+        return Decimal(str(value))
+    return Decimal(0)
+
+
+def _bool_from_mapping(row: Mapping[str, Any], fields: tuple[str, ...]) -> bool:
+    """Return first truthy boolean-like field from mapping."""
+    for field in fields:
+        value = row.get(field)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() in {"true", "1", "yes"}
+        return bool(value)
+    return False
+
+
+def _int_from_mapping(row: Mapping[str, Any], fields: tuple[str, ...]) -> int:
+    """Return first integer-like field from mapping."""
+    for field in fields:
+        value = row.get(field)
+        if value in (None, ""):
+            continue
+        return int(str(value))
+    return 0
+
+
 def _sum_unsettled_pnl(rows: object) -> Decimal:
     """Sum unsettled PnL values from position payload rows."""
     if not isinstance(rows, list):
@@ -624,7 +754,7 @@ def _sum_unsettled_pnl(rows: object) -> Decimal:
     for row in rows:
         if not isinstance(row, Mapping):
             continue
-        total += _decimal_field(row, "unsettled_pnl")
+        total += _decimal_from_mapping(row, ("unsettled_pnl", "unsettledPnl"))
     return total
 
 
@@ -724,7 +854,7 @@ def _estimate_liquidation_price(
 
 
 def _parse_position(
-    row: dict[str, Any],
+    row: OrderlyPositionRow | dict[str, Any],
     market_registry: OrderlyMarketRegistry,
 ) -> PerpsPosition | None:
     """Parse Orderly position row into terminal position schema."""
@@ -738,33 +868,39 @@ def _parse_position(
     except KeyError:
         return None
 
-    position_qty = Decimal(str(row.get("position_qty", "0")))
+    position_qty = _decimal_from_mapping(row, ("position_qty", "positionQty"))
     abs_qty = abs(position_qty)
     if abs_qty == Decimal(0):
         return None
 
-    mark_price = Decimal(str(row.get("mark_price", row.get("average_open_price", "0"))))
-    open_price = Decimal(str(row.get("average_open_price", mark_price)))
-    notional = abs_qty * open_price
-    leverage = Decimal(str(row.get("leverage", "1")))
+    direction = PerpsTradeDirection.LONG if position_qty > 0 else PerpsTradeDirection.SHORT
+    mark_price = _decimal_from_mapping(row, ("mark_price", "markPrice", "average_open_price"))
+    open_price = _decimal_from_mapping(
+        row, ("average_open_price", "averageOpenPrice", "mark_price")
+    )
+    native_notional = _decimal_from_mapping(row, ("cost_position", "costPosition"))
+    notional = abs(native_notional) if native_notional != Decimal(0) else abs_qty * open_price
+    collateral = _decimal_from_mapping(row, ("imr", "imr_with_orders", "IMR_withdraw_orders"))
+
+    leverage = _decimal_from_mapping(row, ("leverage",))
+    if leverage <= Decimal(0) and collateral > Decimal(0):
+        leverage = notional / collateral
     if leverage <= Decimal(0):
         leverage = Decimal(1)
 
-    direction = PerpsTradeDirection.LONG if position_qty > 0 else PerpsTradeDirection.SHORT
-    liquidation_price = Decimal(
-        str(
-            row.get(
-                "liquidation_price",
-                row.get(
-                    "est_liquidation_price", row.get("est_liq_price", row.get("liq_price", "0"))
-                ),
-            ),
-        ),
+    if collateral <= Decimal(0):
+        collateral = notional / leverage
+
+    liquidation_price = _decimal_from_mapping(
+        row,
+        ("liquidation_price", "est_liquidation_price", "est_liq_price", "liq_price", "estLiqPrice"),
     )
     if liquidation_price <= Decimal(0):
         liquidation_price = _estimate_liquidation_price(open_price, leverage, direction)
 
-    position_id = int(row.get("position_id", 0))
+    unsettled_pnl = _decimal_from_mapping(row, ("unsettled_pnl", "unsettledPnl"))
+    funding_fee = _decimal_from_mapping(row, ("funding_fee",))
+    position_id = _int_from_mapping(row, ("position_id",))
     if position_id == 0:
         position_id = _fallback_position_id(symbol=symbol, trade_direction=direction)
 
@@ -772,12 +908,31 @@ def _parse_position(
         "pair": rule.pair,
         "id": position_id,
         "position_size_stable": notional,
-        "collateral_stable": notional / leverage,
+        "collateral_stable": collateral,
         "open_price": open_price,
         "trade_direction": direction,
         "leverage": leverage,
         "liquidation_price": liquidation_price,
-        "extra": {"symbol": symbol, "base_size": str(abs_qty)},
+        "extra": {
+            "symbol": symbol,
+            "base_size": str(abs_qty),
+            "native_liquidation_price": str(liquidation_price),
+            "native_notional": str(notional),
+            "unsettled_pnl": str(unsettled_pnl),
+            "funding_fee": str(funding_fee),
+            "fee_24h": str(_decimal_from_mapping(row, ("fee_24_h", "fee24H"))),
+            "pnl_24h": str(_decimal_from_mapping(row, ("pnl_24_h", "pnl24H"))),
+            "mark_price": str(mark_price),
+            "pending_long_qty": str(
+                _decimal_from_mapping(row, ("pending_long_qty", "pendingLongQty"))
+            ),
+            "pending_short_qty": str(
+                _decimal_from_mapping(row, ("pending_short_qty", "pendingShortQty"))
+            ),
+            "last_sum_unitary_funding": str(
+                _decimal_from_mapping(row, ("last_sum_unitary_funding", "lastSumUnitaryFunding"))
+            ),
+        },
     }
 
 
@@ -791,11 +946,11 @@ def _fallback_position_id(symbol: str, trade_direction: PerpsTradeDirection) -> 
     return checksum
 
 
-def _parse_order(
-    row: dict[str, Any],
+def _parse_regular_order(
+    row: OrderlyRegularOrderRow | dict[str, Any],
     market_registry: OrderlyMarketRegistry,
 ) -> OrderData | None:
-    """Parse Orderly order row into terminal order schema."""
+    """Parse one regular `/v1/orders` row into terminal order schema."""
     if not isinstance(row, dict):
         return None
     symbol = str(row.get("symbol", ""))
@@ -806,14 +961,14 @@ def _parse_order(
     except KeyError:
         return None
 
+    reduce_only = _bool_from_mapping(row, ("reduce_only",))
     side = str(row.get("side", "BUY"))
-    direction = PerpsTradeDirection.LONG if side == "BUY" else PerpsTradeDirection.SHORT
-    order_type_raw = str(row.get("order_type", "LIMIT"))
-    order_type = PerpsTradeType.MARKET if order_type_raw == "MARKET" else PerpsTradeType.LIMIT
-
-    trigger_price = Decimal(str(row.get("trigger_price", row.get("order_price", "0"))))
-    order_qty = Decimal(str(row.get("order_quantity", "0")))
-    size_stable = order_qty * trigger_price
+    direction = _direction_from_side(side, reduce_only)
+    order_type_raw = str(row.get("order_type", row.get("type", "LIMIT")))
+    order_type = _regular_trade_type(order_type_raw)
+    trigger_price = _decimal_from_mapping(row, ("price", "order_price"))
+    order_qty = _decimal_from_mapping(row, ("quantity", "order_quantity"))
+    size_stable = _resolve_order_notional(row, order_qty, trigger_price)
 
     return {
         "id": str(row.get("order_id", row.get("client_order_id", ""))),
@@ -822,6 +977,232 @@ def _parse_order(
         "size_stable": size_stable,
         "trade_direction": direction,
         "order_type": order_type,
-        "reduce_only": bool(row.get("reduce_only", False)),
-        "extra": {"symbol": symbol},
+        "reduce_only": reduce_only,
+        "extra": {
+            "symbol": symbol,
+            "native_fee": str(_decimal_from_mapping(row, ("total_fee",))),
+            "fee_asset": str(row.get("fee_asset", "")),
+            "realized_pnl": str(_decimal_from_mapping(row, ("realized_pnl",))),
+            "status": str(row.get("status", "")),
+            "updated_time": str(row.get("updated_time", row.get("created_time", "0"))),
+        },
     }
+
+
+def _parse_algo_orders(
+    row: OrderlyAlgoOrderRow | dict[str, Any],
+    market_registry: OrderlyMarketRegistry,
+) -> list[OrderData]:
+    """Parse native algo rows into one or more terminal orders."""
+    if not isinstance(row, dict) or not _is_open_algo_row(row):
+        return []
+
+    algo_type = str(row.get("algo_type", ""))
+    if algo_type == "TP_SL":
+        return _parse_tp_sl_algo_orders(row, market_registry)
+    if algo_type == "STOP":
+        parsed_order = _parse_stop_algo_order(row, market_registry)
+        return [] if parsed_order is None else [parsed_order]
+    return []
+
+
+def _parse_stop_algo_order(
+    row: OrderlyAlgoOrderRow | dict[str, Any],
+    market_registry: OrderlyMarketRegistry,
+) -> OrderData | None:
+    """Parse native `STOP` algo row into terminal order schema."""
+    order_base = _parse_algo_order_base(row, market_registry)
+    if order_base is None:
+        return None
+
+    order_type_raw = str(row.get("type", "MARKET"))
+    order_type = (
+        PerpsTradeType.STOP_MARKET if order_type_raw == "MARKET" else PerpsTradeType.STOP_LIMIT
+    )
+    quantity = _decimal_from_mapping(row, ("quantity",))
+    trigger_price = _decimal_from_mapping(row, ("trigger_price",))
+    limit_price = _decimal_from_mapping(row, ("price",))
+    reference_price = limit_price if limit_price > Decimal(0) else trigger_price
+    extra = order_base.get("extra", {})
+    if isinstance(extra, dict):
+        extra.update(
+            {
+                "trigger_price_type": str(row.get("trigger_price_type", "")),
+                "algo_status": str(row.get("algo_status", "")),
+                "root_algo_order_status": str(row.get("root_algo_order_status", "")),
+            },
+        )
+
+    order_base.update(
+        {
+            "trigger_price": trigger_price,
+            "size_stable": _resolve_order_notional(row, quantity, reference_price),
+            "order_type": order_type,
+        },
+    )
+    return order_base
+
+
+def _parse_tp_sl_algo_orders(
+    row: OrderlyAlgoOrderRow | dict[str, Any],
+    market_registry: OrderlyMarketRegistry,
+) -> list[OrderData]:
+    """Parse native `TP_SL` row into child terminal orders."""
+    order_base = _parse_algo_order_base(row, market_registry)
+    if order_base is None:
+        return []
+
+    quantity = _decimal_from_mapping(row, ("quantity",))
+    child_rows = row.get("child_orders", [])
+    if not isinstance(child_rows, list):
+        return []
+
+    parsed_orders: list[OrderData] = []
+    for child_row in child_rows:
+        if not isinstance(child_row, dict) or not _is_open_algo_row(child_row, fallback=row):
+            continue
+        parsed_order = _parse_tp_sl_child_order(
+            order_base,
+            cast("OrderlyAlgoChildOrderRow", child_row),
+            quantity,
+        )
+        if parsed_order is not None:
+            parsed_orders.append(parsed_order)
+    return parsed_orders
+
+
+def _parse_tp_sl_child_order(
+    order_base: OrderData,
+    child_row: OrderlyAlgoChildOrderRow,
+    quantity: Decimal,
+) -> OrderData | None:
+    """Parse one native TP/SL child row into terminal order schema."""
+    child_type = str(child_row.get("algo_type", ""))
+    if child_type == "TAKE_PROFIT":
+        order_type = PerpsTradeType.TRIGGER_TP
+    elif child_type == "STOP_LOSS":
+        order_type = PerpsTradeType.TRIGGER_SL
+    else:
+        return None
+
+    trigger_price = _decimal_from_mapping(child_row, ("trigger_price",))
+    child_extra = dict(cast("dict[str, Any]", order_base.get("extra", {})))
+    child_extra.update(
+        {
+            "algo_type": child_type,
+            "trigger_price_type": str(child_row.get("trigger_price_type", "")),
+            "algo_status": str(child_row.get("algo_status", child_extra.get("algo_status", ""))),
+            "updated_time": str(
+                child_row.get("updated_time", child_extra.get("updated_time", "0"))
+            ),
+        },
+    )
+
+    return {
+        "id": str(child_row.get("algo_order_id", f"{order_base['id']}:{child_type.lower()}")),
+        "pair": order_base["pair"],
+        "trigger_price": trigger_price,
+        "size_stable": _resolve_order_notional(child_row, quantity, trigger_price),
+        "trade_direction": order_base["trade_direction"],
+        "order_type": order_type,
+        "reduce_only": True,
+        "extra": child_extra,
+    }
+
+
+def _parse_algo_order_base(
+    row: Mapping[str, Any],
+    market_registry: OrderlyMarketRegistry,
+) -> OrderData | None:
+    """Build shared base payload for native algo orders."""
+    symbol = str(row.get("symbol", ""))
+    if symbol == "":
+        return None
+    try:
+        rule = market_registry.get_rule_by_symbol(symbol)
+    except KeyError:
+        return None
+
+    reduce_only = (
+        _bool_from_mapping(row, ("reduce_only",)) or str(row.get("algo_type", "")) == "TP_SL"
+    )
+    side = str(row.get("side", "BUY"))
+    return {
+        "id": str(row.get("root_algo_order_id", row.get("algo_order_id", ""))),
+        "pair": rule.pair,
+        "trigger_price": Decimal(0),
+        "size_stable": Decimal(0),
+        "trade_direction": _direction_from_side(side, reduce_only),
+        "order_type": PerpsTradeType.LIMIT,
+        "reduce_only": reduce_only,
+        "extra": {
+            "symbol": symbol,
+            "algo_order_id": str(row.get("algo_order_id", "")),
+            "root_algo_order_id": str(row.get("root_algo_order_id", row.get("algo_order_id", ""))),
+            "parent_algo_order_id": str(row.get("parent_algo_order_id", "")),
+            "algo_type": str(row.get("algo_type", "")),
+            "native_fee": str(_decimal_from_mapping(row, ("total_fee",))),
+            "fee_asset": str(row.get("fee_asset", "")),
+            "realized_pnl": str(_decimal_from_mapping(row, ("realized_pnl",))),
+            "algo_status": str(row.get("algo_status", "")),
+            "root_algo_order_status": str(row.get("root_algo_order_status", "")),
+            "updated_time": str(row.get("updated_time", row.get("created_time", "0"))),
+        },
+    }
+
+
+def _direction_from_side(side: str, reduce_only: bool) -> PerpsTradeDirection:
+    """Resolve position direction from exchange side and reduce-only semantics."""
+    direction = PerpsTradeDirection.LONG if side == "BUY" else PerpsTradeDirection.SHORT
+    if not reduce_only:
+        return direction
+    if direction is PerpsTradeDirection.LONG:
+        return PerpsTradeDirection.SHORT
+    return PerpsTradeDirection.LONG
+
+
+def _regular_trade_type(order_type_raw: str) -> PerpsTradeType:
+    """Map native regular order type to terminal trade type."""
+    if order_type_raw == "MARKET":
+        return PerpsTradeType.MARKET
+    return PerpsTradeType.LIMIT
+
+
+def _resolve_order_notional(
+    row: Mapping[str, Any],
+    quantity: Decimal,
+    reference_price: Decimal,
+) -> Decimal:
+    """Prefer native amount fields before deriving notional from quantity and price."""
+    native_amount = _decimal_from_mapping(row, ("amount", "order_amount"))
+    if native_amount != Decimal(0):
+        return abs(native_amount)
+    return abs(quantity * reference_price)
+
+
+def _is_open_algo_row(
+    row: Mapping[str, Any],
+    *,
+    fallback: Mapping[str, Any] | None = None,
+) -> bool:
+    """Return whether an algo row or child order should remain visible as open."""
+    status = str(
+        row.get(
+            "algo_status",
+            row.get(
+                "root_algo_order_status",
+                fallback.get("root_algo_order_status", "") if fallback is not None else "",
+            ),
+        ),
+    ).upper()
+    if status in _TERMINAL_ORDER_STATUSES:
+        return False
+    return not _bool_from_mapping(row, ("is_triggered", "triggered"))
+
+
+def _order_sort_key(order: OrderData) -> int:
+    """Return stable sort key for mixed regular and algo orders."""
+    order_extra = order.get("extra", {})
+    if not isinstance(order_extra, dict):
+        return 0
+    return _int_from_mapping(order_extra, ("updated_time",))

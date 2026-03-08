@@ -32,6 +32,36 @@ class PerpsTradeType(IntEnum):
     TRIGGER_TP = 4
     TRIGGER_SL = 5
 
+    @property
+    def order_family(self) -> str:
+        """Return the generic order family for the trade type.
+
+        This keeps the shared trade type as the single source of truth while still
+        allowing exchange adapters to branch on broader families such as regular,
+        stop, or TP/SL orders. Future trade types can extend this mapping without
+        introducing exchange-specific order kind fields.
+        """
+        if self in {self.STOP_MARKET, self.STOP_LIMIT}:
+            return "stop"
+        if self in {self.TRIGGER_TP, self.TRIGGER_SL}:
+            return "tp_sl"
+        return "regular"
+
+    @property
+    def is_regular_order(self) -> bool:
+        """Return whether the trade type uses the regular order flow."""
+        return self.order_family == "regular"
+
+    @property
+    def is_stop_order(self) -> bool:
+        """Return whether the trade type belongs to the stop-order family."""
+        return self.order_family == "stop"
+
+    @property
+    def is_tp_sl_order(self) -> bool:
+        """Return whether the trade type belongs to the TP/SL family."""
+        return self.order_family == "tp_sl"
+
 
 class PerpsTradeDirection(Enum):
     """Trade direction."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QWidget
@@ -15,6 +15,7 @@ from plutus_terminal.ui.widgets.manage_order import ManageOrder
 from plutus_terminal.ui.widgets.positions_table_close_action import PositionCloseAction
 
 if TYPE_CHECKING:
+    from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.core.exchange.base import ExchangeBase
     from plutus_terminal.core.exchange.types import PerpsPosition
 
@@ -126,15 +127,36 @@ class PositionActionsCell(QWidget):
         order_dialog.execute_order.connect(self._handle_tp_sl_clicked)
         order_dialog.show()
 
-    @asyncSlot()
-    async def _handle_tp_sl_clicked(self, order_data: OrderData) -> None:
+    def _resolve_ui_controller(self) -> UIController | None:
+        """Find the owning UI controller from the widget parent chain."""
+        parent_widget = self.parentWidget()
+        while parent_widget is not None:
+            controller = getattr(parent_widget, "_ui_controller", None)
+            if controller is not None:
+                return controller
+            parent_widget = parent_widget.parentWidget()
+        return None
+
+    def _collateral_delta_for_size(self, size_stable: Decimal) -> Decimal:
+        """Resolve proportional collateral delta for partial reduce orders."""
+        if size_stable == self._position["position_size_stable"]:
+            return Decimal(0)
+        return (size_stable * self._position["collateral_stable"]) / (
+            self._position["position_size_stable"]
+        )
+
+    @asyncSlot(object)
+    async def _handle_tp_sl_clicked(self, order_request: object) -> None:
         """Execute order on exchange."""
-        if order_data["size_stable"] == self._position["position_size_stable"]:
-            collateral_delta = Decimal(0)
-        else:
-            collateral_delta = (order_data["size_stable"] * self._position["collateral_stable"]) / (
-                self._position["position_size_stable"]
-            )
+        if not isinstance(order_request, dict):
+            return
+
+        if "take_profit_price" in order_request or "stop_loss_price" in order_request:
+            await self._handle_reduce_tp_sl_request(order_request)
+            return
+
+        order_data = cast("OrderData", order_request)
+        collateral_delta = self._collateral_delta_for_size(order_data["size_stable"])
 
         await self._exchange.create_reduce_order(
             pair=order_data["pair"],
@@ -143,4 +165,41 @@ class PositionActionsCell(QWidget):
             trade_direction=order_data["trade_direction"],
             trade_type=order_data["order_type"],
             execution_price=order_data["trigger_price"],
+        )
+
+    async def _handle_reduce_tp_sl_request(self, order_request: object) -> None:
+        """Forward native TP/SL request payload through the UI controller when available."""
+        if not isinstance(order_request, dict):
+            return
+
+        request_payload = dict(order_request)
+        request_payload["collateral_delta"] = self._collateral_delta_for_size(
+            Decimal(str(request_payload["size_stable"])),
+        )
+
+        ui_controller = self._resolve_ui_controller()
+        if ui_controller is not None:
+            await ui_controller.submit_position_tp_sl(request_payload)
+            return
+
+        take_profit_price = request_payload.get("take_profit_price")
+        stop_loss_price = request_payload.get("stop_loss_price")
+        trade_type = (
+            PerpsTradeType.TRIGGER_TP
+            if take_profit_price is not None
+            else PerpsTradeType.TRIGGER_SL
+        )
+        raw_execution_price = (
+            take_profit_price if take_profit_price is not None else stop_loss_price
+        )
+        if raw_execution_price is None:
+            return
+        execution_price = Decimal(str(raw_execution_price))
+        await self._exchange.create_reduce_order(
+            pair=str(request_payload["pair"]),
+            size=Decimal(str(request_payload["size_stable"])),
+            collateral_delta=Decimal(str(request_payload["collateral_delta"])),
+            trade_direction=request_payload["trade_direction"],
+            trade_type=trade_type,
+            execution_price=execution_price,
         )

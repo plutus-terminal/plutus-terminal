@@ -5,7 +5,5 @@ from plutus_terminal.core.exchange.foxify.funded_exchange import FoxifyFundedExc
 from plutus_terminal.core.exchange.orderly.exchange import OrderlyExchange
 
 VALID_EXCHANGES = {
-    "foxify": FoxifyExchange,
-    "foxify_funded": FoxifyFundedExchange,
     "orderly": OrderlyExchange,
 }

@@ -23,6 +23,7 @@ def get_changed_plain_fields(previous_order: OrderData, next_order: OrderData) -
     if previous_order["trade_direction"] != next_order["trade_direction"]:
         changed_fields.add("trade_direction")
     if previous_order["order_type"] != next_order["order_type"]:
+        changed_fields.add("order_kind")
         changed_fields.add("order_type")
     if previous_order["size_stable"] != next_order["size_stable"]:
         changed_fields.add("size_stable")
@@ -30,6 +31,8 @@ def get_changed_plain_fields(previous_order: OrderData, next_order: OrderData) -
         changed_fields.add("reduce_only")
     if previous_order["trigger_price"] != next_order["trigger_price"]:
         changed_fields.add("trigger_price")
+    if previous_order.get("extra") != next_order.get("extra"):
+        changed_fields.update({"order_kind", "order_type", "trigger_price"})
     return changed_fields
 
 

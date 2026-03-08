@@ -12,7 +12,22 @@ from plutus_terminal.core.exchange.orderly.constraints import (
     quantize_price,
     validate_order_size,
 )
-from plutus_terminal.core.exchange.types import PerpsTradeDirection, PerpsTradeType, TradeResults
+from plutus_terminal.core.exchange.orderly.models import (
+    OrderlyAlgoType,
+    OrderlyOrderRequest,
+    OrderlyOrderType,
+    OrderlyRegularOrderPayload,
+    OrderlySide,
+    OrderlyStopOrderPayload,
+    OrderlyTpSlChildOrderPayload,
+    OrderlyTpSlChildType,
+    OrderlyTpSlOrderPayload,
+)
+from plutus_terminal.core.exchange.types import (
+    PerpsTradeDirection,
+    PerpsTradeType,
+    TradeResults,
+)
 
 if TYPE_CHECKING:
     from plutus_terminal.core.exchange.orderly.markets import (
@@ -36,32 +51,19 @@ class OrderlyTrader:
 
     async def create_order(self, trade_arguments: dict) -> TradeResults:
         """Create order from normalized trade arguments."""
-        symbol = str(trade_arguments["symbol"])
-        direction = PerpsTradeDirection(trade_arguments["trade_direction"])
-        trade_type = PerpsTradeType(trade_arguments["trade_type"])
-        limit_price = Decimal(str(trade_arguments["price"]))
-        reduce_only = bool(trade_arguments.get("reduce_only", False))
-
-        market_rule = self._market_registry.get_rule_by_symbol(symbol)
-        order_price = quantize_price(limit_price, market_rule)
-        base_size = _resolve_base_size(trade_arguments, order_price, market_rule)
-        validate_order_size(base_size=base_size, limit_price=order_price, market_rule=market_rule)
-
-        body = {
-            "symbol": symbol,
-            "side": _side_for_direction(direction),
-            "order_type": _order_type(trade_type),
-            "order_price": str(order_price),
-            "order_quantity": str(base_size),
-            "reduce_only": reduce_only,
-            "client_order_id": f"plutus_{uuid4().hex[:24]}",
-        }
-
-        if trade_type is PerpsTradeType.MARKET:
-            body.pop("order_price")
+        request = _build_order_request(trade_arguments, self._market_registry)
 
         try:
-            return await self._rest_client.request_private("POST", "/v1/order", json_body=body)
+            primary_result = await self._submit_order_request(request)
+            result: TradeResults = primary_result
+            if request.trade_type.is_regular_order and request.has_any_tp_sl:
+                tp_sl_result = await self._rest_client.request_private(
+                    "POST",
+                    "/v1/algo/order",
+                    json_body=_build_tp_sl_order_payload(request),
+                )
+                result = {"primary": primary_result, "tp_sl": tp_sl_result}
+            return result  # noqa: TRY300
         except Exception as error:
             raise TransactionFailedError from error
 
@@ -69,25 +71,42 @@ class OrderlyTrader:
         """Create reduce-only order for an existing position."""
         order_args = dict(trade_arguments)
         order_args["reduce_only"] = True
+        if order_args["trade_type"] in (PerpsTradeType.TRIGGER_TP, PerpsTradeType.TRIGGER_SL):
+            trigger_request = _build_order_request(order_args, self._market_registry)
+            try:
+                return await self._rest_client.request_private(
+                    "POST",
+                    "/v1/algo/order",
+                    json_body=_build_tp_sl_order_payload(trigger_request),
+                )
+            except Exception as error:
+                raise TransactionFailedError from error
         return await self.create_order(order_args)
 
     async def close_position(self, trade_arguments: dict) -> TradeResults:
         """Close position with a reduce-only market order."""
-        direction = PerpsTradeDirection(trade_arguments["trade_direction"])
         close_args = dict(trade_arguments)
         close_args["trade_type"] = PerpsTradeType.MARKET
         close_args["reduce_only"] = True
-        close_args["trade_direction"] = _opposite_direction(direction)
         return await self.create_order(close_args)
 
     async def cancel_order(self, trade_arguments: dict) -> TradeResults:
         """Cancel one order by id and symbol."""
+        trade_type = PerpsTradeType(trade_arguments.get("trade_type", PerpsTradeType.LIMIT))
         params = {
             "order_id": str(trade_arguments["order_id"]),
             "symbol": str(trade_arguments["symbol"]),
         }
+        if not trade_type.is_regular_order:
+            params = {
+                "algo_order_id": str(trade_arguments["order_id"]),
+                "symbol": str(trade_arguments["symbol"]),
+            }
+            path = "/v1/algo/order"
+        else:
+            path = "/v1/order"
         try:
-            return await self._rest_client.request_private("DELETE", "/v1/order", params=params)
+            return await self._rest_client.request_private("DELETE", path, params=params)
         except Exception as error:
             raise TransactionFailedError from error
 
@@ -97,6 +116,7 @@ class OrderlyTrader:
             {
                 "order_id": trade_arguments["order_id"],
                 "symbol": trade_arguments["symbol"],
+                "trade_type": trade_arguments["trade_type"],
             },
         )
         create_result = await self.create_order(trade_arguments)
@@ -114,19 +134,156 @@ class OrderlyTrader:
         except Exception as error:
             raise TransactionFailedError from error
 
+    async def _submit_order_request(self, request: OrderlyOrderRequest) -> TradeResults:
+        """Send one native Orderly order request."""
+        if request.trade_type.is_stop_order:
+            return await self._rest_client.request_private(
+                "POST",
+                "/v1/algo/order",
+                json_body=_build_stop_order_payload(request),
+            )
+        return await self._rest_client.request_private(
+            "POST",
+            "/v1/order",
+            json_body=_build_regular_order_payload(request),
+        )
 
-def _order_type(trade_type: PerpsTradeType) -> str:
-    """Map internal trade type to Orderly order type."""
-    if trade_type is PerpsTradeType.MARKET:
-        return "MARKET"
-    return "LIMIT"
+
+def _build_order_request(
+    trade_arguments: dict,
+    market_registry: OrderlyMarketRegistry,
+) -> OrderlyOrderRequest:
+    """Normalize trade arguments into a native Orderly request model."""
+    symbol = str(trade_arguments["symbol"])
+    direction = PerpsTradeDirection(trade_arguments["trade_direction"])
+    trade_type = PerpsTradeType(trade_arguments["trade_type"])
+    reduce_only = bool(trade_arguments.get("reduce_only", False))
+    market_rule = market_registry.get_rule_by_symbol(symbol)
+
+    price = _resolve_price(trade_arguments, market_rule)
+    quantity = _resolve_base_size(trade_arguments, price, market_rule)
+    validate_order_size(base_size=quantity, limit_price=price, market_rule=market_rule)
+
+    trigger_price = trade_arguments.get("trigger_price")
+    if trigger_price is None and trade_type in (
+        PerpsTradeType.STOP_MARKET,
+        PerpsTradeType.STOP_LIMIT,
+    ):
+        trigger_price = trade_arguments.get("price")
+
+    return OrderlyOrderRequest(
+        symbol=symbol,
+        trade_type=trade_type,
+        side=_side_for_trade(direction, reduce_only),
+        quantity=quantity,
+        reduce_only=reduce_only,
+        price=_optional_quantized_price(trade_arguments.get("price"), market_rule),
+        trigger_price=_optional_quantized_price(trigger_price, market_rule),
+        take_profit=Decimal(str(trade_arguments.get("take_profit", 0))),
+        stop_loss=Decimal(str(trade_arguments.get("stop_loss", 0))),
+    )
 
 
-def _side_for_direction(direction: PerpsTradeDirection) -> str:
-    """Map direction to Orderly side."""
+def _build_regular_order_payload(request: OrderlyOrderRequest) -> OrderlyRegularOrderPayload:
+    """Build `/v1/order` payload for regular market or limit orders."""
+    body: OrderlyRegularOrderPayload = {
+        "symbol": request.symbol,
+        "side": request.side.value,
+        "order_type": _native_order_type(request.trade_type).value,
+        "order_quantity": str(request.quantity),
+        "reduce_only": request.reduce_only,
+        "client_order_id": f"plutus_{uuid4().hex[:24]}",
+    }
+    if request.price is not None and request.trade_type is not PerpsTradeType.MARKET:
+        body["order_price"] = str(request.price)
+    return body
+
+
+def _build_stop_order_payload(request: OrderlyOrderRequest) -> OrderlyStopOrderPayload:
+    """Build native Orderly `STOP` algo payload."""
+    if request.trigger_price is None:
+        msg = "Stop orders require a trigger price."
+        raise ValueError(msg)
+
+    body: OrderlyStopOrderPayload = {
+        "symbol": request.symbol,
+        "side": request.side.value,
+        "algo_type": OrderlyAlgoType.STOP.value,
+        "type": _native_order_type(request.trade_type).value,
+        "quantity": str(request.quantity),
+        "trigger_price": str(request.trigger_price),
+        "trigger_price_type": request.trigger_price_type.value,
+        "reduce_only": request.reduce_only,
+    }
+    if request.price is not None and request.trade_type is PerpsTradeType.STOP_LIMIT:
+        body["price"] = str(request.price)
+    return body
+
+
+def _build_tp_sl_order_payload(request: OrderlyOrderRequest) -> OrderlyTpSlOrderPayload:
+    """Build native Orderly `TP_SL` payload for one or two child orders."""
+    child_orders: list[OrderlyTpSlChildOrderPayload] = []
+    if request.has_take_profit:
+        child_orders.append(
+            _build_tp_sl_child_order(
+                request,
+                OrderlyTpSlChildType.TAKE_PROFIT,
+                request.take_profit,
+            ),
+        )
+    if request.has_stop_loss:
+        child_orders.append(
+            _build_tp_sl_child_order(
+                request,
+                OrderlyTpSlChildType.STOP_LOSS,
+                request.stop_loss,
+            ),
+        )
+    if not child_orders:
+        msg = "TP/SL algo orders require at least one trigger target."
+        raise ValueError(msg)
+
+    return {
+        "symbol": request.symbol,
+        "side": request.side.value,
+        "algo_type": OrderlyAlgoType.TP_SL.value,
+        "quantity": str(request.quantity),
+        "child_orders": child_orders,
+    }
+
+
+def _build_tp_sl_child_order(
+    request: OrderlyOrderRequest,
+    child_type: OrderlyTpSlChildType,
+    trigger_price: Decimal,
+) -> OrderlyTpSlChildOrderPayload:
+    """Build a child order for native Orderly TP/SL algo requests."""
+    return {
+        "algo_type": child_type.value,
+        "type": OrderlyOrderType.MARKET.value,
+        "trigger_price": str(trigger_price),
+        "trigger_price_type": request.trigger_price_type.value,
+        "reduce_only": True,
+    }
+
+
+def _native_order_type(trade_type: PerpsTradeType) -> OrderlyOrderType:
+    """Map internal trade type to native Orderly execution type."""
+    if trade_type in (PerpsTradeType.MARKET, PerpsTradeType.STOP_MARKET):
+        return OrderlyOrderType.MARKET
+    return OrderlyOrderType.LIMIT
+
+
+def _side_for_trade(
+    direction: PerpsTradeDirection,
+    reduce_only: bool,
+) -> OrderlySide:
+    """Map position direction and reduce-only semantics to Orderly side."""
+    if reduce_only:
+        direction = _opposite_direction(direction)
     if direction is PerpsTradeDirection.LONG:
-        return "BUY"
-    return "SELL"
+        return OrderlySide.BUY
+    return OrderlySide.SELL
 
 
 def _opposite_direction(direction: PerpsTradeDirection) -> PerpsTradeDirection:
@@ -134,6 +291,28 @@ def _opposite_direction(direction: PerpsTradeDirection) -> PerpsTradeDirection:
     if direction is PerpsTradeDirection.LONG:
         return PerpsTradeDirection.SHORT
     return PerpsTradeDirection.LONG
+
+
+def _resolve_price(
+    trade_arguments: dict,
+    market_rule: OrderlyMarketRule,
+) -> Decimal:
+    """Resolve price used for validation and quantity conversion."""
+    raw_price = trade_arguments.get("price")
+    if raw_price is None:
+        msg = "Orderly order requests require a price for size validation."
+        raise ValueError(msg)
+    return quantize_price(Decimal(str(raw_price)), market_rule)
+
+
+def _optional_quantized_price(
+    raw_price: object | None,
+    market_rule: OrderlyMarketRule,
+) -> Decimal | None:
+    """Quantize optional price fields when present."""
+    if raw_price is None:
+        return None
+    return quantize_price(Decimal(str(raw_price)), market_rule)
 
 
 def _resolve_base_size(
