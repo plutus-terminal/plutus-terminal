@@ -1,0 +1,30 @@
+{
+  "id": "orderly-test-suite-02",
+  "seq": "02",
+  "title": "Add auth and REST client parity tests",
+  "status": "pending",
+  "depends_on": [
+    "01"
+  ],
+  "parallel": true,
+  "suggested_agent": "TestEngineer",
+  "context_files": [
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    "AGENTS.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/orderly/auth.py",
+    "plutus_terminal/core/exchange/orderly/rest_client.py",
+    "tests/orderly/test_orderly_trader_builder_parity.py"
+  ],
+  "acceptance_criteria": [
+    "Adds deterministic tests for REST signing preimage construction and required signed headers.",
+    "Pins current server-compatible auth behavior without changing the intentional WebUI-token flow to mimic the Python connector.",
+    "Covers private request query/body normalization and stable auth-vs-generic error classification paths."
+  ],
+  "deliverables": [
+    "tests/orderly/test_orderly_auth_rest_client_parity.py"
+  ]
+}

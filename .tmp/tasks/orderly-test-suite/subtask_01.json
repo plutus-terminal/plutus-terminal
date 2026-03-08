@@ -1,0 +1,28 @@
+{
+  "id": "orderly-test-suite-01",
+  "seq": "01",
+  "title": "Analyze auth and REST test gaps",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "suggested_agent": "TestEngineer",
+  "context_files": [
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    "AGENTS.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/orderly/auth.py",
+    "plutus_terminal/core/exchange/orderly/rest_client.py",
+    "tests/orderly/test_orderly_trader_builder_parity.py"
+  ],
+  "acceptance_criteria": [
+    "Creates a source-backed auth/REST coverage matrix for the current native integration.",
+    "Records likely mismatches around signing preimage order, header shaping, query handling, and auth error classification.",
+    "Explicitly documents that WebUI-generated API token auth differences are intentional and must not be changed for connector parity."
+  ],
+  "deliverables": [
+    ".tmp/tasks/orderly-test-suite/gap_analysis_auth_rest.md"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "orderly-test-suite-04",
+  "seq": "04",
+  "title": "Add market registry and constraints parity tests",
+  "status": "pending",
+  "depends_on": [
+    "03"
+  ],
+  "parallel": true,
+  "suggested_agent": "TestEngineer",
+  "context_files": [
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    "AGENTS.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/orderly/markets.py",
+    "plutus_terminal/core/exchange/orderly/constraints.py",
+    "plutus_terminal/core/exchange/orderly/fetcher.py",
+    "tests/orderly/test_orderly_fetcher_parser_parity.py"
+  ],
+  "acceptance_criteria": [
+    "Adds deterministic tests for symbol metadata refresh and per-symbol rule parsing from Orderly info payloads.",
+    "Covers price, quantity, min-notional, and mark-price-range validation behavior driven by dynamic server metadata.",
+    "Flags any source mismatch where constraints appear static or drift from refreshed market data."
+  ],
+  "deliverables": [
+    "tests/orderly/test_orderly_markets_constraints_parity.py"
+  ]
+}

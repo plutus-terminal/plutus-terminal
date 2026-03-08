@@ -68,7 +68,7 @@
     "mark_price": "97500.5",
     "cost_position": "970",
     "leverage": "10",
-    "imr": "97",
+    "imr": "0.1",
     "est_liq_price": "87456.12",
     "unsettled_pnl": "5.005",
     "fee_24_h": "0.6",

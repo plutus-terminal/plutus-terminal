@@ -1,0 +1,44 @@
+{
+  "id": "orderly-parity-05",
+  "seq": "05",
+  "title": "Refresh Orderly tables, chart overlays, and account displays",
+  "status": "completed",
+  "agent_id": "coder-agent",
+  "started_at": "2026-03-07T00:00:00Z",
+  "completed_at": "2026-03-07T00:00:00Z",
+  "completion_summary": "Refreshed Orderly order table, chart overlays, and account display formatting for regular, stop, and TP/SL data",
+  "depends_on": [
+    "02",
+    "03"
+  ],
+  "parallel": true,
+  "suggested_agent": "OpenFrontendSpecialist",
+  "context_files": [
+    ".opencode/context/project-intelligence/technical-domain.md",
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/ui/web/ui-styling-standards.md",
+    ".opencode/context/core/workflows/design-iteration.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/types.py",
+    "plutus_terminal/core/exchange/orderly/fetcher.py",
+    "plutus_terminal/core/exchange/orderly/websocket.py",
+    "plutus_terminal/ui/widgets/orders_table.py",
+    "plutus_terminal/ui/widgets/trading_chart.py",
+    "plutus_terminal/ui/widgets/account_info.py"
+  ],
+  "acceptance_criteria": [
+    "Orders table distinguishes regular and algo order states using the updated parsed model fields.",
+    "Trading chart and account widgets surface native liquidation, fee, funding, or trigger-related data where available without inventing unsupported values.",
+    "UI changes stay confined to display widgets that do not overlap with the TP/SL entry flow task.",
+    "Follows 4-stage design workflow.",
+    "Responsive at all breakpoints.",
+    "Validation steps include a reproducible check that updated order, trigger, and account values render correctly from parsed Orderly payloads."
+  ],
+  "deliverables": [
+    "plutus_terminal/ui/widgets/orders_table.py",
+    "plutus_terminal/ui/widgets/trading_chart.py",
+    "plutus_terminal/ui/widgets/account_info.py"
+  ]
+}

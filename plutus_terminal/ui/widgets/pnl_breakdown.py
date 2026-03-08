@@ -56,7 +56,7 @@ class PnlBreakdown(QWidget):
         """Set tooltip content."""
         self._tooltip_content = (
             f"PnL: {round(pnl, 3)}<br>"
-            f"Funding Fee: -{round(funding_fee, 3)}<br>"
+            f"Funding Fee: {_format_signed_fee(funding_fee)}<br>"
             f"Opening Fee: -{round(position_fee, 3)}<br>"
             f"Closing Fee: -{round(position_fee, 3)}<br><br>"
             f"PnL After Fees: {round(pnl_after_fee, 3)}"
@@ -76,3 +76,11 @@ class PnlBreakdown(QWidget):
         """Override event to reset cursor on leave."""
         self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().leaveEvent(event)
+
+
+def _format_signed_fee(fee: Decimal) -> str:
+    """Format fee values with the correct sign semantics for the tooltip."""
+    rounded_fee = round(abs(fee), 3)
+    if fee < 0:
+        return f"+{rounded_fee}"
+    return f"-{rounded_fee}"

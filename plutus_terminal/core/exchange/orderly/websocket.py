@@ -10,7 +10,13 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import orjson
-from tenacity import before_sleep_log, retry, wait_exponential
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 from websockets import ClientConnection, State, connect
 from websockets.exceptions import ConnectionClosed
 
@@ -67,6 +73,8 @@ class OrderlyWebsocketManager:
         self._request_ids = count(1)
 
     @retry(
+        retry=retry_if_exception_type((ConnectionClosed, OSError, TimeoutError)),
+        stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=0.4, max=5),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
@@ -90,6 +98,8 @@ class OrderlyWebsocketManager:
         return self._public_socket
 
     @retry(
+        retry=retry_if_exception_type((ConnectionClosed, OSError, TimeoutError)),
+        stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=0.4, max=5),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
         retry_error_callback=log_retry(LOGGER),
@@ -100,17 +110,23 @@ class OrderlyWebsocketManager:
             if self._private_socket is not None and self._private_socket.state != State.CLOSED:
                 await self._private_socket.close()
             url = f"{self._endpoints.private_ws_url}/{self._credentials.account_id}"
-            self._private_socket = await connect(url, ping_interval=10, ping_timeout=10)
+            private_socket = await connect(url, ping_interval=10, ping_timeout=10)
             LOGGER.info("Connected to Orderly private websocket")
-            await self._authenticate_private_socket(self._private_socket)
-            if self._private_topics:
-                await self._subscribe_many(
-                    self._private_socket,
-                    self._private_topics,
-                    recv_lock=self._private_recv_lock,
-                    request_lock=self._private_request_lock,
-                    event_buffer=self._private_buffer,
-                )
+            try:
+                await self._authenticate_private_socket(private_socket)
+                if self._private_topics:
+                    await self._subscribe_many(
+                        private_socket,
+                        self._private_topics,
+                        recv_lock=self._private_recv_lock,
+                        request_lock=self._private_request_lock,
+                        event_buffer=self._private_buffer,
+                    )
+            except Exception:
+                if private_socket.state != State.CLOSED:
+                    await private_socket.close()
+                raise
+            self._private_socket = private_socket
         return self._private_socket
 
     async def subscribe_public(self, topics: Iterable[str]) -> None:
@@ -451,8 +467,11 @@ def _validate_ack(
     if success is True:
         return
     if success is False:
+        request_id = event.get("id", "")
+        event_name = event.get("event", "")
         error_message = str(event.get("errorMsg", "Orderly websocket request failed."))
-        raise error_type(error_message)
+        msg = f"Orderly websocket ack failed for {event_name}:{request_id}: {error_message}"
+        raise error_type(msg)
     msg = "Orderly websocket acknowledgement missing success flag."
     raise error_type(msg)
 

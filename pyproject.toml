@@ -35,6 +35,7 @@ pandas-stubs = "2.2.3.250308"
 types-peewee = "3.17.9.20250401"
 ruff = "0.11.6"
 pre-commit = "4.2.0"
+pytest = "^9.0.2"
 
 [project.scripts]
 plutus-terminal = "plutus_terminal.run:run"
@@ -86,6 +87,11 @@ max-branches = 15
 "plutus_terminal/ui/resources.py" = ["ALL"]
 "plutus_terminal/ui/widgets/positions_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
 "plutus_terminal/ui/widgets/orders_table.py" = ["ANN001", "ARG002", "ANN201", "ANN401"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra"
 
 [[tool.mypy.overrides]]
 module = "qasync"

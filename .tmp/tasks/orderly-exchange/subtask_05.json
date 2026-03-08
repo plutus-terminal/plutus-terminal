@@ -1,0 +1,35 @@
+{
+  "id": "orderly-exchange-05",
+  "seq": "05",
+  "title": "Compose ExchangeBase implementation and lifecycle wiring",
+  "status": "completed",
+  "depends_on": [
+    "02",
+    "03",
+    "04"
+  ],
+  "parallel": false,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    ".opencode/context/core/workflows/component-planning.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/base.py",
+    "plutus_terminal/core/exchange/foxify/exchange.py",
+    "plutus_terminal/core/exchange/foxify/fetcher.py",
+    "plutus_terminal/core/exchange/foxify/trader.py"
+  ],
+  "acceptance_criteria": [
+    "Orderly exchange class composes fetcher/trader/websocket modules and satisfies ExchangeBase contract.",
+    "Startup/shutdown lifecycle correctly starts websocket streams and cancels background tasks cleanly.",
+    "Message bus updates for market/account/trade events align with existing UI-controller expectations.",
+    "`poetry run ruff check plutus_terminal/core/exchange/orderly/exchange.py plutus_terminal/core/exchange/orderly/__init__.py` passes.",
+    "`poetry run mypy plutus_terminal/core/exchange/orderly/exchange.py` passes."
+  ],
+  "deliverables": [
+    "plutus_terminal/core/exchange/orderly/exchange.py",
+    "plutus_terminal/core/exchange/orderly/__init__.py"
+  ]
+}

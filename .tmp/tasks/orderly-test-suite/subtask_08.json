@@ -1,0 +1,42 @@
+{
+  "id": "orderly-test-suite-08",
+  "seq": "08",
+  "title": "Run targeted suite and capture follow-up gaps",
+  "status": "pending",
+  "depends_on": [
+    "02",
+    "04",
+    "05",
+    "06",
+    "07"
+  ],
+  "parallel": false,
+  "suggested_agent": "TestEngineer",
+  "context_files": [
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    "AGENTS.md"
+  ],
+  "reference_files": [
+    "tests/orderly/test_orderly_trader_builder_parity.py",
+    "tests/orderly/test_orderly_fetcher_parser_parity.py",
+    "tests/orderly/test_orderly_websocket_parity.py",
+    "plutus_terminal/core/exchange/orderly/auth.py",
+    "plutus_terminal/core/exchange/orderly/rest_client.py",
+    "plutus_terminal/core/exchange/orderly/markets.py",
+    "plutus_terminal/core/exchange/orderly/constraints.py",
+    "plutus_terminal/core/exchange/orderly/trader.py",
+    "plutus_terminal/core/exchange/orderly/fetcher.py",
+    "plutus_terminal/core/exchange/orderly/websocket.py",
+    "plutus_terminal/core/exchange/orderly/exchange.py"
+  ],
+  "acceptance_criteria": [
+    "Runs the focused Orderly test command and records the exact execution entry point.",
+    "Summarizes any failing tests as likely implementation gaps or confirmed protocol mismatches.",
+    "Separates acceptable intentional auth differences from genuine follow-up code changes."
+  ],
+  "deliverables": [
+    ".tmp/tasks/orderly-test-suite/final_gap_report.md"
+  ]
+}

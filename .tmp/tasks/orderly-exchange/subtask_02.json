@@ -1,0 +1,32 @@
+{
+  "id": "orderly-exchange-02",
+  "seq": "02",
+  "title": "Implement websocket manager with auth and resilient subscriptions",
+  "status": "completed",
+  "depends_on": [
+    "01"
+  ],
+  "parallel": true,
+  "suggested_agent": "CoderAgent",
+  "context_files": [
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/core/standards/security-patterns.md",
+    ".opencode/context/project-intelligence/technical-domain.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/base.py",
+    "plutus_terminal/core/exchange/foxify/exchange.py",
+    "plutus_terminal/core/exchange/foxify/fetcher.py"
+  ],
+  "acceptance_criteria": [
+    "Websocket manager authenticates using Orderly flow and subscribes to ticker/account/order/position topics.",
+    "Ping/pong, reconnect, and resubscribe behavior is implemented for connection interruptions.",
+    "Handlers expose structured events consumable by fetcher/exchange layers.",
+    "`poetry run ruff check plutus_terminal/core/exchange/orderly/websocket.py` passes.",
+    "`poetry run mypy plutus_terminal/core/exchange/orderly/websocket.py` passes."
+  ],
+  "deliverables": [
+    "plutus_terminal/core/exchange/orderly/websocket.py",
+    "plutus_terminal/core/exchange/orderly/ws_topics.py"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "orderly-exchange",
+  "name": "Orderly Exchange Integration",
+  "status": "active",
+  "objective": "Integrate orderly.network as a websocket-first exchange with dynamic token/pair discovery and full trading flow compatibility in Plutus Terminal.",
+  "context_files": [
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/core/standards/security-patterns.md",
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    ".opencode/context/project-intelligence/living-notes.md",
+    ".opencode/context/project-intelligence/decisions-log.md",
+    ".opencode/context/project-intelligence/business-tech-bridge.md",
+    ".opencode/context/core/workflows/component-planning.md",
+    ".opencode/context/core/workflows/external-libraries-workflow.md"
+  ],
+  "reference_files": [
+    "pyproject.toml",
+    "plutus_terminal/core/exchange/base.py",
+    "plutus_terminal/core/exchange/valid_exchanges.py",
+    "plutus_terminal/core/exchange/foxify/exchange.py",
+    "plutus_terminal/core/exchange/foxify/fetcher.py",
+    "plutus_terminal/core/exchange/foxify/trader.py",
+    "plutus_terminal/core/keyring_manager.py",
+    "plutus_terminal/controller/ui_controller.py"
+  ],
+  "exit_criteria": [
+    "`orderly` exchange is selectable in the app and initializes correctly.",
+    "Available pairs are sourced from Orderly API, not static files.",
+    "Live prices, positions, orders, and stable balance update through existing message bus signals.",
+    "Create/edit/cancel/close order flows work through Orderly endpoints.",
+    "Lint and type checks pass for modified files."
+  ],
+  "subtask_count": 6,
+  "completed_count": 6,
+  "created_at": "2026-02-07T00:00:00Z"
+}

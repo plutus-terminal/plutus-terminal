@@ -1,0 +1,34 @@
+{
+  "id": "orderly-parity-06",
+  "seq": "06",
+  "title": "Add targeted backend tests for builder and parser parity",
+  "status": "pending",
+  "depends_on": [
+    "02",
+    "03"
+  ],
+  "parallel": true,
+  "suggested_agent": "TestEngineer",
+  "context_files": [
+    ".opencode/context/project-intelligence/technical-domain.md",
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/core/standards/code-quality.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/types.py",
+    "plutus_terminal/core/exchange/orderly/models.py",
+    "plutus_terminal/core/exchange/orderly/trader.py",
+    "plutus_terminal/core/exchange/orderly/fetcher.py",
+    "plutus_terminal/core/exchange/orderly/websocket.py",
+    "tests/__init__.py"
+  ],
+  "acceptance_criteria": [
+    "Targeted tests cover native Orderly request building for single TP, single SL, and paired TP+SL submission.",
+    "Targeted tests cover parser or mapper behavior for regular orders, algo orders, websocket acknowledgements, and native fee or liquidation fields.",
+    "Test fixtures or helpers keep Decimal-sensitive assertions explicit and deterministic.",
+    "Validation steps include running only the new targeted test modules successfully."
+  ],
+  "deliverables": [
+    "tests/orderly/"
+  ]
+}

@@ -149,11 +149,47 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert position["position_size_stable"] == Decimal("970")
         assert position["collateral_stable"] == Decimal("97")
         assert position["liquidation_price"] == Decimal("87456.12")
+        assert self.fetcher.calculate_liquidation_price(position) == Decimal("87456.12")
         position_extra = cast("dict[str, str]", position.get("extra", {}))
         assert Decimal(position_extra["native_liquidation_price"]) == Decimal("87456.12")
         assert Decimal(position_extra["fee_24h"]) == Decimal("0.6")
         assert Decimal(position_extra["last_sum_unitary_funding"]) == Decimal("0.00001234")
         self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("5.005"))
+
+    async def test_pnl_percent_prefers_native_unsettled_pnl_even_when_price_is_available(
+        self,
+    ) -> None:
+        """Add opening fee back so exchange-level net PnL matches Orderly semantics."""
+        # Arrange
+        payloads = _load_payloads()
+        self.request_private.return_value = {"data": {"rows": [payloads["position"]]}}
+
+        # Act
+        position = (await self.fetcher.fetch_all_positions())[0]
+        pnl_percent = self.fetcher.calculate_pnl_percent_before_fees(
+            position,
+            Decimal("120000"),
+        )
+
+        # Assert
+        assert pnl_percent == ((Decimal("5.005") + Decimal("0.582")) * Decimal(100)) / Decimal(
+            "97"
+        )
+
+    async def test_fetch_funding_fee_uses_unsettled_pnl_gap_against_unrealized_pnl(
+        self,
+    ) -> None:
+        """Derive current funding impact from the gap between unrealized and unsettled PnL."""
+        # Arrange
+        payloads = _load_payloads()
+        position_payload = payloads["position"] | {"unsettled_pnl": "4.255"}
+        self.request_private.return_value = {"data": {"rows": [position_payload]}}
+
+        # Act
+        position = (await self.fetcher.fetch_all_positions())[0]
+
+        # Assert
+        assert self.fetcher.fetch_funding_fee(position) == Decimal("0.75")
 
     async def test_fetch_all_positions_skips_zero_quantity_rows(self) -> None:
         """Ignore empty native positions that should not surface in terminal state."""

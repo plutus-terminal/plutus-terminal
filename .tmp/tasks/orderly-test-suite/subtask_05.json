@@ -1,0 +1,30 @@
+{
+  "id": "orderly-test-suite-05",
+  "seq": "05",
+  "title": "Add trader lifecycle parity tests",
+  "status": "pending",
+  "depends_on": [
+    "03"
+  ],
+  "parallel": true,
+  "suggested_agent": "TestEngineer",
+  "context_files": [
+    ".opencode/context/core/standards/test-coverage.md",
+    ".opencode/context/core/standards/code-quality.md",
+    ".opencode/context/project-intelligence/technical-domain.md",
+    "AGENTS.md"
+  ],
+  "reference_files": [
+    "plutus_terminal/core/exchange/orderly/trader.py",
+    "plutus_terminal/core/exchange/orderly/rest_client.py",
+    "tests/orderly/test_orderly_trader_builder_parity.py"
+  ],
+  "acceptance_criteria": [
+    "Adds deterministic tests for place, edit, cancel, and lookup request shapes against the native Orderly REST surface.",
+    "Asserts protocol status markers such as EDIT_SENT and CANCEL_SENT where the current integration exposes them.",
+    "Includes client_order_id and duplicate-open-order scenarios that reveal likely implementation mismatches without changing auth behavior."
+  ],
+  "deliverables": [
+    "tests/orderly/test_orderly_trader_lifecycle_parity.py"
+  ]
+}

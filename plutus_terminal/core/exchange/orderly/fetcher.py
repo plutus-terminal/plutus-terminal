@@ -499,6 +499,13 @@ class OrderlyFetcher(ExchangeFetcher):
         position_extra = perps_position.get("extra", {})
         if not isinstance(position_extra, dict):
             return Decimal(0)
+
+        if "unsettled_pnl" in position_extra:
+            unrealized_pnl = self._calculate_unrealized_pnl_usd(perps_position, None)
+            unsettled_pnl = _decimal_from_mapping(position_extra, ("unsettled_pnl",))
+            if unrealized_pnl != Decimal(0) or unsettled_pnl != Decimal(0):
+                return unrealized_pnl - unsettled_pnl
+
         return _decimal_from_mapping(position_extra, ("funding_fee",))
 
     def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
@@ -532,28 +539,68 @@ class OrderlyFetcher(ExchangeFetcher):
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
     ) -> Decimal:
-        """Calculate PnL percent before fees from native PnL or current price."""
-        position_extra = perps_position.get("extra", {})
-        if current_price is None and isinstance(position_extra, dict):
-            native_unsettled_pnl = _decimal_from_mapping(position_extra, ("unsettled_pnl",))
-            if native_unsettled_pnl != Decimal(0) and perps_position["collateral_stable"] > Decimal(
-                0
-            ):
-                return native_unsettled_pnl * Decimal(100) / perps_position["collateral_stable"]
-
-        if current_price is None:
-            cached = self._cached_prices.get(perps_position["pair"])
-            if cached is None:
-                return Decimal(0)
-            current_price = cached["price"]
-
-        open_price = perps_position["open_price"]
-        if open_price <= Decimal(0):
+        """Calculate gross PnL percent before trading and funding fees."""
+        trade_collateral = perps_position["collateral_stable"]
+        if trade_collateral <= Decimal(0):
             return Decimal(0)
-        price_change = ((current_price - open_price) / open_price) * 100
+
+        unrealized_pnl = self._calculate_unrealized_pnl_usd(perps_position, current_price)
+        opening_fee = self.calculate_margin_fee(perps_position["position_size_stable"])
+        gross_pnl_before_fees = unrealized_pnl + opening_fee
+        return gross_pnl_before_fees * Decimal(100) / trade_collateral
+
+    def _calculate_unrealized_pnl_usd(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[Decimal],
+    ) -> Decimal:
+        """Calculate native unrealized PnL from current/mark price and entry price."""
+        resolved_price = self._resolve_position_mark_price(perps_position, current_price)
+        open_price = perps_position["open_price"]
+        if resolved_price is None or open_price <= Decimal(0):
+            return Decimal(0)
+
+        base_size = self._resolve_position_base_size(perps_position)
+        if base_size == Decimal(0):
+            return Decimal(0)
+        return base_size * (resolved_price - open_price)
+
+    def _resolve_position_mark_price(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[Decimal],
+    ) -> Decimal | None:
+        """Resolve mark price from current override, native position data, or cache."""
+        if current_price is not None and current_price > Decimal(0):
+            return current_price
+
+        position_extra = perps_position.get("extra", {})
+        if isinstance(position_extra, dict):
+            native_mark_price = _decimal_from_mapping(position_extra, ("mark_price",))
+            if native_mark_price > Decimal(0):
+                return native_mark_price
+
+        cached = self._cached_prices.get(perps_position["pair"])
+        if cached is None:
+            return None
+        return cached["price"]
+
+    def _resolve_position_base_size(self, perps_position: PerpsPosition) -> Decimal:
+        """Resolve signed base size for the position."""
+        position_extra = perps_position.get("extra", {})
+        base_size = Decimal(0)
+        if isinstance(position_extra, dict):
+            base_size = _decimal_from_mapping(position_extra, ("base_size",))
+
+        if base_size <= Decimal(0):
+            open_price = perps_position["open_price"]
+            if open_price <= Decimal(0):
+                return Decimal(0)
+            base_size = perps_position["position_size_stable"] / open_price
+
         if perps_position["trade_direction"] is PerpsTradeDirection.SHORT:
-            price_change *= Decimal(-1)
-        return price_change * perps_position["leverage"]
+            return base_size * Decimal(-1)
+        return base_size
 
     async def stop_async(self) -> None:
         """Stop loops and close websocket/rest resources."""
@@ -853,6 +900,34 @@ def _estimate_liquidation_price(
     return open_price * (Decimal(1) + buffer)
 
 
+def _resolve_position_collateral(
+    row: Mapping[str, Any],
+    *,
+    notional: Decimal,
+    leverage: Decimal,
+) -> Decimal:
+    """Resolve position collateral from native amounts or IMR ratio fields."""
+    collateral = _decimal_from_mapping(
+        row,
+        (
+            "collateral",
+            "collateral_stable",
+            "imr_with_orders",
+            "imrwithOrders",
+            "IMR_withdraw_orders",
+            "imr",
+        ),
+    )
+    if collateral <= Decimal(0):
+        if leverage > Decimal(0):
+            return notional / leverage
+        return Decimal(0)
+
+    if collateral <= Decimal(1) and notional > Decimal(0):
+        return notional * collateral
+    return collateral
+
+
 def _parse_position(
     row: OrderlyPositionRow | dict[str, Any],
     market_registry: OrderlyMarketRegistry,
@@ -880,9 +955,9 @@ def _parse_position(
     )
     native_notional = _decimal_from_mapping(row, ("cost_position", "costPosition"))
     notional = abs(native_notional) if native_notional != Decimal(0) else abs_qty * open_price
-    collateral = _decimal_from_mapping(row, ("imr", "imr_with_orders", "IMR_withdraw_orders"))
 
     leverage = _decimal_from_mapping(row, ("leverage",))
+    collateral = _resolve_position_collateral(row, notional=notional, leverage=leverage)
     if leverage <= Decimal(0) and collateral > Decimal(0):
         leverage = notional / collateral
     if leverage <= Decimal(0):
