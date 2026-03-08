@@ -52,6 +52,7 @@ class NewsList(QtWidgets.QWidget):
         self._scroll_layout = QtWidgets.QVBoxLayout()
 
         self._sfxs: dict[str, QSoundEffect] = {}
+        self._news_widgets: dict[str, NewsWidget] = {}
 
         self._selected_news_widget: Optional[NewsWidget] = None
 
@@ -126,6 +127,7 @@ class NewsList(QtWidgets.QWidget):
         )
 
         self._ui_controller.message_bus.formatted_news.connect(self.add_news)
+        self._ui_controller.message_bus.formatted_news_updated.connect(self.update_news)
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
         self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
@@ -228,6 +230,46 @@ class NewsList(QtWidgets.QWidget):
         self._selected_news_widget = news_widget
         self._selected_news_widget.set_selected_style()  # type: ignore
 
+    @staticmethod
+    def _get_news_key(news_data: NewsData) -> str:
+        """Return the stable key for a displayed news item."""
+        return news_data["news_id"] or news_data["link"]
+
+    def _register_news_widget(self, news_widget: NewsWidget) -> None:
+        """Track a widget by its stable news key."""
+        news_key = self._get_news_key(news_widget.news_data)
+        if news_key:
+            self._news_widgets[news_key] = news_widget
+
+    def _discard_news_widget(self, news_widget: NewsWidget) -> None:
+        """Stop and delete a tracked news widget."""
+        news_key = self._get_news_key(news_widget.news_data)
+        if news_key and self._news_widgets.get(news_key) is news_widget:
+            self._news_widgets.pop(news_key)
+
+        news_widget.stop_async()
+        news_widget.deleteLater()
+
+    def _remove_news_widget(self, news_widget: NewsWidget) -> None:
+        """Remove a widget from the layout and update selection state."""
+        widget_index = self._scroll_layout.indexOf(news_widget)
+        was_selected = news_widget is self._selected_news_widget
+
+        self._scroll_layout.removeWidget(news_widget)
+        self._discard_news_widget(news_widget)
+
+        if not was_selected:
+            return
+
+        self._selected_news_widget = None
+        if self._scroll_layout.count() == 0:
+            return
+
+        fallback_index = min(widget_index, self._scroll_layout.count() - 1)
+        fallback_widget = self._scroll_layout.itemAt(fallback_index).widget()
+        if isinstance(fallback_widget, NewsWidget):
+            self._select_news_widget(fallback_widget)
+
     def add_news(self, news_data: NewsData) -> None:
         """Add NewsWidget to the list and desktop notifications."""
         # Do not add ignored news
@@ -244,6 +286,41 @@ class NewsList(QtWidgets.QWidget):
             )
 
         self._add_news_to_list(news_data, display_delay=True)
+
+    def update_news(self, news_data: NewsData) -> None:
+        """Update an existing NewsWidget in place."""
+        news_key = self._get_news_key(news_data)
+        if not news_key:
+            return
+
+        current_widget = self._news_widgets.get(news_key)
+        if current_widget is None:
+            return
+
+        if news_data["ignored"]:
+            self._remove_news_widget(current_widget)
+            return
+
+        replacement_widget = self._create_news_widget(
+            news_data,
+            display_delay=current_widget.display_delay,
+        )
+        self._register_news_widget(replacement_widget)
+
+        was_selected = current_widget is self._selected_news_widget
+        widget_index = self._scroll_layout.indexOf(current_widget)
+
+        self._scroll_area.blockSignals(True)
+        self._scroll_layout.insertWidget(widget_index, replacement_widget)
+        self._scroll_layout.removeWidget(current_widget)
+        self._scroll_area.blockSignals(False)
+
+        if was_selected:
+            self._selected_news_widget = None
+            self._select_news_widget(replacement_widget)
+            self._show_widget_at_top(replacement_widget)
+
+        self._discard_news_widget(current_widget)
 
     async def fill_old_news(self) -> None:
         """Clear and fill list with old news."""
@@ -271,6 +348,7 @@ class NewsList(QtWidgets.QWidget):
             NewsWidget: Created news widget.
         """
         news_widget = self._create_news_widget(news_data, display_delay)
+        self._register_news_widget(news_widget)
 
         # If no news is selected, select the new one
         if self._selected_news_widget is None:
@@ -280,18 +358,12 @@ class NewsList(QtWidgets.QWidget):
             self._selected_news_widget.set_unselected_style()
             self._selected_news_widget = news_widget
 
-        # Remove oldest widget if the limit is reached
         self._scroll_area.blockSignals(True)
-        if self._scroll_layout.count() > self.max_news:
-            old_widget = self._scroll_layout.takeAt(
-                self._scroll_layout.count() - 1,
-            ).widget()
-            if old_widget == self._selected_news_widget:
-                self._selected_news_widget = self._scroll_layout.itemAt(
-                    self.max_news - 1,
-                ).widget()  # type: ignore
-            old_widget.deleteLater()
         self._scroll_layout.insertWidget(0, news_widget)
+        if self._scroll_layout.count() > self.max_news:
+            old_widget = self._scroll_layout.itemAt(self._scroll_layout.count() - 1).widget()
+            if isinstance(old_widget, NewsWidget):
+                self._remove_news_widget(old_widget)
         self._scroll_area.blockSignals(False)
 
         return news_widget
@@ -317,8 +389,10 @@ class NewsList(QtWidgets.QWidget):
             old_widget = self._scroll_layout.takeAt(
                 self._scroll_layout.count() - 1,
             ).widget()
-            old_widget.deleteLater()
+            if isinstance(old_widget, NewsWidget):
+                self._discard_news_widget(old_widget)
         self._selected_news_widget = None
+        self._news_widgets.clear()
 
     def _open_link(self) -> None:
         """Open link of selected news in browser."""

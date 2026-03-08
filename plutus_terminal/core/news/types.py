@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 class NewsData(TypedDict):
     """News data dict from news source."""
 
+    news_id: str
     title: str
     link: str
     body: str
@@ -32,4 +33,9 @@ class NewsData(TypedDict):
     coin: set[str]
     feed: str
     sfx: str
+    is_update: bool
+    update_type: str
+    summary_title: str
+    summary_body: str
+    is_important: bool
     ignored: bool

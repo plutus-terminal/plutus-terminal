@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from contextlib import suppress
+from copy import deepcopy
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -51,7 +52,11 @@ class NewsManager:
             PhoenixNews(self._pass_guard),
             SynopticNews(self._pass_guard),
         ]
+        self._news_sources_by_name = {
+            news_source.NEWS_SERVICE_NAME: news_source for news_source in self.news_sources
+        }
         self._seen_links: OrderedDict[str, None] = OrderedDict()
+        self._cached_news: OrderedDict[str, NewsData] = OrderedDict()
         self._async_lock = asyncio.Lock()
         self._news_task: list[asyncio.Task] = []
 
@@ -91,11 +96,25 @@ class NewsManager:
 
         for item in old_news:
             link = item["link"].removesuffix("/")
-            if link and link not in self._seen_links:
-                self._seen_links[link] = None
-                news = self._filter_manager.filter(item)
-                news = self._global_format(item)
-                unique.append(news)
+            item["link"] = link
+            if link and link in self._seen_links:
+                continue
+
+            news_fetcher = self._news_sources_by_name[item["feed"]]
+            news_key = news_fetcher.get_message_key(item)
+
+            async with self._async_lock:
+                if link and link in self._seen_links:
+                    continue
+
+                if link:
+                    self._seen_links[link] = None
+                if news_key:
+                    self._cached_news[news_key] = deepcopy(item)
+                    self._cached_news.move_to_end(news_key)
+                self._trim_cache()
+
+            unique.append(self._format_news(item))
 
         return unique[len(unique) - limit :]
 
@@ -111,24 +130,35 @@ class NewsManager:
         if LOGGER.isEnabledFor(logging.DEBUG):
             start_time_ms = time.time_ns() / 1000000
 
-        # Strip trailing slash to ensre that link is not duplicated
+        # Strip trailing slash to ensure that link is not duplicated
         raw_news["link"] = raw_news["link"].removesuffix("/")
+        news_fetcher = self._news_sources_by_name[raw_news["feed"]]
+        news_key = news_fetcher.get_message_key(raw_news)
+
+        if raw_news["is_update"]:
+            await self._process_news_update(news_fetcher, raw_news, news_key)
+            return
 
         # Check if news is already displayed based on link
-        if raw_news["link"] in self._seen_links:
+        if raw_news["link"] and raw_news["link"] in self._seen_links:
             LOGGER.debug("Duplicate news received: %s", raw_news["link"])
             return
 
         async with self._async_lock:
+            if raw_news["link"] and raw_news["link"] in self._seen_links:
+                LOGGER.debug("Duplicate news received while waiting on lock: %s", raw_news["link"])
+                return
+
             # Store displayed news to avoid duplicates
             if raw_news["link"]:
                 self._seen_links[raw_news["link"]] = None
+            if news_key:
+                self._cached_news[news_key] = deepcopy(raw_news)
+                self._cached_news.move_to_end(news_key)
 
-            if len(self._seen_links) > self._SEEN_CACHE_MAX:
-                self._seen_links.popitem(last=False)
+            self._trim_cache()
 
-        formatted_news = self._filter_manager.filter(raw_news)
-        formatted_news = self._global_format(formatted_news)
+        formatted_news = self._format_news(raw_news)
 
         self.message_bus.formatted_news.emit(formatted_news)
 
@@ -141,6 +171,43 @@ class NewsManager:
                 formatted_news,
             )
 
+    async def _process_news_update(
+        self,
+        news_fetcher: NewsFetcher,
+        raw_news: NewsData,
+        news_key: str,
+    ) -> None:
+        """Merge and emit an update for an existing news item."""
+        if not news_key:
+            LOGGER.debug("Update message received without a stable key: %s", raw_news)
+            return
+
+        async with self._async_lock:
+            current_news = self._cached_news.get(news_key)
+            if current_news is None:
+                LOGGER.debug("Update message received before original news: %s", news_key)
+                return
+
+            merged_news = news_fetcher.merge_update(current_news, raw_news)
+            self._cached_news[news_key] = deepcopy(merged_news)
+            self._cached_news.move_to_end(news_key)
+            self._trim_cache()
+
+        self.message_bus.formatted_news_updated.emit(self._format_news(merged_news))
+
+    def _format_news(self, news: NewsData) -> NewsData:
+        """Run filtering and global formatting on a news payload copy."""
+        formatted_news = self._filter_manager.filter(deepcopy(news))
+        return self._global_format(formatted_news)
+
+    def _trim_cache(self) -> None:
+        """Trim the link and news caches to the configured max size."""
+        while len(self._seen_links) > self._SEEN_CACHE_MAX:
+            self._seen_links.popitem(last=False)
+
+        while len(self._cached_news) > self._SEEN_CACHE_MAX:
+            self._cached_news.popitem(last=False)
+
     def _global_format(self, news: NewsData) -> NewsData:
         """Apply global formatting to news.
 
@@ -152,7 +219,13 @@ class NewsManager:
         Returns:
             NewsData: Formatted news
         """
-        for part in ("body", "quote_message", "reply_message"):
+        for part in (
+            "body",
+            "quote_message",
+            "reply_message",
+            "summary_title",
+            "summary_body",
+        ):
             if not news.get(part, ""):
                 continue
             # Line breaks as <br>

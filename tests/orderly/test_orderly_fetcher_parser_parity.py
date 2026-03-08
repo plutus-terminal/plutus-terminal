@@ -172,9 +172,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         # Assert
-        assert pnl_percent == ((Decimal("5.005") + Decimal("0.582")) * Decimal(100)) / Decimal(
-            "97"
-        )
+        assert pnl_percent == ((Decimal("5.005") + Decimal("0.582")) * Decimal(100)) / Decimal("97")
 
     async def test_fetch_funding_fee_uses_unsettled_pnl_gap_against_unrealized_pnl(
         self,

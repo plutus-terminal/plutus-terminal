@@ -2,11 +2,43 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from copy import deepcopy
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
-    from plutus_terminal.core.types_ import NewsData
+    from plutus_terminal.core.news.types import NewsData
     from plutus_terminal.message_bus import MessageBus
+
+
+def default_message_key(news_data: NewsData) -> str:
+    """Build a stable key for deduplicating and updating news messages."""
+    return news_data["news_id"] or news_data["link"]
+
+
+def merge_news_update(current_news: NewsData, incoming_news: NewsData) -> NewsData:
+    """Merge a partial update packet into a full news payload."""
+    merged_news = deepcopy(cast("dict[str, object]", current_news))
+
+    for key, value in incoming_news.items():
+        if key == "time":
+            continue
+
+        if key == "coin":
+            if value:
+                merged_news[key] = set(cast("set[str]", merged_news["coin"])) | set(
+                    cast("set[str]", value),
+                )
+            continue
+
+        if isinstance(value, bool):
+            merged_news[key] = bool(merged_news.get(key, False)) or value
+            continue
+
+        if value not in ("", set()):
+            merged_news[key] = value
+
+    merged_news["is_update"] = False
+    return cast("NewsData", merged_news)
 
 
 class NewsFetcher(Protocol):
@@ -33,6 +65,14 @@ class NewsFetcher(Protocol):
             list[NewsData]: List of old news. This list is expected to be ordered.
             from latest to oldest.
         """
+        ...
+
+    def get_message_key(self, news_data: NewsData) -> str:
+        """Return the stable key used to deduplicate and update messages."""
+        ...
+
+    def merge_update(self, current_news: NewsData, incoming_news: NewsData) -> NewsData:
+        """Merge a partial update packet into the current full news payload."""
         ...
 
     async def stop_async(self) -> None:

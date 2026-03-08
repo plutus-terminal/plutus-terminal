@@ -43,6 +43,9 @@ class MessageBus(QObject):
     formatted_news: Signal = Signal(NewsData)
     """Signal emitted when formatted_news is received."""
 
+    formatted_news_updated: Signal = Signal(NewsData)
+    """Signal emitted when an existing formatted news item is updated."""
+
     send_message: Signal = Signal(UserMessage)
     """Signal emitted when message is sent.
 

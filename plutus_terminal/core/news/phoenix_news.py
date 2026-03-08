@@ -20,7 +20,11 @@ from websockets import ClientConnection, State, connect
 
 from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
-from plutus_terminal.core.news.base import NewsFetcher
+from plutus_terminal.core.news.base import (
+    NewsFetcher,
+    default_message_key,
+    merge_news_update,
+)
 from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
 
@@ -112,10 +116,10 @@ class PhoenixNews(NewsFetcher):
         await self._socket.send(f"login {phoenix_api_key}")
         try:
             login_attempt = await asyncio.wait_for(self._socket.recv(), timeout=1)
-            login_attempt = json.loads(login_attempt)
-            login_attempt.pop("apiKey", None)
-            login_attempt.pop("address", None)
-            LOGGER.info("%s login result: %s", self.NEWS_SERVICE_NAME, login_attempt)
+            login_result = dict(json.loads(login_attempt))
+            login_result.pop("apiKey", None)
+            login_result.pop("address", None)
+            LOGGER.info("%s login result: %s", self.NEWS_SERVICE_NAME, login_result)
         except TimeoutError:
             LOGGER.warning("%s login timed out", self.NEWS_SERVICE_NAME)
 
@@ -144,7 +148,7 @@ class PhoenixNews(NewsFetcher):
         list_news = [self.format_news(news) for news in data]
         return list_news[::-1]
 
-    def format_news(self, news_message: dict) -> NewsData:  # noqa: C901
+    def format_news(self, news_message: dict) -> NewsData:  # noqa: C901, PLR0915
         """Format given news.
 
         Args:
@@ -153,6 +157,48 @@ class PhoenixNews(NewsFetcher):
         Returns:
             NewsData : Formatted news.
         """
+        message_type = news_message.get("type", "")
+        news_id = news_message.get("_id", "")
+
+        try:
+            time = datetime.fromtimestamp(news_message["time"] / 1000, timezone.utc)
+        except KeyError:
+            time = datetime.fromisoformat(
+                news_message["createdAt"].replace("Z", "+00:00"),
+            )
+
+        if message_type in {"summary-ai", "important-auto"}:
+            return NewsData(
+                news_id=news_id,
+                title="",
+                link="",
+                body="",
+                image="",
+                is_quote=False,
+                quote_message="",
+                quote_user="",
+                quote_image="",
+                is_reply=False,
+                is_self_reply=False,
+                reply_user="",
+                reply_message="",
+                reply_image="",
+                is_retweet=False,
+                retweet_user="",
+                icon="",
+                source="",
+                time=time,
+                coin=set(),
+                feed=self.NEWS_SERVICE_NAME,
+                sfx=":/sfx/coin",
+                is_update=True,
+                update_type=message_type,
+                summary_title=news_message.get("summaryAI", ""),
+                summary_body=news_message.get("cryptoAI", ""),
+                is_important=news_message.get("importantAuto", False),
+                ignored=False,
+            )
+
         source = news_message.get("source", "")
         image = news_message.get("image", "")
 
@@ -202,16 +248,10 @@ class PhoenixNews(NewsFetcher):
         link = news_message.get("url", "")
         icon = news_message.get("icon", "")
 
-        try:
-            time = datetime.fromtimestamp(news_message["time"] / 1000, timezone.utc)
-        except KeyError:
-            time = datetime.fromisoformat(
-                news_message["createdAt"].replace("Z", "+00:00"),
-            )
-
         coin = {news_message.get("coin", "")} if news_message.get("coin", "") else set()
 
         return NewsData(
+            news_id=news_id,
             title=title,
             link=link,
             body=body,
@@ -233,8 +273,21 @@ class PhoenixNews(NewsFetcher):
             coin=coin,
             feed=self.NEWS_SERVICE_NAME,
             sfx=":/sfx/coin",
+            is_update=False,
+            update_type=message_type,
+            summary_title=news_message.get("summaryAI", ""),
+            summary_body=news_message.get("cryptoAI", ""),
+            is_important=news_message.get("importantAuto", False),
             ignored=False,
         )
+
+    def get_message_key(self, news_data: NewsData) -> str:
+        """Return the stable key for a news message."""
+        return default_message_key(news_data)
+
+    def merge_update(self, current_news: NewsData, incoming_news: NewsData) -> NewsData:
+        """Merge a partial Phoenix update packet into a full news payload."""
+        return merge_news_update(current_news, incoming_news)
 
     async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""
