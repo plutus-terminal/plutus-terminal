@@ -58,7 +58,13 @@ _KLINE_HISTORY_RATE_LIMIT_INTERVAL_SECONDS = 0.25
 _KLINE_HISTORY_RETRY_BASE_SECONDS = 0.5
 _KLINE_HISTORY_RETRY_MAX_SECONDS = 12.0
 _KLINE_HISTORY_429_MIN_BACKOFF_SECONDS = 1.0
-_DEFAULT_FUTURES_TAKER_FEE_RATE = Decimal("0.0006")
+_BPS_DENOMINATOR = Decimal("10000")
+_DEFAULT_FUTURES_TAKER_FEE_RATE_BPS = Decimal("6")
+_FUNDING_FEE_CACHE_TTL_SECONDS = 60.0
+_FUNDING_RATES_CACHE_TTL_SECONDS = 15.0
+_OPENING_FEE_CACHE_TTL_SECONDS = 60.0
+_TRADES_HISTORY_PAGE_SIZE = 500
+_TRADES_HISTORY_MAX_PAGES = 5
 _TERMINAL_ORDER_STATUSES = {
     "CANCELLED",
     "CANCELED",
@@ -138,7 +144,13 @@ class OrderlyFetcher(ExchangeFetcher):
         self._cached_unsettled_pnl = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_orders: list[OrderData] = []
-        self._futures_taker_fee_rate = _DEFAULT_FUTURES_TAKER_FEE_RATE
+        self._cached_sum_unitary_funding: dict[str, Decimal] = {}
+        self._cached_funding_fees: dict[str, Decimal] = {}
+        self._cached_opening_fees: dict[str, Decimal] = {}
+        self._funding_fee_cache_expiry: dict[str, float] = {}
+        self._funding_rates_cache_expiry = 0.0
+        self._opening_fee_cache_expiry: dict[str, float] = {}
+        self._futures_taker_fee_rate_bps = _DEFAULT_FUTURES_TAKER_FEE_RATE_BPS
         self._connection_count: dict[str, int] = defaultdict(int)
         self._in_flight_history_requests: dict[
             tuple[str, str, int, int],
@@ -161,6 +173,7 @@ class OrderlyFetcher(ExchangeFetcher):
             await self._ws.ensure_connections()
             await self._ws.subscribe_private(ACCOUNT_TOPICS)
             await self._refresh_account_config()
+            await self._refresh_public_funding_rates()
             if self._private_consumer_task is None:
                 self._private_consumer_task = asyncio.create_task(self._consume_private_events())
             self._started = True
@@ -352,6 +365,8 @@ class OrderlyFetcher(ExchangeFetcher):
                 topic = str(event.get("topic", ""))
                 if not topic:
                     continue
+                if not topic.endswith("@markprice"):
+                    continue
                 pair = _pair_from_topic(topic)
                 if pair is None:
                     continue
@@ -386,6 +401,7 @@ class OrderlyFetcher(ExchangeFetcher):
         self._cached_unsettled_pnl = _sum_unsettled_pnl(rows)
         parsed_positions = [_parse_position(row, self._market_registry) for row in rows]
         self._cached_positions = [position for position in parsed_positions if position is not None]
+        await self._refresh_public_funding_rates()
         self._message_bus.balance_fetched.emit(self._balance_with_unsettled_pnl())
         return self._cached_positions
 
@@ -487,26 +503,78 @@ class OrderlyFetcher(ExchangeFetcher):
         return None
 
     def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
-        """Estimate margin fee using the native account futures taker fee rate."""
-        return position_size * self._futures_taker_fee_rate
+        """Estimate taker trading fee from notional using Orderly fee-rate bps."""
+        return position_size * _bps_to_fraction(self._futures_taker_fee_rate_bps)
 
-    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
-        """Return funding fee for position.
+    def fetch_opening_fee(self, perps_position: PerpsPosition) -> Decimal:
+        """Return the SDK-equivalent opening-fee component from cost position."""
+        position_extra = perps_position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return self._estimate_opening_fee(perps_position)
 
-        Prefer native fields when present, but many Orderly position snapshots only
-        expose funding index values instead of a realized funding fee total.
-        """
+        signed_base_size = self._resolve_position_base_size(perps_position)
+        raw_cost_position = _decimal_from_mapping(position_extra, ("raw_cost_position",))
+        if raw_cost_position == Decimal(0):
+            return self._estimate_opening_fee(perps_position)
+
+        signed_cost_position = raw_cost_position * self._position_size_ratio(perps_position)
+        entry_notional = signed_base_size * perps_position["open_price"]
+        return abs(signed_cost_position - entry_notional)
+
+    def fetch_unsettled_pnl(self, perps_position: PerpsPosition) -> Decimal:
+        """Return scaled native unsettled PnL for the position."""
         position_extra = perps_position.get("extra", {})
         if not isinstance(position_extra, dict):
             return Decimal(0)
 
-        if "unsettled_pnl" in position_extra:
-            unrealized_pnl = self._calculate_unrealized_pnl_usd(perps_position, None)
-            unsettled_pnl = _decimal_from_mapping(position_extra, ("unsettled_pnl",))
-            if unrealized_pnl != Decimal(0) or unsettled_pnl != Decimal(0):
-                return unrealized_pnl - unsettled_pnl
+        unsettled_pnl = _decimal_from_mapping(position_extra, ("unsettled_pnl",))
+        return unsettled_pnl * self._position_size_ratio(perps_position)
 
-        return _decimal_from_mapping(position_extra, ("funding_fee",))
+    def fetch_funding_fee(self, perps_position: PerpsPosition) -> Decimal:
+        """Return the SDK-equivalent funding-fee component from funding accumulators."""
+        position_extra = perps_position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return Decimal(0)
+
+        symbol = str(position_extra.get("symbol", ""))
+        current_sum_unitary_funding = self._cached_sum_unitary_funding.get(symbol)
+        if current_sum_unitary_funding is None:
+            return Decimal(0)
+
+        last_sum_unitary_funding = _decimal_from_mapping(
+            position_extra,
+            ("last_sum_unitary_funding",),
+        )
+        return self._resolve_position_base_size(perps_position) * (
+            current_sum_unitary_funding - last_sum_unitary_funding
+        )
+
+    def calculate_sdk_unsettled_pnl(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[Decimal],
+    ) -> Decimal:
+        """Calculate the React SDK unsettlement PnL value for one position."""
+        unrealized_pnl = self.calculate_unrealized_pnl(perps_position, current_price)
+        opening_fee = self.fetch_opening_fee(perps_position)
+        funding_fee = self.fetch_funding_fee(perps_position)
+        return unrealized_pnl - opening_fee - funding_fee
+
+    def calculate_close_fee(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[Decimal],
+    ) -> Decimal:
+        """Estimate close fee using close notional and taker fee rate."""
+        resolved_price = self._resolve_position_mark_price(perps_position, current_price)
+        if resolved_price is None or resolved_price <= Decimal(0):
+            return Decimal(0)
+        close_notional = abs(self._resolve_position_base_size(perps_position)) * resolved_price
+        return self.calculate_margin_fee(close_notional)
+
+    def _estimate_opening_fee(self, perps_position: PerpsPosition) -> Decimal:
+        """Estimate the opening fee from the entry notional of the current position."""
+        return self.calculate_margin_fee(perps_position["position_size_stable"])
 
     def calculate_liquidation_price(self, perps_position: PerpsPosition) -> Decimal:
         """Prefer native liquidation price and fall back to local estimate."""
@@ -539,15 +607,13 @@ class OrderlyFetcher(ExchangeFetcher):
         perps_position: PerpsPosition,
         current_price: Optional[Decimal],
     ) -> Decimal:
-        """Calculate gross PnL percent before trading and funding fees."""
+        """Calculate pure unrealized PnL percent before fees and funding."""
         trade_collateral = perps_position["collateral_stable"]
         if trade_collateral <= Decimal(0):
             return Decimal(0)
 
         unrealized_pnl = self._calculate_unrealized_pnl_usd(perps_position, current_price)
-        opening_fee = self.calculate_margin_fee(perps_position["position_size_stable"])
-        gross_pnl_before_fees = unrealized_pnl + opening_fee
-        return gross_pnl_before_fees * Decimal(100) / trade_collateral
+        return unrealized_pnl * Decimal(100) / trade_collateral
 
     def _calculate_unrealized_pnl_usd(
         self,
@@ -564,6 +630,14 @@ class OrderlyFetcher(ExchangeFetcher):
         if base_size == Decimal(0):
             return Decimal(0)
         return base_size * (resolved_price - open_price)
+
+    def calculate_unrealized_pnl(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[Decimal],
+    ) -> Decimal:
+        """Public wrapper for unrealized PnL estimation."""
+        return self._calculate_unrealized_pnl_usd(perps_position, current_price)
 
     def _resolve_position_mark_price(
         self,
@@ -598,9 +672,22 @@ class OrderlyFetcher(ExchangeFetcher):
                 return Decimal(0)
             base_size = perps_position["position_size_stable"] / open_price
 
+        base_size *= self._position_size_ratio(perps_position)
+
         if perps_position["trade_direction"] is PerpsTradeDirection.SHORT:
             return base_size * Decimal(-1)
         return base_size
+
+    def _position_size_ratio(self, perps_position: PerpsPosition) -> Decimal:
+        """Return selected position-size ratio for partial close estimates."""
+        position_extra = perps_position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return Decimal(1)
+
+        native_notional = _decimal_from_mapping(position_extra, ("native_notional",))
+        if native_notional <= Decimal(0):
+            return Decimal(1)
+        return perps_position["position_size_stable"] / native_notional
 
     async def stop_async(self) -> None:
         """Stop loops and close websocket/rest resources."""
@@ -638,6 +725,8 @@ class OrderlyFetcher(ExchangeFetcher):
     async def _apply_balance_event(self, event: dict[str, Any]) -> None:
         """Extract and apply balance updates from private stream event."""
         data = event.get("data")
+        if isinstance(data, Mapping):
+            self._update_fee_rates(data.get("accountDetail", data))
         if isinstance(data, dict):
             balances = data.get("balances", data.get("holding", []))
         else:
@@ -656,8 +745,190 @@ class OrderlyFetcher(ExchangeFetcher):
         self._cached_unsettled_pnl = _sum_unsettled_pnl(rows)
         parsed = [_parse_position(row, self._market_registry) for row in rows]
         self._cached_positions = [position for position in parsed if position is not None]
+        await self._refresh_public_funding_rates()
         self._message_bus.positions_fetched.emit(self._cached_positions)
         self._message_bus.balance_fetched.emit(self._balance_with_unsettled_pnl())
+
+    async def _refresh_funding_fee_cache(self, positions: list[PerpsPosition]) -> None:
+        """Refresh cached accrued funding fees for active position symbols."""
+        active_symbols = {
+            str(position.get("extra", {}).get("symbol", ""))
+            for position in positions
+            if isinstance(position.get("extra", {}), dict)
+        }
+        active_symbols.discard("")
+
+        for symbol in list(self._cached_funding_fees):
+            if symbol not in active_symbols:
+                self._cached_funding_fees.pop(symbol, None)
+                self._funding_fee_cache_expiry.pop(symbol, None)
+
+        now_monotonic = time.monotonic()
+        for position in positions:
+            position_extra = position.get("extra", {})
+            if not isinstance(position_extra, dict):
+                continue
+            symbol = str(position_extra.get("symbol", ""))
+            position_timestamp = _int_from_mapping(position_extra, ("timestamp",))
+            if symbol == "" or position_timestamp <= 0:
+                continue
+            if self._funding_fee_cache_expiry.get(symbol, 0.0) > now_monotonic:
+                continue
+
+            self._cached_funding_fees[symbol] = await self._fetch_accrued_funding_fee(
+                symbol=symbol,
+                position_timestamp=position_timestamp,
+            )
+            self._funding_fee_cache_expiry[symbol] = now_monotonic + _FUNDING_FEE_CACHE_TTL_SECONDS
+
+    async def _refresh_opening_fee_cache(self, positions: list[PerpsPosition]) -> None:
+        """Refresh cached opening fees for the active position symbols."""
+        active_symbols = {
+            str(position.get("extra", {}).get("symbol", ""))
+            for position in positions
+            if isinstance(position.get("extra", {}), dict)
+        }
+        active_symbols.discard("")
+
+        for symbol in list(self._cached_opening_fees):
+            if symbol not in active_symbols:
+                self._cached_opening_fees.pop(symbol, None)
+                self._opening_fee_cache_expiry.pop(symbol, None)
+
+        now_monotonic = time.monotonic()
+        for position in positions:
+            position_extra = position.get("extra", {})
+            if not isinstance(position_extra, dict):
+                continue
+            symbol = str(position_extra.get("symbol", ""))
+            position_timestamp = _int_from_mapping(position_extra, ("timestamp",))
+            if symbol == "" or position_timestamp <= 0:
+                continue
+            if self._opening_fee_cache_expiry.get(symbol, 0.0) > now_monotonic:
+                continue
+
+            self._cached_opening_fees[symbol] = await self._fetch_opening_fee_for_position(position)
+            self._opening_fee_cache_expiry[symbol] = now_monotonic + _OPENING_FEE_CACHE_TTL_SECONDS
+
+    async def _fetch_accrued_funding_fee(self, *, symbol: str, position_timestamp: int) -> Decimal:
+        """Fetch accrued funding fees for the current open leg of one symbol."""
+        payload = await self._rest_client.request_private(
+            "GET",
+            "/v1/funding_fee/history",
+            params={
+                "symbol": symbol,
+                "start_t": str(position_timestamp),
+                "size": "200",
+            },
+        )
+        rows = payload.get("data", {}).get("rows", [])
+        if not isinstance(rows, list):
+            return Decimal(0)
+
+        funding_total = Decimal(0)
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            if _int_from_mapping(row, ("created_time",)) < position_timestamp:
+                continue
+            if str(row.get("status", "")).lower() != "accrued":
+                continue
+
+            funding_fee = _decimal_from_mapping(row, ("funding_fee",))
+            payment_type = str(row.get("payment_type", "")).lower()
+            if payment_type == "receive":
+                funding_total -= funding_fee
+            else:
+                funding_total += funding_fee
+
+        return funding_total
+
+    async def _fetch_opening_fee_for_position(self, perps_position: PerpsPosition) -> Decimal:
+        """Fetch the opening fee for the current open leg or fall back to an estimate."""
+        position_extra = perps_position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return self._estimate_opening_fee(perps_position)
+
+        symbol = str(position_extra.get("symbol", ""))
+        position_timestamp = _int_from_mapping(position_extra, ("timestamp",))
+        if symbol == "" or position_timestamp <= 0:
+            return self._estimate_opening_fee(perps_position)
+
+        trade_rows = await self._fetch_position_trades(
+            symbol=symbol,
+            position_timestamp=position_timestamp,
+        )
+        if trade_rows is None:
+            return self._estimate_opening_fee(perps_position)
+
+        current_base_size = _decimal_from_mapping(position_extra, ("base_size",))
+        if current_base_size <= Decimal(0):
+            open_price = perps_position["open_price"]
+            if open_price <= Decimal(0):
+                return self._estimate_opening_fee(perps_position)
+            current_base_size = perps_position["position_size_stable"] / open_price
+
+        opening_fee = _reconstruct_opening_fee_from_trades(
+            trade_rows,
+            trade_direction=perps_position["trade_direction"],
+            current_position_qty=current_base_size,
+        )
+        if opening_fee is None:
+            return self._estimate_opening_fee(perps_position)
+        return opening_fee
+
+    async def _fetch_position_trades(
+        self,
+        *,
+        symbol: str,
+        position_timestamp: int,
+    ) -> list[Mapping[str, Any]] | None:
+        """Fetch trade history rows needed to reconstruct current-leg opening fees."""
+        rows: list[Mapping[str, Any]] = []
+        page = 1
+
+        while page <= _TRADES_HISTORY_MAX_PAGES:
+            payload = await self._rest_client.request_private(
+                "GET",
+                "/v1/trades",
+                params={
+                    "symbol": symbol,
+                    "start_t": str(position_timestamp),
+                    "page": str(page),
+                    "size": str(_TRADES_HISTORY_PAGE_SIZE),
+                },
+            )
+            data = payload.get("data", {})
+            if not isinstance(data, Mapping):
+                return None
+
+            payload_rows = data.get("rows", [])
+            if not isinstance(payload_rows, list):
+                return None
+            rows.extend(row for row in payload_rows if isinstance(row, Mapping))
+
+            meta = data.get("meta", {})
+            if not isinstance(meta, Mapping):
+                if len(payload_rows) < _TRADES_HISTORY_PAGE_SIZE:
+                    break
+                page += 1
+                continue
+
+            total = _int_from_mapping(meta, ("total",))
+            records_per_page = _int_from_mapping(meta, ("records_per_page", "recordsPerPage"))
+            current_page = _int_from_mapping(meta, ("current_page", "currentPage"))
+            if total > 0 and records_per_page > 0 and current_page > 0:
+                if current_page * records_per_page >= total:
+                    break
+                if page == _TRADES_HISTORY_MAX_PAGES:
+                    return None
+            elif len(payload_rows) < _TRADES_HISTORY_PAGE_SIZE:
+                break
+
+            page += 1
+
+        rows.sort(key=_trade_timestamp)
+        return rows
 
     async def _refresh_positions(self) -> None:
         """Refresh positions cache from private REST endpoint."""
@@ -685,6 +956,38 @@ class OrderlyFetcher(ExchangeFetcher):
         """Return available balance adjusted by unsettled PnL."""
         return self._cached_stable_balance + self._cached_unsettled_pnl
 
+    async def _refresh_public_funding_rates(self) -> None:
+        """Refresh current funding accumulators used by the React SDK formula."""
+        now_monotonic = time.monotonic()
+        if now_monotonic < self._funding_rates_cache_expiry:
+            return
+
+        try:
+            payload = await self._rest_client.request_public("GET", "/v1/public/funding_rates")
+        except (HTTPStatusError, RequestError):
+            LOGGER.debug("Unable to refresh Orderly public funding rates", exc_info=True)
+            return
+
+        rows = payload.get("data", {}).get("rows", [])
+        if not isinstance(rows, list):
+            return
+
+        funding_rates: dict[str, Decimal] = {}
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            symbol = str(row.get("symbol", ""))
+            if symbol == "":
+                continue
+            funding_rates[symbol] = _decimal_from_mapping(
+                row,
+                ("sum_unitary_funding", "sumUnitaryFunding"),
+            )
+
+        if funding_rates:
+            self._cached_sum_unitary_funding = funding_rates
+        self._funding_rates_cache_expiry = now_monotonic + _FUNDING_RATES_CACHE_TTL_SECONDS
+
     async def _refresh_account_config(self) -> None:
         """Refresh native account fee configuration with safe fallback."""
         try:
@@ -694,9 +997,25 @@ class OrderlyFetcher(ExchangeFetcher):
             return
 
         data = payload.get("data", {})
-        fee_rate = _decimal_from_mapping(data, ("futures_taker_fee_rate", "taker_fee_rate"))
-        if fee_rate > Decimal(0):
-            self._futures_taker_fee_rate = fee_rate
+        if isinstance(data, Mapping):
+            self._update_fee_rates(data)
+
+    def _update_fee_rates(self, payload: object) -> None:
+        """Update cached Orderly fee rates from REST or websocket payloads."""
+        if not isinstance(payload, Mapping):
+            return
+
+        fee_rate_bps = _decimal_from_mapping(
+            payload,
+            (
+                "futures_taker_fee_rate",
+                "taker_fee_rate",
+                "futuresTakerFeeRate",
+                "takerFeeRate",
+            ),
+        )
+        if fee_rate_bps > Decimal(0):
+            self._futures_taker_fee_rate_bps = fee_rate_bps
 
 
 def _resolution_to_orderly_resolution(resolution: str) -> str:
@@ -751,6 +1070,95 @@ def _extract_usdc_balance_from_event_payload(payload: object) -> Decimal | None:
             continue
         return _available_balance_from_row(row)
     return None
+
+
+def _trade_timestamp(row: Mapping[str, Any]) -> int:
+    """Return a sortable timestamp for one trade history row."""
+    return _int_from_mapping(row, ("executed_timestamp", "executedTimestamp", "created_time", "ts"))
+
+
+def _trade_fee_to_stable(row: Mapping[str, Any]) -> Decimal:
+    """Convert an Orderly trade fee into stable-quote units."""
+    fee = _decimal_from_mapping(row, ("fee", "total_fee"))
+    if fee <= Decimal(0):
+        return Decimal(0)
+
+    fee_asset = str(row.get("fee_asset", row.get("feeAsset", ""))).upper()
+    if fee_asset in {"", USDC_SETTLEMENT_TOKEN}:
+        return fee
+
+    executed_price = _decimal_from_mapping(row, ("executed_price", "executedPrice", "price"))
+    if executed_price <= Decimal(0):
+        return Decimal(0)
+    return fee * executed_price
+
+
+def _bps_to_fraction(value: Decimal) -> Decimal:
+    """Convert Orderly fee rates from basis points to decimal fraction."""
+    return value / _BPS_DENOMINATOR
+
+
+def _reconstruct_opening_fee_from_trades(
+    rows: list[Mapping[str, Any]],
+    *,
+    trade_direction: PerpsTradeDirection,
+    current_position_qty: Decimal,
+) -> Decimal | None:
+    """Reconstruct current-leg opening fees from fill history since position creation."""
+    if current_position_qty <= Decimal(0):
+        return Decimal(0)
+
+    opening_side = "BUY" if trade_direction is PerpsTradeDirection.LONG else "SELL"
+    open_quantity = Decimal(0)
+    open_fee = Decimal(0)
+    saw_opening_fill = False
+
+    for row in rows:
+        side = str(row.get("side", "")).upper()
+        quantity = _decimal_from_mapping(row, ("executed_quantity", "executedQuantity", "quantity"))
+        if side not in {"BUY", "SELL"} or quantity <= Decimal(0):
+            continue
+
+        if side == opening_side:
+            saw_opening_fill = True
+            open_quantity += quantity
+            open_fee += _trade_fee_to_stable(row)
+            continue
+
+        if open_quantity <= Decimal(0):
+            continue
+
+        closed_quantity = min(quantity, open_quantity)
+        if closed_quantity <= Decimal(0):
+            continue
+        open_fee *= (open_quantity - closed_quantity) / open_quantity
+        open_quantity -= closed_quantity
+
+    if not saw_opening_fill:
+        return None
+    if open_quantity <= Decimal(0):
+        return Decimal(0)
+
+    quantity_gap = abs(open_quantity - current_position_qty)
+    tolerance = max(Decimal("0.00000001"), current_position_qty * Decimal("0.001"))
+    if quantity_gap > tolerance:
+        return None
+    return open_fee * current_position_qty / open_quantity
+
+
+def _resolve_position_notional(
+    *,
+    abs_qty: Decimal,
+    open_price: Decimal,
+    mark_price: Decimal,
+    raw_cost_position: Decimal,
+) -> Decimal:
+    """Resolve the position notional without relying on fee-inclusive cost fields."""
+    if open_price > Decimal(0):
+        return abs_qty * open_price
+    if raw_cost_position != Decimal(0):
+        return abs(raw_cost_position)
+    return abs_qty * mark_price
 
 
 def _decimal_field(row: Mapping[str, Any], field: str) -> Decimal:
@@ -953,8 +1361,13 @@ def _parse_position(
     open_price = _decimal_from_mapping(
         row, ("average_open_price", "averageOpenPrice", "mark_price")
     )
-    native_notional = _decimal_from_mapping(row, ("cost_position", "costPosition"))
-    notional = abs(native_notional) if native_notional != Decimal(0) else abs_qty * open_price
+    raw_cost_position = _decimal_from_mapping(row, ("cost_position", "costPosition"))
+    notional = _resolve_position_notional(
+        abs_qty=abs_qty,
+        open_price=open_price,
+        mark_price=mark_price,
+        raw_cost_position=raw_cost_position,
+    )
 
     leverage = _decimal_from_mapping(row, ("leverage",))
     collateral = _resolve_position_collateral(row, notional=notional, leverage=leverage)
@@ -975,6 +1388,7 @@ def _parse_position(
 
     unsettled_pnl = _decimal_from_mapping(row, ("unsettled_pnl", "unsettledPnl"))
     funding_fee = _decimal_from_mapping(row, ("funding_fee",))
+    position_timestamp = _int_from_mapping(row, ("timestamp", "updated_time", "updatedTime"))
     position_id = _int_from_mapping(row, ("position_id",))
     if position_id == 0:
         position_id = _fallback_position_id(symbol=symbol, trade_direction=direction)
@@ -993,11 +1407,13 @@ def _parse_position(
             "base_size": str(abs_qty),
             "native_liquidation_price": str(liquidation_price),
             "native_notional": str(notional),
+            "raw_cost_position": str(raw_cost_position),
             "unsettled_pnl": str(unsettled_pnl),
             "funding_fee": str(funding_fee),
             "fee_24h": str(_decimal_from_mapping(row, ("fee_24_h", "fee24H"))),
             "pnl_24h": str(_decimal_from_mapping(row, ("pnl_24_h", "pnl24H"))),
             "mark_price": str(mark_price),
+            "timestamp": str(position_timestamp),
             "pending_long_qty": str(
                 _decimal_from_mapping(row, ("pending_long_qty", "pendingLongQty"))
             ),

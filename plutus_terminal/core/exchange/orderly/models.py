@@ -267,6 +267,8 @@ class OrderlyPositionRow(TypedDict, total=False):
     mmr_with_orders: str
     MMR_with_orders: str
     unsettled_pnl: str
+    timestamp: str
+    updated_time: str
     pnl_24_h: str
     fee_24_h: str
     funding_fee: str

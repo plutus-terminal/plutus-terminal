@@ -33,6 +33,14 @@ class PositionPnlCell(PnlBreakdown):
         self.set_tooltip_content(
             pnl_details["pnl_usd_before_fees"],
             pnl_details["funding_fee_usd"],
-            pnl_details["position_fee_usd"],
+            pnl_details["opening_fee_usd"],
+            pnl_details["closing_fee_usd"] if pnl_details.get("show_closing_fee", True) else None,
             pnl_details["pnl_usd_after_fees"],
+            funding_fee_included=pnl_details.get("funding_fee_included_in_pnl", False),
+            opening_fee_included=pnl_details.get("opening_fee_included_in_pnl", False),
+            labels=(
+                pnl_details.get("pnl_label", "PnL"),
+                pnl_details.get("net_pnl_label", "PnL After Fees"),
+            ),
+            show_closing_fee=pnl_details.get("show_closing_fee", True),
         )

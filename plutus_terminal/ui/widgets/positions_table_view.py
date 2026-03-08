@@ -125,7 +125,7 @@ class PositionsTableView(QTableView):
 
     def _update_pnl_row(self, row_key: PositionRowKey, row: int, position: PerpsPosition) -> None:
         current_price_data = self._cached_prices.get(position["pair"])
-        if current_price_data is None:
+        if current_price_data is None and not self._exchange.use_native_position_pnl():
             return
 
         pnl_cell = self._cell_widgets["pnl"].get(row_key)
@@ -133,7 +133,11 @@ class PositionsTableView(QTableView):
             pnl_cell = PositionPnlCell(parent=self)
             self._cell_widgets["pnl"][row_key] = pnl_cell
 
-        pnl_details = self._exchange.calculate_pnl(position, current_price_data["price"])
+        current_price = None
+        if current_price_data is not None and not self._exchange.use_native_position_pnl():
+            current_price = current_price_data["price"]
+
+        pnl_details = self._exchange.calculate_pnl(position, current_price)
 
         if isinstance(pnl_cell, PositionPnlCell):
             pnl_cell.set_position(position)

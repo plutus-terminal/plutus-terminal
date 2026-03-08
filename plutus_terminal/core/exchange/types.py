@@ -109,9 +109,16 @@ class PnlDetails(TypedDict):
     pnl_usd_before_fees: Decimal
     pnl_percentage_before_fees: Decimal
     funding_fee_usd: Decimal
+    opening_fee_usd: Decimal
+    closing_fee_usd: Decimal
     position_fee_usd: Decimal
     pnl_usd_after_fees: Decimal
     pnl_percentage_after_fees: Decimal
+    funding_fee_included_in_pnl: NotRequired[bool]
+    opening_fee_included_in_pnl: NotRequired[bool]
+    pnl_label: NotRequired[str]
+    net_pnl_label: NotRequired[str]
+    show_closing_fee: NotRequired[bool]
 
 
 class OrderData(TypedDict):

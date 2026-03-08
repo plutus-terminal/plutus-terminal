@@ -49,18 +49,28 @@ class PnlBreakdown(QWidget):
         self,
         pnl: Decimal,
         funding_fee: Decimal,
-        position_fee: Decimal,
+        opening_fee: Decimal,
+        closing_fee: Decimal | None,
         pnl_after_fee: Decimal,
+        *,
+        funding_fee_included: bool = False,
+        opening_fee_included: bool = False,
+        labels: tuple[str, str] = ("PnL", "PnL After Fees"),
+        show_closing_fee: bool = True,
         push_tool_tip: bool = True,
     ) -> None:
         """Set tooltip content."""
-        self._tooltip_content = (
-            f"PnL: {round(pnl, 3)}<br>"
-            f"Funding Fee: {_format_signed_fee(funding_fee)}<br>"
-            f"Opening Fee: -{round(position_fee, 3)}<br>"
-            f"Closing Fee: -{round(position_fee, 3)}<br><br>"
-            f"PnL After Fees: {round(pnl_after_fee, 3)}"
-        )
+        pnl_label_text, pnl_after_fee_label = labels
+        lines = [
+            f"{pnl_label_text}: {round(pnl, 3)}",
+            _format_fee_line("Funding Fee", funding_fee, included=funding_fee_included),
+            _format_fee_line("Opening Fee", opening_fee, included=opening_fee_included),
+        ]
+        if show_closing_fee and closing_fee is not None:
+            lines.append(_format_fee_line("Estimated Closing Fee", closing_fee))
+        lines.append("")
+        lines.append(f"{pnl_after_fee_label}: {round(pnl_after_fee, 3)}")
+        self._tooltip_content = "<br>".join(lines)
         self.setToolTip(self._tooltip_content)
         if push_tool_tip and self.underMouse():
             QToolTip.showText(self.mapToGlobal(self.rect().center()), self._tooltip_content, self)
@@ -84,3 +94,9 @@ def _format_signed_fee(fee: Decimal) -> str:
     if fee < 0:
         return f"+{rounded_fee}"
     return f"-{rounded_fee}"
+
+
+def _format_fee_line(label: str, fee: Decimal, *, included: bool = False) -> str:
+    """Format one tooltip fee line."""
+    suffix = " (included)" if included else ""
+    return f"{label}{suffix}: {_format_signed_fee(fee)}"

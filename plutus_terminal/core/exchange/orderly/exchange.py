@@ -44,7 +44,7 @@ from plutus_terminal.log_utils import log_retry
 
 if TYPE_CHECKING:
     from plutus_terminal.core.config import AppConfig
-    from plutus_terminal.core.exchange.types import OrderData
+    from plutus_terminal.core.exchange.types import OrderData, PnlDetails
     from plutus_terminal.core.password_guard import PasswordGuard
     from plutus_terminal.message_bus import MessageBus
 
@@ -190,6 +190,52 @@ class OrderlyExchange(ExchangeBase):
     def stable_balance(self) -> Decimal:
         """Return cached available balance including unsettled PnL."""
         return self.fetcher._balance_with_unsettled_pnl()  # noqa: SLF001
+
+    def use_native_position_pnl(self) -> bool:
+        """Use native unsettled PnL for positions-table display."""
+        return True
+
+    def calculate_pnl(
+        self,
+        perps_position: PerpsPosition,
+        current_price: Optional[Decimal],
+    ) -> PnlDetails:
+        """Calculate Orderly PnL using the same semantics as the React SDK."""
+        trade_collateral = perps_position["collateral_stable"]
+        if trade_collateral <= Decimal(0):
+            trade_collateral = perps_position["position_size_stable"] / perps_position["leverage"]
+
+        pnl_usd = self.fetcher.calculate_unrealized_pnl(perps_position, current_price)
+        opening_fee = self.fetcher.fetch_opening_fee(perps_position)
+        funding_fee = self.fetcher.fetch_funding_fee(perps_position)
+        unsettled_pnl = self.fetcher.calculate_sdk_unsettled_pnl(
+            perps_position,
+            current_price,
+        )
+        closing_fee = self.fetcher.calculate_close_fee(perps_position, current_price)
+        pnl_usd_after_fees = unsettled_pnl - closing_fee
+
+        pnl_percentage = Decimal(0)
+        if trade_collateral > Decimal(0):
+            pnl_percentage = pnl_usd * Decimal(100) / trade_collateral
+
+        pnl_percentage_after_fees = Decimal(0)
+        if trade_collateral > Decimal(0):
+            pnl_percentage_after_fees = pnl_usd_after_fees * Decimal(100) / trade_collateral
+
+        return {
+            "pnl_usd_before_fees": pnl_usd,
+            "pnl_percentage_before_fees": pnl_percentage,
+            "funding_fee_usd": funding_fee,
+            "opening_fee_usd": opening_fee,
+            "closing_fee_usd": closing_fee,
+            "position_fee_usd": opening_fee,
+            "pnl_usd_after_fees": pnl_usd_after_fees,
+            "pnl_percentage_after_fees": pnl_percentage_after_fees,
+            "pnl_label": "Unrealized PnL",
+            "net_pnl_label": "Close-now PnL",
+            "show_closing_fee": True,
+        }
 
     @property
     def min_leverage(self) -> int:

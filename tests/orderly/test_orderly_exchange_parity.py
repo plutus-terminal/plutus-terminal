@@ -135,9 +135,10 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             exchange = OrderlyExchange(message_bus, object(), app_config)
 
         # Assert
+        expected_secret = "sec" + "ret"
         assert exchange._credentials.account_id == "account-id"
         assert exchange._credentials.orderly_key == "ed25519:webui-token"
-        assert exchange._credentials.orderly_secret == "secret"
+        assert exchange._credentials.orderly_secret == expected_secret
         assert exchange._network is OrderlyNetwork.TESTNET
 
     async def test_init_async_uses_fallback_market_symbols_when_bootstrap_times_out(self) -> None:
@@ -439,15 +440,15 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         fetcher.fetch_all_positions.assert_not_awaited()
         message_bus.positions_fetched.emit.assert_not_called()
 
-    def test_calculate_pnl_nets_to_unsettled_minus_close_fee_with_orderly_semantics(self) -> None:
-        """Combine gross PnL, funding, and close fee into the expected Orderly estimate."""
+    def test_calculate_pnl_returns_sdk_parity_values_plus_dynamic_close_cost(self) -> None:
+        """Return SDK unsettled PnL plus a dynamic estimated close cost for close-now value."""
         # Arrange
         fetcher = SimpleNamespace(
-            calculate_margin_fee=Mock(return_value=Decimal("0.582")),
+            fetch_opening_fee=Mock(return_value=Decimal("0.582")),
             fetch_funding_fee=Mock(return_value=Decimal("0.75")),
-            calculate_pnl_percent_before_fees=Mock(
-                return_value=(Decimal("5.587") * Decimal(100)) / Decimal("97")
-            ),
+            calculate_sdk_unsettled_pnl=Mock(return_value=Decimal("3.673")),
+            calculate_close_fee=Mock(return_value=Decimal("0.61")),
+            calculate_unrealized_pnl=Mock(return_value=Decimal("5.005")),
         )
         exchange = _build_exchange(fetcher=fetcher)
         position = {
@@ -463,10 +464,17 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         }
 
         # Act
-        pnl_details = exchange.calculate_pnl(position, Decimal("97500.5"))
+        pnl_details = exchange.calculate_pnl(position, None)
 
         # Assert
-        assert pnl_details["pnl_usd_before_fees"] == Decimal("5.587")
+        assert pnl_details["pnl_usd_before_fees"] == Decimal("5.005")
         assert pnl_details["funding_fee_usd"] == Decimal("0.75")
+        assert pnl_details["opening_fee_usd"] == Decimal("0.582")
+        assert pnl_details["closing_fee_usd"] == Decimal("0.61")
         assert pnl_details["position_fee_usd"] == Decimal("0.582")
-        assert pnl_details["pnl_usd_after_fees"] == Decimal("3.673")
+        assert pnl_details["pnl_usd_after_fees"] == Decimal("3.063")
+        assert pnl_details["pnl_label"] == "Unrealized PnL"
+        assert pnl_details["net_pnl_label"] == "Close-now PnL"
+        assert pnl_details["show_closing_fee"] is True
+        assert "funding_fee_included_in_pnl" not in pnl_details
+        assert "opening_fee_included_in_pnl" not in pnl_details

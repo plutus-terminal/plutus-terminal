@@ -70,6 +70,7 @@
     "leverage": "10",
     "imr": "0.1",
     "est_liq_price": "87456.12",
+    "timestamp": "1710000000000",
     "unsettled_pnl": "5.005",
     "fee_24_h": "0.6",
     "last_sum_unitary_funding": "0.00001234",

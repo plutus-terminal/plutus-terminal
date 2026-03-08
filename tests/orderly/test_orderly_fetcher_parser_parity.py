@@ -51,6 +51,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         """Create deterministic fetcher dependencies for each test."""
         self.request_private = AsyncMock()
+        self.request_public = AsyncMock(return_value={"data": {"rows": []}})
         self.websocket_manager = SimpleNamespace(
             has_public_topics=Mock(return_value=False),
             next_public_event=AsyncMock(),
@@ -62,7 +63,10 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         self.fetcher = OrderlyFetcher(
             rest_client=cast(
                 "OrderlyRestClient",
-                SimpleNamespace(request_private=self.request_private),
+                SimpleNamespace(
+                    request_private=self.request_private,
+                    request_public=self.request_public,
+                ),
             ),
             websocket_manager=cast("OrderlyWebsocketManager", self.websocket_manager),
             market_registry=_build_market_registry(),
@@ -154,40 +158,117 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert Decimal(position_extra["native_liquidation_price"]) == Decimal("87456.12")
         assert Decimal(position_extra["fee_24h"]) == Decimal("0.6")
         assert Decimal(position_extra["last_sum_unitary_funding"]) == Decimal("0.00001234")
+        assert position_extra["timestamp"] == "1710000000000"
         self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("5.005"))
 
-    async def test_pnl_percent_prefers_native_unsettled_pnl_even_when_price_is_available(
+    async def test_fetch_unsettled_pnl_scales_with_selected_position_size(
         self,
     ) -> None:
-        """Add opening fee back so exchange-level net PnL matches Orderly semantics."""
+        """Scale native unsettled PnL for partial-close estimates."""
         # Arrange
         payloads = _load_payloads()
         self.request_private.return_value = {"data": {"rows": [payloads["position"]]}}
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
-        pnl_percent = self.fetcher.calculate_pnl_percent_before_fees(
-            position,
-            Decimal("120000"),
-        )
+        partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
 
         # Assert
-        assert pnl_percent == ((Decimal("5.005") + Decimal("0.582")) * Decimal(100)) / Decimal("97")
+        assert self.fetcher.fetch_unsettled_pnl(partial_position) == Decimal("2.5025")
 
-    async def test_fetch_funding_fee_uses_unsettled_pnl_gap_against_unrealized_pnl(
+    async def test_fetch_funding_fee_uses_sum_unitary_funding_delta_and_scales_for_partial_close(
         self,
     ) -> None:
-        """Derive current funding impact from the gap between unrealized and unsettled PnL."""
+        """Use the same funding accumulator delta formula as the React SDK."""
         # Arrange
         payloads = _load_payloads()
-        position_payload = payloads["position"] | {"unsettled_pnl": "4.255"}
+        self.request_private.return_value = {"data": {"rows": [payloads["position"]]}}
+        self.request_public.return_value = {
+            "data": {
+                "rows": [
+                    {
+                        "symbol": "PERP_BTC_USDC",
+                        "sum_unitary_funding": "75.00001234",
+                    },
+                ],
+            },
+        }
+
+        # Act
+        position = (await self.fetcher.fetch_all_positions())[0]
+        partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
+
+        # Assert
+        assert self.fetcher.fetch_funding_fee(partial_position) == Decimal("0.375")
+
+    async def test_fetch_opening_fee_uses_cost_position_delta_and_scales_for_partial_close(
+        self,
+    ) -> None:
+        """Use the same cost-position delta formula as the React SDK."""
+        # Arrange
+        payloads = _load_payloads()
+        position_payload = payloads["position"] | {"cost_position": "970.582"}
         self.request_private.return_value = {"data": {"rows": [position_payload]}}
+
+        # Act
+        position = (await self.fetcher.fetch_all_positions())[0]
+        partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
+
+        # Assert
+        assert self.fetcher.fetch_opening_fee(partial_position) == Decimal("0.291")
+
+    async def test_calculate_close_fee_uses_selected_close_price_not_entry_notional(self) -> None:
+        """Estimate close fee from the close notional at the target price."""
+        # Arrange
+        payloads = _load_payloads()
+        self.request_private.return_value = {"data": {"rows": [payloads["position"]]}}
+
+        # Act
+        position = (await self.fetcher.fetch_all_positions())[0]
+        close_fee = self.fetcher.calculate_close_fee(position, Decimal("120000"))
+
+        # Assert
+        assert close_fee == Decimal("0.72")
+
+    async def test_sdk_parity_calculations_preserve_short_position_signs(self) -> None:
+        """Keep opening-fee and funding signs correct for short positions."""
+        # Arrange
+        self.request_private.return_value = {
+            "data": {
+                "rows": [
+                    {
+                        "symbol": "PERP_BTC_USDC",
+                        "position_id": 88,
+                        "position_qty": "-0.01",
+                        "average_open_price": "97000",
+                        "mark_price": "96500",
+                        "cost_position": "-970.582",
+                        "leverage": "10",
+                        "imr": "0.1",
+                        "timestamp": "1710000000000",
+                        "last_sum_unitary_funding": "10",
+                    },
+                ],
+            },
+        }
+        self.request_public.return_value = {
+            "data": {
+                "rows": [
+                    {
+                        "symbol": "PERP_BTC_USDC",
+                        "sum_unitary_funding": "85",
+                    },
+                ],
+            },
+        }
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
 
         # Assert
-        assert self.fetcher.fetch_funding_fee(position) == Decimal("0.75")
+        assert self.fetcher.fetch_opening_fee(position) == Decimal("0.582")
+        assert self.fetcher.fetch_funding_fee(position) == Decimal("-0.75")
+        assert self.fetcher.calculate_sdk_unsettled_pnl(position, None) == Decimal("5.168")
 
     async def test_fetch_all_positions_skips_zero_quantity_rows(self) -> None:
         """Ignore empty native positions that should not surface in terminal state."""

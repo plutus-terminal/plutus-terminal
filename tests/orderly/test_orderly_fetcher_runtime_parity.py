@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 from httpx import HTTPStatusError, Request, Response
+import pytest
 
 from plutus_terminal.core.exchange.orderly.fetcher import (
     OrderlyFetcher,
@@ -20,8 +21,11 @@ from plutus_terminal.core.exchange.orderly.fetcher import (
 )
 from plutus_terminal.core.exchange.orderly.markets import OrderlyMarketRegistry
 from plutus_terminal.core.exchange.orderly.ws_topics import ACCOUNT_TOPICS
+from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
     from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRestClient
     from plutus_terminal.core.exchange.orderly.websocket import OrderlyWebsocketManager
     from plutus_terminal.message_bus import MessageBus
@@ -62,7 +66,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         """Create deterministic fetcher dependencies for each test."""
         self.request_private = AsyncMock()
-        self.request_public = AsyncMock()
+        self.request_public = AsyncMock(return_value={"data": {"rows": []}})
         self.rest_client = cast(
             "OrderlyRestClient",
             SimpleNamespace(
@@ -110,7 +114,10 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         async def record_refresh() -> None:
             call_order.append("refresh")
 
-        def record_task(coro: Any) -> object:
+        async def record_funding_refresh() -> None:
+            call_order.append("funding")
+
+        def record_task(coro: Coroutine[object, object, object]) -> object:
             call_order.append("task")
             coro.close()
             return consumer_task
@@ -118,6 +125,9 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         self.websocket_manager.ensure_connections.side_effect = record_connections
         self.websocket_manager.subscribe_private.side_effect = record_private_subscribe
         self.fetcher._refresh_account_config = AsyncMock(side_effect=record_refresh)  # type: ignore[method-assign]
+        self.fetcher._refresh_public_funding_rates = AsyncMock(  # type: ignore[method-assign]
+            side_effect=record_funding_refresh,
+        )
 
         with patch(
             "plutus_terminal.core.exchange.orderly.fetcher.asyncio.create_task",
@@ -128,10 +138,11 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
             await self.fetcher.start()
 
         # Assert
-        assert call_order == ["ensure", "subscribe", "refresh", "task"]
+        assert call_order == ["ensure", "subscribe", "refresh", "funding", "task"]
         self.websocket_manager.ensure_connections.assert_awaited_once()
         self.websocket_manager.subscribe_private.assert_awaited_once_with(ACCOUNT_TOPICS)
         self.fetcher._refresh_account_config.assert_awaited_once()  # type: ignore[attr-defined]
+        self.fetcher._refresh_public_funding_rates.assert_awaited_once()  # type: ignore[attr-defined]
         create_task_mock.assert_called_once()
         assert self.fetcher._private_consumer_task is consumer_task
         assert self.fetcher._started is True
@@ -142,12 +153,14 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         self.websocket_manager.subscribe_private.side_effect = RuntimeError("subscribe failed")
         self.fetcher._refresh_account_config = AsyncMock()  # type: ignore[method-assign]
 
-        with patch(
-            "plutus_terminal.core.exchange.orderly.fetcher.asyncio.create_task",
-        ) as create_task_mock:
+        with (
+            patch(
+                "plutus_terminal.core.exchange.orderly.fetcher.asyncio.create_task",
+            ) as create_task_mock,
+            pytest.raises(RuntimeError, match="subscribe failed"),
+        ):
             # Act / Assert
-            with self.assertRaisesRegex(RuntimeError, "subscribe failed"):
-                await self.fetcher.start()
+            await self.fetcher.start()
 
         self.fetcher._refresh_account_config.assert_not_awaited()  # type: ignore[attr-defined]
         create_task_mock.assert_not_called()
@@ -162,7 +175,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         release_request = asyncio.Event()
         request_payload = {"data": {"rows": []}}
 
-        async def pending_request(**_: Any) -> dict[str, Any]:
+        async def pending_request(**_: object) -> dict[str, Any]:
             await release_request.wait()
             return request_payload
 
@@ -197,7 +210,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         # Act / Assert
-        with self.assertRaisesRegex(RuntimeError, "history failed"):
+        with pytest.raises(RuntimeError, match="history failed"):
             await self.fetcher._request_chart_history(*cache_key)
 
         assert cache_key not in self.fetcher._in_flight_history_requests
@@ -297,6 +310,46 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         assert self.fetcher._cached_stable_balance == Decimal("7")
         self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("9.5"))
 
+    async def test_apply_account_event_updates_fee_rate_bps_for_fee_estimates(self) -> None:
+        """Use websocket account fee-rate bps for future opening and closing fee estimates."""
+        # Arrange
+        event = {
+            "topic": "account",
+            "data": {
+                "accountDetail": {
+                    "futuresTakerFeeRate": 8,
+                },
+                "balances": {
+                    "USDC": {
+                        "holding": "10",
+                    },
+                },
+            },
+        }
+        position = cast(
+            "Any",
+            {
+            "pair": "Crypto.BTC/USDC",
+            "id": 1,
+            "position_size_stable": Decimal("970"),
+            "collateral_stable": Decimal("97"),
+            "open_price": Decimal("97000"),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "trade_type": PerpsTradeType.MARKET,
+            "leverage": Decimal("10"),
+            "liquidation_price": Decimal("0"),
+            "extra": {},
+            },
+        )
+
+        # Act
+        await self.fetcher._apply_balance_event(event)
+
+        # Assert
+        assert self.fetcher.calculate_margin_fee(Decimal("1200")) == Decimal("0.96")
+        assert self.fetcher.fetch_opening_fee(position) == Decimal("0.776")
+        assert self.fetcher.calculate_close_fee(position, Decimal("120000")) == Decimal("0.96")
+
     async def test_apply_balance_event_ignores_private_payloads_without_usdc_balance(self) -> None:
         """Do not emit balance updates when the private payload lacks the settlement token."""
         # Arrange
@@ -312,6 +365,21 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         assert self.fetcher._cached_stable_balance == Decimal("4")
         self.message_bus.balance_fetched.emit.assert_not_called()
+
+    async def test_refresh_account_config_uses_bps_from_client_info(self) -> None:
+        """Convert REST account fee-rate bps into the fee fraction used for estimates."""
+        # Arrange
+        self.request_private.return_value = {
+            "data": {
+                "futures_taker_fee_rate": 8,
+            },
+        }
+
+        # Act
+        await self.fetcher._refresh_account_config()
+
+        # Assert
+        assert self.fetcher.calculate_margin_fee(Decimal("1200")) == Decimal("0.96")
 
     async def test_apply_positions_event_refreshes_cached_positions_and_balance_messages(
         self,
@@ -371,6 +439,85 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         assert self.fetcher._cached_positions == []
         self.message_bus.positions_fetched.emit.assert_called_once_with([])
         self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("0"))
+
+    async def test_fetch_all_positions_refreshes_public_funding_accumulators_for_sdk_parity(
+        self,
+    ) -> None:
+        """Populate the public funding accumulator cache used by the React SDK formula."""
+
+        # Arrange
+        async def request_private(_method: str, path: str, **_kwargs: object) -> dict[str, object]:
+            if path == "/v1/positions":
+                return {
+                    "data": {
+                        "rows": [
+                            {
+                                "symbol": "PERP_BTC_USDC",
+                                "position_qty": "0.01",
+                                "cost_position": "970",
+                                "imr": "0.1",
+                                "average_open_price": "97000",
+                                "mark_price": "97500",
+                                "unsettled_pnl": "5",
+                                "position_id": 11,
+                                "timestamp": "1710000000000",
+                            },
+                        ],
+                    },
+                }
+
+            raise AssertionError(path)
+
+        async def request_public(_method: str, path: str, **_kwargs: object) -> dict[str, object]:
+            assert path == "/v1/public/funding_rates"
+            return {
+                "data": {
+                    "rows": [
+                        {
+                            "symbol": "PERP_BTC_USDC",
+                            "sum_unitary_funding": "75.00001234",
+                        },
+                    ],
+                },
+            }
+
+        self.rest_client.request_private = AsyncMock(side_effect=request_private)
+        self.rest_client.request_public = AsyncMock(side_effect=request_public)
+        self.fetcher._rest_client = self.rest_client  # type: ignore[assignment]
+
+        # Act
+        await self.fetcher.fetch_all_positions()
+
+        # Assert
+        assert self.fetcher._cached_sum_unitary_funding["PERP_BTC_USDC"] == Decimal("75.00001234")
+
+    async def test_receive_subscribed_prices_does_not_overwrite_mark_price_with_bbo_midpoint(
+        self,
+    ) -> None:
+        """Keep positions-table price cache aligned to mark-price events."""
+        # Arrange
+        events = iter(
+            [
+                {"topic": "PERP_BTC_USDC@markprice", "data": {"mark_price": "97500"}},
+                {"topic": "PERP_BTC_USDC@bbo", "data": {"b": "97000", "a": "98000"}},
+            ],
+        )
+        self.fetcher._started = True
+        self.websocket_manager.has_public_topics = Mock(side_effect=[True, True, False])
+
+        async def next_public_event() -> dict[str, object]:
+            event = next(events)
+            if event["topic"] == "PERP_BTC_USDC@bbo":
+                self.fetcher._stop_event.set()
+            return event
+
+        self.websocket_manager.next_public_event.side_effect = next_public_event
+
+        # Act
+        await self.fetcher.receive_subscribed_prices()
+
+        # Assert
+        assert self.fetcher._cached_prices["Crypto.BTC/USDC"]["price"] == Decimal("97500")
 
     async def test_consume_private_events_refreshes_orders_and_positions_for_execution_topics(
         self,
