@@ -85,6 +85,7 @@ def _make_news(**overrides: object) -> NewsData:
         "sfx": ":/sfx/coin",
         "is_update": False,
         "update_type": "",
+        "applied_updates": set(),
         "summary_title": "",
         "summary_body": "",
         "is_important": False,
@@ -137,6 +138,7 @@ class TestNewsManagerUpdates:
         assert updated_news[0]["body"] == "Original body"
         assert updated_news[0]["summary_title"] == "AI summary title"
         assert updated_news[0]["summary_body"] == "AI summary body"
+        assert updated_news[0]["applied_updates"] == {"summary-ai"}
         assert updated_news[0]["time"] == datetime(2026, 3, 8, tzinfo=timezone.utc)
 
     def test_process_news_ignores_update_before_original(self) -> None:
@@ -166,3 +168,48 @@ class TestNewsManagerUpdates:
         asyncio.run(_exercise())
 
         assert updated_news == []
+
+    def test_fetch_old_news_merges_same_id_update_packets(self) -> None:
+        """Historical Phoenix updates should merge into the original news item."""
+        _ensure_qt_app()
+        message_bus = MessageBus()
+        manager = NewsManager(message_bus, _FilterManagerStub(), object())
+
+        class _HistoricalFetcherStub(_FetcherStub):
+            async def fetch_old_news(self, limit: int) -> list[NewsData]:  # noqa: ARG002
+                return [
+                    _make_news(news_id="phoenix-1"),
+                    _make_news(
+                        news_id="phoenix-1",
+                        link="",
+                        time=datetime(2026, 3, 8, 0, 0, 5, tzinfo=timezone.utc),
+                        is_update=True,
+                        update_type="summary-ai",
+                        applied_updates={"summary-ai"},
+                        summary_title="AI summary title",
+                        summary_body="AI summary body",
+                    ),
+                    _make_news(
+                        news_id="phoenix-1",
+                        link="",
+                        time=datetime(2026, 3, 8, 0, 0, 10, tzinfo=timezone.utc),
+                        is_update=True,
+                        update_type="important-auto",
+                        applied_updates={"important-auto"},
+                        is_important=True,
+                    ),
+                ]
+
+        manager.news_sources = [_HistoricalFetcherStub()]
+        manager._news_sources_by_name = {  # noqa: SLF001
+            manager.news_sources[0].NEWS_SERVICE_NAME: manager.news_sources[0],
+        }
+
+        historical_news = asyncio.run(manager.fetch_old_news(10))
+
+        assert len(historical_news) == 1
+        assert historical_news[0]["news_id"] == "phoenix-1"
+        assert historical_news[0]["summary_title"] == "AI summary title"
+        assert historical_news[0]["summary_body"] == "AI summary body"
+        assert historical_news[0]["is_important"] is True
+        assert historical_news[0]["applied_updates"] == {"important-auto", "summary-ai"}

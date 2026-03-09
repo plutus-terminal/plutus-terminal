@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 from functools import partial
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
@@ -48,6 +48,11 @@ NEWS_TIME_COLORS = {
     "yellow": 20,
 }
 
+PHOENIX_UPDATE_LABELS = {
+    "important-auto": "Important Auto",
+    "summary-ai": "AI Summary",
+}
+
 
 class NewsWidget(QtWidgets.QGroupBox):
     """Widget to display news data and interact with news."""
@@ -63,7 +68,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         available_pairs: set,
         display_delay: bool,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared variables."""
         super().__init__(parent=parent)
@@ -119,6 +124,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.summary_header = QtWidgets.QLabel()
         self.summary_title = QtWidgets.QLabel()
         self.summary_body = QtWidgets.QLabel()
+        self.update_label = QtWidgets.QLabel()
         self.metadata_layout = QtWidgets.QHBoxLayout()
         self.time_layout = QtWidgets.QVBoxLayout()
         self.time_label = QtWidgets.QLabel()
@@ -161,6 +167,7 @@ class NewsWidget(QtWidgets.QGroupBox):
     def _setup_widgets(self) -> None:  # noqa: C901, PLR0912, PLR0915
         """Create internal widgets."""
         self.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.setProperty("hasUpdate", bool(self.news_data["applied_updates"]))
 
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -295,10 +302,12 @@ class NewsWidget(QtWidgets.QGroupBox):
 
         if self.news_data["summary_title"] or self.news_data["summary_body"]:
             self.summary_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
-            self.summary_frame.setObjectName("newsFrameQuote")
+            self.summary_frame.setObjectName("newsFrameSummary")
 
-            self.summary_header.setObjectName("subTitle")
-            self.summary_header.setText("AI Summary")
+            self.summary_header.setObjectName("newsSummaryHeader")
+            self.summary_header.setText(
+                "Phoenix AI Summary" if self.news_data["feed"] == "PhoenixNews" else "AI Summary",
+            )
             self.summary_header.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse,
             )
@@ -320,6 +329,14 @@ class NewsWidget(QtWidgets.QGroupBox):
                 self.summary_body.setTextInteractionFlags(
                     Qt.TextInteractionFlag.TextSelectableByMouse,
                 )
+
+        if self.news_data["applied_updates"]:
+            self.update_label.setObjectName("newsUpdateBadge")
+            self.update_label.setText(self._build_update_label_text())
+            self.update_label.setWordWrap(True)
+            self.update_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
 
         self.link_button.setObjectName("frameless")
         self.link_button.setFlat(True)
@@ -440,6 +457,8 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.title_layout.addLayout(self.time_layout)
         self.title_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.info_layout.addLayout(self.title_layout)
+        if self.news_data["applied_updates"]:
+            self.info_layout.addWidget(self.update_label)
 
         self.retweet_frame.setLayout(self.retweet_layout)
         self.retweet_layout.addWidget(self.retweet_icon)
@@ -455,6 +474,8 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.quote_layout.addWidget(self.quote_image)
 
         self.summary_frame.setLayout(self.summary_layout)
+        self.summary_layout.setContentsMargins(12, 10, 12, 12)
+        self.summary_layout.setSpacing(6)
         self.summary_layout.addWidget(self.summary_header)
         if self.news_data["summary_title"]:
             self.summary_layout.addWidget(self.summary_title)
@@ -479,12 +500,12 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.body_layout.addWidget(self.body_label)
         if self.news_data["image"]:
             self.body_layout.addWidget(self.body_image)
-        if self.news_data["summary_title"] or self.news_data["summary_body"]:
-            self.body_layout.addWidget(self.summary_frame)
         if self.news_data["is_quote"] and any(
             (self.news_data["quote_message"], self.news_data["quote_image"]),
         ):
             self.body_layout.addWidget(self.quote_frame)
+        if self.news_data["summary_title"] or self.news_data["summary_body"]:
+            self.body_layout.addWidget(self.summary_frame)
 
         if self.news_data["is_important"]:
             self.info_layout.addWidget(self.important_label)
@@ -768,6 +789,18 @@ class NewsWidget(QtWidgets.QGroupBox):
                 f"{current_price:,.{minimal_digits}f} ({round(percentage, 3):.3f}%)"
             )
 
+    def _build_update_label_text(self) -> str:
+        """Build a readable label for merged same-ID update packets."""
+        ordered_updates = sorted(
+            self.news_data["applied_updates"],
+            key=lambda update_type: (update_type not in PHOENIX_UPDATE_LABELS, update_type),
+        )
+        readable_updates = [
+            PHOENIX_UPDATE_LABELS.get(update_type, update_type.replace("-", " ").title())
+            for update_type in ordered_updates
+        ]
+        return f"Updated: {', '.join(readable_updates)}"
+
     def set_selected_style(self) -> None:
         """Set border to selected style."""
         self.setProperty("class", "selected")
@@ -865,7 +898,7 @@ class ClickableGroupBox(QtWidgets.QGroupBox):
 
     clicked = Signal()
 
-    def __init__(self, title: str, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, title: str, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(title, parent=parent)
         self.installEventFilter(self)

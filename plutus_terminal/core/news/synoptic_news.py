@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import orjson as json
 import re2
@@ -45,7 +45,7 @@ class SynopticNews(NewsFetcher):
         """
         self._pass_guard = pass_guard
         self.wss = "wss://api.synoptic.com/graphql?format=tree&apiKey={}"
-        self._socket: Optional[ClientConnection] = None
+        self._socket: ClientConnection | None = None
         self._compiled_pattern_quote = re2.compile(r"https?://\S+")
 
     async def websocket_connect(self, api_key: str) -> ClientConnection:
@@ -182,6 +182,7 @@ class SynopticNews(NewsFetcher):
             sfx=":/sfx/coin",
             is_update=False,
             update_type="",
+            applied_updates=set(),
             summary_title="",
             summary_body="",
             is_important=False,

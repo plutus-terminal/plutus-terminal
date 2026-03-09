@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from httpx import AsyncClient
 import orjson as json
@@ -48,7 +48,7 @@ class PhoenixNews(NewsFetcher):
         """
         self._pass_guard = pass_guard
         self.wss = "wss://wss.phoenixnews.io/"
-        self._socket: Optional[ClientConnection] = None
+        self._socket: ClientConnection | None = None
         self._compiled_pattern_quote = re2.compile(r"&gt;&gt;QUOTE\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_reply = re2.compile(r"&gt;&gt;REPLY\s+.+?\s*[^\(@]*\((@\w+)\)")
         self._compiled_pattern_retweet = re2.compile(r"&gt;&gt;RT\s+.+?\s*[^\(@]*\((@\w+)\)")
@@ -163,9 +163,7 @@ class PhoenixNews(NewsFetcher):
         try:
             time = datetime.fromtimestamp(news_message["time"] / 1000, timezone.utc)
         except KeyError:
-            time = datetime.fromisoformat(
-                news_message["createdAt"].replace("Z", "+00:00"),
-            )
+            time = datetime.fromisoformat(news_message["createdAt"])
 
         if message_type in {"summary-ai", "important-auto"}:
             return NewsData(
@@ -193,6 +191,7 @@ class PhoenixNews(NewsFetcher):
                 sfx=":/sfx/coin",
                 is_update=True,
                 update_type=message_type,
+                applied_updates={message_type},
                 summary_title=news_message.get("summaryAI", ""),
                 summary_body=news_message.get("cryptoAI", ""),
                 is_important=news_message.get("importantAuto", False),
@@ -275,6 +274,7 @@ class PhoenixNews(NewsFetcher):
             sfx=":/sfx/coin",
             is_update=False,
             update_type=message_type,
+            applied_updates=set(),
             summary_title=news_message.get("summaryAI", ""),
             summary_body=news_message.get("cryptoAI", ""),
             is_important=news_message.get("importantAuto", False),

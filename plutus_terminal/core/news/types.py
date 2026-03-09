@@ -35,6 +35,7 @@ class NewsData(TypedDict):
     sfx: str
     is_update: bool
     update_type: str
+    applied_updates: set[str]
     summary_title: str
     summary_body: str
     is_important: bool

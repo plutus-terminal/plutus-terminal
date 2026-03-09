@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from datetime import datetime, timezone
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from httpx import AsyncClient
 import orjson as json
@@ -49,7 +49,7 @@ class TreeNews(NewsFetcher):
         """
         self._pass_guard = pass_guard
         self.wss = "wss://news.treeofalpha.com/ws"
-        self._socket: Optional[ClientConnection] = None
+        self._socket: ClientConnection | None = None
         self._compiled_pattern_quote = re2.compile(r"\bQuote\s+\[(@\w+)\]\([^)]*\)")
         self._compiled_pattern_tweet_title = re2.compile(r"\(@([a-zA-Z0-9_]+)\)")
 
@@ -244,6 +244,7 @@ class TreeNews(NewsFetcher):
             sfx=":/sfx/coin",
             is_update=False,
             update_type="",
+            applied_updates=set(),
             summary_title="",
             summary_body="",
             is_important=False,

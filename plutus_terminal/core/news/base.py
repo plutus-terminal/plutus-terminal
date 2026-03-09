@@ -18,6 +18,10 @@ def default_message_key(news_data: NewsData) -> str:
 def merge_news_update(current_news: NewsData, incoming_news: NewsData) -> NewsData:
     """Merge a partial update packet into a full news payload."""
     merged_news = deepcopy(cast("dict[str, object]", current_news))
+    applied_updates = set(cast("set[str]", merged_news.get("applied_updates", set())))
+
+    if incoming_news["update_type"]:
+        applied_updates.add(incoming_news["update_type"])
 
     for key, value in incoming_news.items():
         if key == "time":
@@ -37,6 +41,7 @@ def merge_news_update(current_news: NewsData, incoming_news: NewsData) -> NewsDa
         if value not in ("", set()):
             merged_news[key] = value
 
+    merged_news["applied_updates"] = applied_updates
     merged_news["is_update"] = False
     return cast("NewsData", merged_news)
 

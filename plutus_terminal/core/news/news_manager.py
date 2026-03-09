@@ -93,30 +93,68 @@ class NewsManager:
         old_news = [item for sublist in old_news_results for item in sublist]
 
         unique: list[NewsData] = []
+        unique_indices_by_key: dict[str, int] = {}
 
         for item in old_news:
             link = item["link"].removesuffix("/")
             item["link"] = link
-            if link and link in self._seen_links:
+            if not item["is_update"] and link and link in self._seen_links:
                 continue
 
             news_fetcher = self._news_sources_by_name[item["feed"]]
             news_key = news_fetcher.get_message_key(item)
+            formatted_item = await self._merge_historical_news_item(
+                item,
+                news_fetcher,
+                news_key,
+                link,
+            )
+            if formatted_item is None:
+                continue
 
-            async with self._async_lock:
-                if link and link in self._seen_links:
-                    continue
+            if item["is_update"]:
+                if news_key in unique_indices_by_key:
+                    unique[unique_indices_by_key[news_key]] = self._format_news(formatted_item)
+                continue
 
-                if link:
-                    self._seen_links[link] = None
-                if news_key:
-                    self._cached_news[news_key] = deepcopy(item)
-                    self._cached_news.move_to_end(news_key)
-                self._trim_cache()
-
-            unique.append(self._format_news(item))
+            unique.append(self._format_news(formatted_item))
+            if news_key:
+                unique_indices_by_key[news_key] = len(unique) - 1
 
         return unique[len(unique) - limit :]
+
+    async def _merge_historical_news_item(
+        self,
+        item: NewsData,
+        news_fetcher: NewsFetcher,
+        news_key: str,
+        link: str,
+    ) -> NewsData | None:
+        """Merge or cache a historical news item before it is formatted."""
+        async with self._async_lock:
+            if not item["is_update"] and link and link in self._seen_links:
+                return None
+
+            formatted_item = item
+            if item["is_update"]:
+                if not news_key:
+                    LOGGER.debug("Historical update received without a stable key: %s", item)
+                    return None
+
+                current_news = self._cached_news.get(news_key)
+                if current_news is None:
+                    LOGGER.debug("Historical update received before original news: %s", news_key)
+                    return None
+
+                formatted_item = news_fetcher.merge_update(current_news, item)
+            elif link:
+                self._seen_links[link] = None
+
+            if news_key:
+                self._cached_news[news_key] = deepcopy(formatted_item)
+                self._cached_news.move_to_end(news_key)
+            self._trim_cache()
+            return formatted_item
 
     @asyncSlot()
     async def process_news(self, raw_news: NewsData) -> None:
@@ -136,6 +174,12 @@ class NewsManager:
         news_key = news_fetcher.get_message_key(raw_news)
 
         if raw_news["is_update"]:
+            LOGGER.info(
+                "News update received from %s for key=%s type=%s",
+                raw_news["feed"],
+                news_key or "<missing>",
+                raw_news["update_type"] or "<unknown>",
+            )
             await self._process_news_update(news_fetcher, raw_news, news_key)
             return
 
@@ -193,6 +237,12 @@ class NewsManager:
             self._cached_news.move_to_end(news_key)
             self._trim_cache()
 
+        LOGGER.debug(
+            "News update merged for %s key=%s type=%s",
+            raw_news["feed"],
+            news_key,
+            raw_news["update_type"] or "<unknown>",
+        )
         self.message_bus.formatted_news_updated.emit(self._format_news(merged_news))
 
     def _format_news(self, news: NewsData) -> NewsData:
