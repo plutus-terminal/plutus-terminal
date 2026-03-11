@@ -18,7 +18,7 @@ from tenacity import (
 )
 
 from plutus_terminal.core import keyring_manager
-from plutus_terminal.core.exceptions import InvalidOrderSizeError, TransactionFailedError
+from plutus_terminal.core.exceptions import TransactionFailedError
 from plutus_terminal.core.exchange import helpers as exchange_helpers
 from plutus_terminal.core.exchange.base import ExchangeBase
 from plutus_terminal.core.exchange.orderly.fetcher import OrderlyFetcher
@@ -188,7 +188,12 @@ class OrderlyExchange(ExchangeBase):
 
     @property
     def stable_balance(self) -> Decimal:
-        """Return cached available balance including unsettled PnL."""
+        """Return trading balance used for sizing and liquidation previews."""
+        trading_balance = getattr(self._fetcher, "trading_balance", None)
+        if callable(trading_balance):
+            balance = trading_balance()
+            if isinstance(balance, Decimal):
+                return balance
         return self.fetcher._balance_with_unsettled_pnl()  # noqa: SLF001
 
     def use_native_position_pnl(self) -> bool:
@@ -205,26 +210,23 @@ class OrderlyExchange(ExchangeBase):
         if trade_collateral <= Decimal(0):
             trade_collateral = perps_position["position_size_stable"] / perps_position["leverage"]
 
-        pnl_usd = self.fetcher.calculate_unrealized_pnl(perps_position, current_price)
+        unrealized_pnl = self.fetcher.calculate_unrealized_pnl(perps_position, current_price)
         opening_fee = self.fetcher.fetch_opening_fee(perps_position)
         funding_fee = self.fetcher.fetch_funding_fee(perps_position)
-        unsettled_pnl = self.fetcher.calculate_sdk_unsettled_pnl(
-            perps_position,
-            current_price,
-        )
+        unsettled_pnl = self.fetcher.calculate_sdk_unsettled_pnl(perps_position, current_price)
         closing_fee = self.fetcher.calculate_close_fee(perps_position, current_price)
         pnl_usd_after_fees = unsettled_pnl - closing_fee
 
         pnl_percentage = Decimal(0)
         if trade_collateral > Decimal(0):
-            pnl_percentage = pnl_usd * Decimal(100) / trade_collateral
+            pnl_percentage = unrealized_pnl * Decimal(100) / trade_collateral
 
         pnl_percentage_after_fees = Decimal(0)
         if trade_collateral > Decimal(0):
             pnl_percentage_after_fees = pnl_usd_after_fees * Decimal(100) / trade_collateral
 
         return {
-            "pnl_usd_before_fees": pnl_usd,
+            "pnl_usd_before_fees": unrealized_pnl,
             "pnl_percentage_before_fees": pnl_percentage,
             "funding_fee_usd": funding_fee,
             "opening_fee_usd": opening_fee,
@@ -258,14 +260,25 @@ class OrderlyExchange(ExchangeBase):
         )
 
     @property
-    def account_info(self) -> dict[str, str]:
+    def account_info(self) -> dict[str, object]:
         """Return account information displayed in UI."""
         account_id = self._credentials.account_id
+        available_balance = getattr(self._fetcher, "available_balance", lambda: Decimal(0))()
+        available_with_unsettled = getattr(
+            self._fetcher,
+            "available_balance_with_unsettled_pnl",
+            lambda: available_balance,
+        )()
+        unsettled_pnl = getattr(self._fetcher, "unsettled_pnl_total", lambda: Decimal(0))()
         return {
             "Exchange": self.name().capitalize(),
             "Exchange Type": self.exchange_type().name,
             "Account": f"{account_id[:4]}...{account_id[-4:]}",
             "Network": self._network.value,
+            "Free Balance": self.stable_balance,
+            "Available Balance": available_balance,
+            "Available Balance + Unsettled PnL": available_with_unsettled,
+            "Unsettled PnL": unsettled_pnl,
         }
 
     async def fetch_prices(self) -> None:
@@ -307,10 +320,6 @@ class OrderlyExchange(ExchangeBase):
         stop_loss: Optional[float] = None,
     ) -> None:
         """Create new order for a pair."""
-        if not self.is_valid_order_size(amount):
-            msg = f"Invalid order size. Minimum notional is {self.min_order_size}."
-            raise InvalidOrderSizeError(msg)
-
         price = await self._resolve_execution_price(pair, trade_type, execution_price)
         order_size_stable = amount * self.app_config.leverage
         symbol = self._market_registry.get_symbol_for_pair(pair)
@@ -359,17 +368,12 @@ class OrderlyExchange(ExchangeBase):
         new_size_stable: Decimal,
         new_execution_price: Decimal,
     ) -> None:
-        """Edit existing order by replacing it."""
-        symbol = self._symbol_from_order(order_data)
-        trade_arguments = {
-            "order_id": order_data["id"],
-            "symbol": symbol,
-            "trade_direction": order_data["trade_direction"],
-            "trade_type": order_data["order_type"],
-            "price": new_execution_price,
-            "size_stable": new_size_stable,
-            "reduce_only": order_data["reduce_only"],
-        }
+        """Edit existing order through native Orderly lifecycle endpoints."""
+        trade_arguments = self._build_edit_trade_arguments(
+            order_data=order_data,
+            new_size_stable=new_size_stable,
+            new_execution_price=new_execution_price,
+        )
 
         try:
             await self.trader.edit_order(trade_arguments)
@@ -570,6 +574,90 @@ class OrderlyExchange(ExchangeBase):
         if symbol is not None:
             return str(symbol)
         return self._market_registry.get_symbol_for_pair(order_data["pair"])
+
+    def _build_edit_trade_arguments(
+        self,
+        *,
+        order_data: OrderData,
+        new_size_stable: Decimal,
+        new_execution_price: Decimal,
+    ) -> dict[str, object]:
+        """Build native edit arguments while preserving existing TP/SL sibling state."""
+        trade_arguments: dict[str, object] = {
+            "order_id": order_data["id"],
+            "symbol": self._symbol_from_order(order_data),
+            "trade_direction": order_data["trade_direction"],
+            "trade_type": order_data["order_type"],
+            "price": new_execution_price,
+            "size_stable": new_size_stable,
+            "reduce_only": order_data["reduce_only"],
+        }
+        if not order_data["order_type"].is_tp_sl_order:
+            return trade_arguments
+
+        root_order_id = self._root_algo_order_id(order_data)
+        if root_order_id is not None:
+            trade_arguments["order_id"] = root_order_id
+
+        take_profit, stop_loss = self._tp_sl_targets_for_edit(
+            order_data=order_data,
+            edited_trigger_price=new_execution_price,
+        )
+        trade_arguments["take_profit"] = take_profit
+        trade_arguments["stop_loss"] = stop_loss
+        return trade_arguments
+
+    def _tp_sl_targets_for_edit(
+        self,
+        *,
+        order_data: OrderData,
+        edited_trigger_price: Decimal,
+    ) -> tuple[Decimal, Decimal]:
+        """Resolve full TP/SL target set for root-order edits."""
+        take_profit = Decimal(0)
+        stop_loss = Decimal(0)
+        candidate_orders = self._tp_sl_sibling_orders(order_data)
+        edited_order_id = str(order_data["id"])
+
+        for candidate in candidate_orders:
+            trigger_price = candidate["trigger_price"]
+            if str(candidate["id"]) == edited_order_id:
+                trigger_price = edited_trigger_price
+            if candidate["order_type"] is PerpsTradeType.TRIGGER_TP:
+                take_profit = trigger_price
+            elif candidate["order_type"] is PerpsTradeType.TRIGGER_SL:
+                stop_loss = trigger_price
+
+        return take_profit, stop_loss
+
+    def _tp_sl_sibling_orders(self, order_data: OrderData) -> list[OrderData]:
+        """Return TP/SL siblings linked by the same Orderly root order id."""
+        root_order_id = self._root_algo_order_id(order_data)
+        if root_order_id is None:
+            return [order_data]
+
+        cached_orders = getattr(self.fetcher, "_cached_orders", [])
+        matching_orders: list[OrderData] = []
+        for candidate in cached_orders:
+            if (
+                candidate["pair"] != order_data["pair"]
+                or not candidate["order_type"].is_tp_sl_order
+            ):
+                continue
+            if self._root_algo_order_id(candidate) == root_order_id:
+                matching_orders.append(candidate)
+        return matching_orders or [order_data]
+
+    @staticmethod
+    def _root_algo_order_id(order_data: OrderData) -> str | None:
+        """Return root algo order id when the parsed payload exposes one."""
+        order_extra = order_data.get("extra", {})
+        if not isinstance(order_extra, dict):
+            return None
+        root_order_id = order_extra.get("root_algo_order_id")
+        if root_order_id in (None, ""):
+            return None
+        return str(root_order_id)
 
     @staticmethod
     def name() -> str:

@@ -84,7 +84,7 @@ class AccountInfo(QtWidgets.QWidget):
 
         self._frame = QtWidgets.QFrame()
         self._frame_layout = QtWidgets.QGridLayout()
-        self._balance_label = QtWidgets.QLabel("Available Balance:")
+        self._balance_label = QtWidgets.QLabel("Available + Unsettled PnL:")
         self._balance_value = QtWidgets.QLabel("$0.00 USD")
         self._exchange_account_info_layout = QtWidgets.QGridLayout()
         self._exchange_account_info_layout.setColumnStretch(0, 1)
@@ -115,6 +115,7 @@ class AccountInfo(QtWidgets.QWidget):
         self.approve_btn.clicked.connect(self._on_approve_for_trading)
 
         self._ui_controller.message_bus.balance_fetched.connect(self.update_balance)
+        self._ui_controller.message_bus.positions_fetched.connect(self._refresh_account_snapshot)
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
@@ -159,9 +160,20 @@ class AccountInfo(QtWidgets.QWidget):
 
         self.setLayout(self.main_layout)
 
-    def update_balance(self, balance: Decimal) -> None:
-        """Update balance."""
-        self._balance_value.setText(f"${balance:,.3f} USD")
+    def update_balance(self, _balance: Decimal) -> None:
+        """Update account balance summary and detail rows."""
+        self._refresh_account_snapshot()
+
+    def _refresh_account_snapshot(self, *_args: object) -> None:
+        """Refresh account info rows and top summary from current exchange state."""
+        self.refresh_exchange_account_info()
+        balance_value = self._ui_controller.current_exchange.account_info.get(
+            "Available Balance + Unsettled PnL",
+            Decimal(0),
+        )
+        if not isinstance(balance_value, Decimal):
+            balance_value = Decimal(0)
+        self._balance_value.setText(f"${balance_value:,.3f} USD")
 
     @asyncSlot()
     async def set_approve_btn_visibility(self) -> None:
@@ -184,5 +196,5 @@ class AccountInfo(QtWidgets.QWidget):
         * Refresh exchange account info
         * Set approve button visibility
         """
-        self.refresh_exchange_account_info()
+        self._refresh_account_snapshot()
         await self.set_approve_btn_visibility()

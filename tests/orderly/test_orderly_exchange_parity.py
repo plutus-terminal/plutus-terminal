@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from httpx import TimeoutException
 
-from plutus_terminal.core.exceptions import InvalidOrderSizeError, TransactionFailedError
+from plutus_terminal.core.exceptions import TransactionFailedError
 from plutus_terminal.core.exchange.orderly.exchange import OrderlyExchange
 from plutus_terminal.core.exchange.orderly.models import OrderlyNetwork
 from plutus_terminal.core.types_ import MessageLevel, PerpsTradeDirection, PerpsTradeType
@@ -265,24 +265,36 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         message_bus.orders_fetched.emit.assert_called_once_with(fetcher._cached_orders)
         message_bus.positions_fetched.emit.assert_called_once_with(fetcher._cached_positions)
 
-    async def test_create_order_raises_validation_error_before_touching_trader(self) -> None:
-        """Reject invalid order sizes before any private Orderly request is attempted."""
+    async def test_create_order_does_not_apply_min_notional_before_leverage(self) -> None:
+        """Defer Orderly notional validation until the final leveraged payload is built."""
         # Arrange
         market_registry = _build_market_registry(min_notional=Decimal("25"))
-        trader = SimpleNamespace(create_order=AsyncMock())
+        trader = SimpleNamespace(create_order=AsyncMock(return_value={"order_id": "abc"}))
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
+            _cached_orders=[{"id": "abc"}],
+            _cached_positions=[{"id": 1}],
+            _cached_prices={},
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+        )
         exchange = _build_exchange(market_registry=market_registry, trader=trader)
+        exchange._fetcher = fetcher
 
-        # Act / Assert
-        with self.assertRaisesRegex(InvalidOrderSizeError, "Minimum notional is 25"):
-            await exchange.create_order(
-                pair="Crypto.BTC/USDC",
-                amount=Decimal("10"),
-                trade_direction=PerpsTradeDirection.LONG,
-                trade_type=PerpsTradeType.LIMIT,
-                execution_price=Decimal("97500.5"),
-            )
+        # Act
+        await exchange.create_order(
+            pair="Crypto.BTC/USDC",
+            amount=Decimal("10"),
+            trade_direction=PerpsTradeDirection.LONG,
+            trade_type=PerpsTradeType.LIMIT,
+            execution_price=Decimal("97500.5"),
+        )
 
-        trader.create_order.assert_not_awaited()
+        # Assert
+        trader.create_order.assert_awaited_once()
+        trade_arguments = trader.create_order.await_args.args[0]
+        assert trade_arguments["size_stable"] == Decimal("50")
 
     async def test_create_order_surfaces_auth_context_in_user_message_and_skips_refresh(
         self,
@@ -322,8 +334,8 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         message_bus.orders_fetched.emit.assert_not_called()
         message_bus.positions_fetched.emit.assert_not_called()
 
-    async def test_edit_order_refreshes_open_orders_after_successful_replace(self) -> None:
-        """Refresh open orders after Orderly accepts an edit-by-replace flow."""
+    async def test_edit_order_refreshes_open_orders_after_successful_native_edit(self) -> None:
+        """Refresh open orders after Orderly accepts a native edit request."""
         # Arrange
         message_bus = _build_message_bus()
         trader = SimpleNamespace(edit_order=AsyncMock(return_value={"success": True}))
@@ -352,6 +364,48 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert trade_arguments["price"] == Decimal("98000")
         fetcher.fetch_all_orders.assert_awaited_once()
         message_bus.orders_fetched.emit.assert_called_once_with(fetcher._cached_orders)
+
+    async def test_edit_order_builds_root_tp_sl_edit_with_sibling_targets(self) -> None:
+        """Edit TP/SL orders through the root algo order while preserving sibling triggers."""
+        # Arrange
+        trader = SimpleNamespace(edit_order=AsyncMock(return_value={"success": True}))
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            _cached_orders=[
+                {
+                    "id": "tp-child",
+                    "pair": "Crypto.BTC/USDC",
+                    "trade_direction": PerpsTradeDirection.LONG,
+                    "order_type": PerpsTradeType.TRIGGER_TP,
+                    "trigger_price": Decimal("99000"),
+                    "size_stable": Decimal("50"),
+                    "reduce_only": True,
+                    "extra": {"root_algo_order_id": "root-1", "symbol": "PERP_BTC_USDC"},
+                },
+                {
+                    "id": "sl-child",
+                    "pair": "Crypto.BTC/USDC",
+                    "trade_direction": PerpsTradeDirection.LONG,
+                    "order_type": PerpsTradeType.TRIGGER_SL,
+                    "trigger_price": Decimal("94000"),
+                    "size_stable": Decimal("50"),
+                    "reduce_only": True,
+                    "extra": {"root_algo_order_id": "root-1", "symbol": "PERP_BTC_USDC"},
+                },
+            ],
+        )
+        exchange = _build_exchange(trader=trader, fetcher=fetcher)
+        order_data = fetcher._cached_orders[0]
+
+        # Act
+        await exchange.edit_order(order_data, Decimal("50"), Decimal("99500"))
+
+        # Assert
+        trader.edit_order.assert_awaited_once()
+        trade_arguments = trader.edit_order.await_args.args[0]
+        assert trade_arguments["order_id"] == "root-1"
+        assert trade_arguments["take_profit"] == Decimal("99500")
+        assert trade_arguments["stop_loss"] == Decimal("94000")
 
     async def test_edit_order_surfaces_rate_limit_context_in_user_message(self) -> None:
         """Report rate-limit failures without emitting stale refreshed order state."""
@@ -440,8 +494,8 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         fetcher.fetch_all_positions.assert_not_awaited()
         message_bus.positions_fetched.emit.assert_not_called()
 
-    def test_calculate_pnl_returns_sdk_parity_values_plus_dynamic_close_cost(self) -> None:
-        """Return SDK unsettled PnL plus a dynamic estimated close cost for close-now value."""
+    def test_calculate_pnl_uses_unrealized_base_and_fee_adjusted_close_now_value(self) -> None:
+        """Show unrealized PnL in the tooltip and derive close-now value after explicit fees."""
         # Arrange
         fetcher = SimpleNamespace(
             fetch_opening_fee=Mock(return_value=Decimal("0.582")),
@@ -478,3 +532,23 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert pnl_details["show_closing_fee"] is True
         assert "funding_fee_included_in_pnl" not in pnl_details
         assert "opening_fee_included_in_pnl" not in pnl_details
+
+    def test_account_info_exposes_free_and_unsettled_adjusted_balances(self) -> None:
+        """Expose the balance breakdown needed by the trading UI."""
+        # Arrange
+        fetcher = SimpleNamespace(
+            available_balance=Mock(return_value=Decimal("100")),
+            available_balance_with_unsettled_pnl=Mock(return_value=Decimal("112.5")),
+            unsettled_pnl_total=Mock(return_value=Decimal("12.5")),
+            trading_balance=Mock(return_value=Decimal("87.5")),
+        )
+        exchange = _build_exchange(fetcher=fetcher)
+
+        # Act
+        account_info = exchange.account_info
+
+        # Assert
+        assert account_info["Free Balance"] == Decimal("87.5")
+        assert account_info["Available Balance"] == Decimal("100")
+        assert account_info["Available Balance + Unsettled PnL"] == Decimal("112.5")
+        assert account_info["Unsettled PnL"] == Decimal("12.5")

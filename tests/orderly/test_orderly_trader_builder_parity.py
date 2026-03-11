@@ -8,9 +8,9 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
-from plutus_terminal.core.exceptions import TransactionFailedError
+from plutus_terminal.core.exceptions import InvalidOrderSizeError, TransactionFailedError
 from plutus_terminal.core.exchange.orderly.markets import OrderlyMarketRegistry
 from plutus_terminal.core.exchange.orderly.trader import OrderlyTrader
 from plutus_terminal.core.exchange.types import PerpsTradeDirection, PerpsTradeType
@@ -168,3 +168,32 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         call = self.request_private.await_args
         assert call is not None
         assert call.args[:2] == ("POST", "/v1/order")
+
+    async def test_create_order_rejects_final_notional_below_market_minimum(self) -> None:
+        """Validate the final Orderly payload notional instead of the raw margin input."""
+        # Arrange
+        strict_rule = SimpleNamespace(
+            base_min=Decimal("0"),
+            base_max=Decimal("1000"),
+            base_tick=Decimal("0.00000001"),
+            quote_tick=Decimal("0.01"),
+            min_notional=Decimal("25"),
+        )
+        trader = OrderlyTrader(
+            rest_client=cast(
+                "OrderlyRestClient",
+                SimpleNamespace(request_private=AsyncMock()),
+            ),
+            market_registry=cast(
+                "OrderlyMarketRegistry",
+                SimpleNamespace(get_rule_by_symbol=Mock(return_value=strict_rule)),
+            ),
+        )
+
+        # Act / Assert
+        with self.assertRaisesRegex(InvalidOrderSizeError, "Minimum is 25"):
+            await trader.create_order(
+                _build_trade_arguments(
+                    size_stable=Decimal("10"),
+                ),
+            )

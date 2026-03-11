@@ -29,6 +29,8 @@ ACCOUNT_TOPICS: tuple[str, ...] = (
     EXECUTION_REPORT_TOPIC,
     ALGO_EXECUTION_REPORT_TOPIC,
     "position",
+    "wallet",
+    "settle",
 )
 
 

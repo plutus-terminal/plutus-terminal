@@ -159,7 +159,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert Decimal(position_extra["fee_24h"]) == Decimal("0.6")
         assert Decimal(position_extra["last_sum_unitary_funding"]) == Decimal("0.00001234")
         assert position_extra["timestamp"] == "1710000000000"
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("5.005"))
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("0"))
 
     async def test_fetch_unsettled_pnl_scales_with_selected_position_size(
         self,

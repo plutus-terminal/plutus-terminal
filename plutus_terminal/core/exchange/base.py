@@ -339,7 +339,7 @@ class ExchangeBase(ABC):
         """Return max leverage."""
 
     @property
-    def account_info(self) -> dict[str, str]:
+    def account_info(self) -> dict[str, object]:
         """Return info to be added to account info widget."""
         return {
             "Exchange": self.name(),

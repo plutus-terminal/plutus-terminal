@@ -145,6 +145,19 @@ class PositionActionsCell(QWidget):
             self._position["position_size_stable"]
         )
 
+    def _base_size_for_size(self, size_stable: Decimal) -> Decimal | None:
+        """Resolve proportional native base size for the selected reduce amount."""
+        position_extra = self._position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return None
+        raw_base_size = position_extra.get("base_size")
+        if raw_base_size in (None, ""):
+            return None
+        total_size = self._position["position_size_stable"]
+        if total_size <= Decimal(0):
+            return None
+        return Decimal(str(raw_base_size)) * size_stable / total_size
+
     @asyncSlot(object)
     async def _handle_tp_sl_clicked(self, order_request: object) -> None:
         """Execute order on exchange."""
@@ -173,9 +186,11 @@ class PositionActionsCell(QWidget):
             return
 
         request_payload = dict(order_request)
-        request_payload["collateral_delta"] = self._collateral_delta_for_size(
-            Decimal(str(request_payload["size_stable"])),
-        )
+        reduce_size = Decimal(str(request_payload["size_stable"]))
+        request_payload["collateral_delta"] = self._collateral_delta_for_size(reduce_size)
+        base_size = self._base_size_for_size(reduce_size)
+        if base_size is not None:
+            request_payload["base_size"] = base_size
 
         ui_controller = self._resolve_ui_controller()
         if ui_controller is not None:

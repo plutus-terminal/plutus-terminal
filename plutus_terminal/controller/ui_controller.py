@@ -330,6 +330,9 @@ class UIController(QObject):
             "take_profit": take_profit_price or Decimal(0),
             "stop_loss": stop_loss_price or Decimal(0),
         }
+        base_size = order_request.get("base_size")
+        if base_size is not None:
+            trade_arguments["base_size"] = Decimal(str(base_size))
 
         try:
             await trader.create_reduce_order(trade_arguments)

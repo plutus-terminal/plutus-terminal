@@ -287,7 +287,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
     async def test_apply_balance_event_updates_cached_balance_and_emits_adjusted_total(
         self,
     ) -> None:
-        """Update cached balance from private events and emit balance plus unsettled PnL."""
+        """Update cached balance from private events without blending in unsettled PnL."""
         # Arrange
         self.fetcher._cached_unsettled_pnl = Decimal("2.5")
         event = {
@@ -308,7 +308,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         assert self.fetcher._cached_stable_balance == Decimal("7")
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("9.5"))
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("7"))
 
     async def test_apply_account_event_updates_fee_rate_bps_for_fee_estimates(self) -> None:
         """Use websocket account fee-rate bps for future opening and closing fee estimates."""
@@ -329,16 +329,16 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         position = cast(
             "Any",
             {
-            "pair": "Crypto.BTC/USDC",
-            "id": 1,
-            "position_size_stable": Decimal("970"),
-            "collateral_stable": Decimal("97"),
-            "open_price": Decimal("97000"),
-            "trade_direction": PerpsTradeDirection.LONG,
-            "trade_type": PerpsTradeType.MARKET,
-            "leverage": Decimal("10"),
-            "liquidation_price": Decimal("0"),
-            "extra": {},
+                "pair": "Crypto.BTC/USDC",
+                "id": 1,
+                "position_size_stable": Decimal("970"),
+                "collateral_stable": Decimal("97"),
+                "open_price": Decimal("97000"),
+                "trade_direction": PerpsTradeDirection.LONG,
+                "trade_type": PerpsTradeType.MARKET,
+                "leverage": Decimal("10"),
+                "liquidation_price": Decimal("0"),
+                "extra": {},
             },
         )
 
@@ -381,10 +381,71 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         assert self.fetcher.calculate_margin_fee(Decimal("1200")) == Decimal("0.96")
 
+    async def test_refresh_balance_throttles_client_info_refresh_with_cache_ttl(self) -> None:
+        """Avoid re-fetching `/v1/client/info` on every balance poll within the cache window."""
+        # Arrange
+        self.fetcher.fetch_stable_balance = AsyncMock(return_value=Decimal("7"))  # type: ignore[method-assign]
+        self.request_private.return_value = {
+            "data": {
+                "futures_taker_fee_rate": 8,
+            },
+        }
+
+        # Act
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.time.monotonic",
+            return_value=100.0,
+        ):
+            await self.fetcher._refresh_balance()
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.time.monotonic",
+            return_value=101.0,
+        ):
+            await self.fetcher._refresh_balance()
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.time.monotonic",
+            return_value=401.0,
+        ):
+            await self.fetcher._refresh_balance()
+
+        # Assert
+        self.fetcher.fetch_stable_balance.assert_awaited()  # type: ignore[attr-defined]
+        assert self.request_private.await_count == 2
+
+    async def test_refresh_account_config_honors_429_backoff_before_retrying(self) -> None:
+        """Stop hammering `/v1/client/info` after Orderly returns a rate-limit response."""
+        # Arrange
+        self.request_private.side_effect = _http_status_error(429, retry_after="3")
+
+        # Act
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.time.monotonic",
+            return_value=100.0,
+        ):
+            await self.fetcher._refresh_account_config()
+
+        self.request_private.side_effect = None
+        self.request_private.return_value = {"data": {"futures_taker_fee_rate": 8}}
+
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.time.monotonic",
+            return_value=102.0,
+        ):
+            await self.fetcher._refresh_account_config()
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.time.monotonic",
+            return_value=104.0,
+        ):
+            await self.fetcher._refresh_account_config()
+
+        # Assert
+        assert self.fetcher._account_config_rate_limited_until_monotonic == 0.0
+        assert self.request_private.await_count == 2
+
     async def test_apply_positions_event_refreshes_cached_positions_and_balance_messages(
         self,
     ) -> None:
-        """Parse private position payloads into cache updates and downstream message-bus emissions."""
+        """Parse private position payloads into cache updates and emit trading balance separately."""
         # Arrange
         self.fetcher._cached_stable_balance = Decimal("10")
         event = {
@@ -415,7 +476,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         self.message_bus.positions_fetched.emit.assert_called_once_with(
             self.fetcher._cached_positions
         )
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("15"))
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("10"))
 
     async def test_apply_positions_event_drops_unknown_or_empty_rows_but_still_emits_snapshot(
         self,
@@ -439,6 +500,36 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         assert self.fetcher._cached_positions == []
         self.message_bus.positions_fetched.emit.assert_called_once_with([])
         self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("0"))
+
+    async def test_apply_positions_event_prefers_free_collateral_for_trading_balance(self) -> None:
+        """Use account free collateral as the emitted trading balance when positions payload provides it."""
+        # Arrange
+        self.fetcher._cached_stable_balance = Decimal("10")
+        event = {
+            "topic": "position",
+            "data": {
+                "free_collateral": "8.5",
+                "rows": [
+                    {
+                        "symbol": "PERP_BTC_USDC",
+                        "position_qty": "0.01",
+                        "cost_position": "970",
+                        "imr": "97",
+                        "average_open_price": "97000",
+                        "mark_price": "97500",
+                        "unsettled_pnl": "5",
+                        "position_id": 11,
+                    },
+                ],
+            },
+        }
+
+        # Act
+        await self.fetcher._apply_positions_event(event)
+
+        # Assert
+        assert self.fetcher._cached_free_collateral == Decimal("8.5")
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("8.5"))
 
     async def test_fetch_all_positions_refreshes_public_funding_accumulators_for_sdk_parity(
         self,
@@ -538,6 +629,27 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.fetcher._refresh_orders.assert_awaited_once()  # type: ignore[attr-defined]
+        self.fetcher._refresh_positions.assert_awaited_once()  # type: ignore[attr-defined]
+
+    async def test_consume_private_events_refreshes_balance_and_positions_for_wallet_topic(
+        self,
+    ) -> None:
+        """Treat wallet updates as a passive signal to refresh trading state."""
+        # Arrange
+        self.fetcher._refresh_balance = AsyncMock()  # type: ignore[method-assign]
+        self.fetcher._refresh_positions = AsyncMock()  # type: ignore[method-assign]
+
+        async def next_event() -> dict[str, str]:
+            self.fetcher._stop_event.set()
+            return {"topic": "wallet", "data": {}}
+
+        self.websocket_manager.next_private_event.side_effect = next_event
+
+        # Act
+        await self.fetcher._consume_private_events()
+
+        # Assert
+        self.fetcher._refresh_balance.assert_awaited_once()  # type: ignore[attr-defined]
         self.fetcher._refresh_positions.assert_awaited_once()  # type: ignore[attr-defined]
 
     async def test_consume_private_events_reconnects_and_replays_account_topics_after_errors(

@@ -63,6 +63,8 @@ _DEFAULT_FUTURES_TAKER_FEE_RATE_BPS = Decimal("6")
 _FUNDING_FEE_CACHE_TTL_SECONDS = 60.0
 _FUNDING_RATES_CACHE_TTL_SECONDS = 15.0
 _OPENING_FEE_CACHE_TTL_SECONDS = 60.0
+_ACCOUNT_CONFIG_CACHE_TTL_SECONDS = 300.0
+_ACCOUNT_CONFIG_429_MIN_BACKOFF_SECONDS = 30.0
 _TRADES_HISTORY_PAGE_SIZE = 500
 _TRADES_HISTORY_MAX_PAGES = 5
 _TERMINAL_ORDER_STATUSES = {
@@ -142,6 +144,7 @@ class OrderlyFetcher(ExchangeFetcher):
         self._cached_prices: dict[str, PriceData] = {}
         self._cached_stable_balance = Decimal(0)
         self._cached_unsettled_pnl = Decimal(0)
+        self._cached_free_collateral = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_orders: list[OrderData] = []
         self._cached_sum_unitary_funding: dict[str, Decimal] = {}
@@ -150,6 +153,8 @@ class OrderlyFetcher(ExchangeFetcher):
         self._funding_fee_cache_expiry: dict[str, float] = {}
         self._funding_rates_cache_expiry = 0.0
         self._opening_fee_cache_expiry: dict[str, float] = {}
+        self._account_config_cache_expiry = 0.0
+        self._account_config_rate_limited_until_monotonic = 0.0
         self._futures_taker_fee_rate_bps = _DEFAULT_FUTURES_TAKER_FEE_RATE_BPS
         self._connection_count: dict[str, int] = defaultdict(int)
         self._in_flight_history_requests: dict[
@@ -397,18 +402,22 @@ class OrderlyFetcher(ExchangeFetcher):
     async def fetch_all_positions(self) -> list[PerpsPosition]:
         """Fetch all open positions from private REST endpoint."""
         payload = await self._rest_client.request_private("GET", "/v1/positions")
-        rows = payload.get("data", {}).get("rows", [])
+        data = payload.get("data", {})
+        rows = data.get("rows", []) if isinstance(data, Mapping) else []
         self._cached_unsettled_pnl = _sum_unsettled_pnl(rows)
+        free_collateral = _extract_free_collateral(data)
+        if free_collateral is not None:
+            self._cached_free_collateral = free_collateral
         parsed_positions = [_parse_position(row, self._market_registry) for row in rows]
         self._cached_positions = [position for position in parsed_positions if position is not None]
         await self._refresh_public_funding_rates()
-        self._message_bus.balance_fetched.emit(self._balance_with_unsettled_pnl())
+        self._message_bus.balance_fetched.emit(self.trading_balance())
         return self._cached_positions
 
     async def watch_all_orders(self) -> None:
         """Emit open orders from cache and refresh snapshot periodically."""
-        await self._refresh_orders()
         while not self._stop_event.is_set():
+            await self._refresh_orders()
             self._message_bus.orders_fetched.emit(self._cached_orders)
             await asyncio.sleep(1)
 
@@ -476,9 +485,9 @@ class OrderlyFetcher(ExchangeFetcher):
 
     async def watch_stable_balance(self) -> None:
         """Emit stable balance from cache and refresh snapshot periodically."""
-        await self._refresh_balance()
         while not self._stop_event.is_set():
-            self._message_bus.balance_fetched.emit(self._balance_with_unsettled_pnl())
+            await self._refresh_balance()
+            self._message_bus.balance_fetched.emit(self.trading_balance())
             await asyncio.sleep(1)
 
     async def fetch_stable_balance(self) -> Decimal:
@@ -560,6 +569,28 @@ class OrderlyFetcher(ExchangeFetcher):
         funding_fee = self.fetch_funding_fee(perps_position)
         return unrealized_pnl - opening_fee - funding_fee
 
+    def trading_balance(self) -> Decimal:
+        """Return spendable trading balance without blending in unsettled PnL."""
+        if self._cached_free_collateral > Decimal(0):
+            return self._cached_free_collateral
+        return self._cached_stable_balance
+
+    def available_balance(self) -> Decimal:
+        """Return cached available settlement-token balance."""
+        return self._cached_stable_balance
+
+    def available_balance_with_unsettled_pnl(self) -> Decimal:
+        """Return account balance after adding native unsettled PnL."""
+        return self._cached_stable_balance + self._cached_unsettled_pnl
+
+    def unsettled_pnl_total(self) -> Decimal:
+        """Return total unsettled PnL across cached positions."""
+        return self._cached_unsettled_pnl
+
+    def free_collateral(self) -> Decimal:
+        """Return cached free collateral used for trading headroom."""
+        return self._cached_free_collateral
+
     def calculate_close_fee(
         self,
         perps_position: PerpsPosition,
@@ -589,7 +620,7 @@ class OrderlyFetcher(ExchangeFetcher):
 
         position_size = perps_position["position_size_stable"]
         collateral = perps_position["collateral_stable"]
-        available_balance = self._balance_with_unsettled_pnl()
+        available_balance = self.trading_balance()
         effective_margin = collateral + available_balance
 
         leverage = perps_position["leverage"]
@@ -707,6 +738,10 @@ class OrderlyFetcher(ExchangeFetcher):
             try:
                 event = await self._ws.next_private_event()
                 topic = str(event.get("topic", ""))
+                if "wallet" in topic or "settle" in topic:
+                    await self._refresh_balance()
+                    await self._refresh_positions()
+                    continue
                 if "balance" in topic or topic == "account":
                     await self._apply_balance_event(event)
                 if "position" in topic:
@@ -736,18 +771,22 @@ class OrderlyFetcher(ExchangeFetcher):
         if usdc_balance is None:
             return
         self._cached_stable_balance = usdc_balance
-        self._message_bus.balance_fetched.emit(self._balance_with_unsettled_pnl())
+        self._message_bus.balance_fetched.emit(self.trading_balance())
 
     async def _apply_positions_event(self, event: dict[str, Any]) -> None:
         """Extract and apply positions updates from private stream event."""
         data = event.get("data", {})
         rows = data if isinstance(data, list) else data.get("rows", data.get("positions", []))
         self._cached_unsettled_pnl = _sum_unsettled_pnl(rows)
+        if isinstance(data, Mapping):
+            free_collateral = _extract_free_collateral(data)
+            if free_collateral is not None:
+                self._cached_free_collateral = free_collateral
         parsed = [_parse_position(row, self._market_registry) for row in rows]
         self._cached_positions = [position for position in parsed if position is not None]
         await self._refresh_public_funding_rates()
         self._message_bus.positions_fetched.emit(self._cached_positions)
-        self._message_bus.balance_fetched.emit(self._balance_with_unsettled_pnl())
+        self._message_bus.balance_fetched.emit(self.trading_balance())
 
     async def _refresh_funding_fee_cache(self, positions: list[PerpsPosition]) -> None:
         """Refresh cached accrued funding fees for active position symbols."""
@@ -988,17 +1027,40 @@ class OrderlyFetcher(ExchangeFetcher):
             self._cached_sum_unitary_funding = funding_rates
         self._funding_rates_cache_expiry = now_monotonic + _FUNDING_RATES_CACHE_TTL_SECONDS
 
-    async def _refresh_account_config(self) -> None:
+    async def _refresh_account_config(self, *, force: bool = False) -> None:
         """Refresh native account fee configuration with safe fallback."""
+        now_monotonic = time.monotonic()
+        if not force:
+            if now_monotonic < self._account_config_rate_limited_until_monotonic:
+                return
+            if now_monotonic < self._account_config_cache_expiry:
+                return
+
         try:
             payload = await self._rest_client.request_private("GET", "/v1/client/info")
-        except (HTTPStatusError, RequestError):
+        except HTTPStatusError as error:
+            if error.response.status_code == _HTTP_TOO_MANY_REQUESTS:
+                retry_after_seconds = _extract_retry_after_seconds(error)
+                cooldown_seconds = (
+                    retry_after_seconds
+                    if retry_after_seconds is not None
+                    else _ACCOUNT_CONFIG_429_MIN_BACKOFF_SECONDS
+                )
+                self._account_config_rate_limited_until_monotonic = max(
+                    self._account_config_rate_limited_until_monotonic,
+                    now_monotonic + cooldown_seconds,
+                )
+            LOGGER.debug("Unable to refresh Orderly account config", exc_info=True)
+            return
+        except RequestError:
             LOGGER.debug("Unable to refresh Orderly account config", exc_info=True)
             return
 
         data = payload.get("data", {})
         if isinstance(data, Mapping):
             self._update_fee_rates(data)
+        self._account_config_cache_expiry = time.monotonic() + _ACCOUNT_CONFIG_CACHE_TTL_SECONDS
+        self._account_config_rate_limited_until_monotonic = 0.0
 
     def _update_fee_rates(self, payload: object) -> None:
         """Update cached Orderly fee rates from REST or websocket payloads."""
@@ -1211,6 +1273,19 @@ def _sum_unsettled_pnl(rows: object) -> Decimal:
             continue
         total += _decimal_from_mapping(row, ("unsettled_pnl", "unsettledPnl"))
     return total
+
+
+def _extract_free_collateral(payload: object) -> Decimal | None:
+    """Extract account-level free collateral when provided by positions payloads."""
+    if not isinstance(payload, Mapping):
+        return None
+
+    free_collateral = _decimal_from_mapping(payload, ("free_collateral", "freeCollateral"))
+    if free_collateral == Decimal(0) and not any(
+        field in payload for field in ("free_collateral", "freeCollateral")
+    ):
+        return None
+    return free_collateral
 
 
 def _normalize_unix_seconds(timestamp: float | str) -> int:

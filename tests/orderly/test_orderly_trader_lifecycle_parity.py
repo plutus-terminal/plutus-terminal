@@ -4,10 +4,10 @@
 
 from __future__ import annotations
 
-import unittest
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+import unittest
 from unittest.mock import AsyncMock, patch
 
 from plutus_terminal.core.exceptions import TransactionFailedError
@@ -88,13 +88,15 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
             "duplicate data/request",
         )
 
-        with patch(
-            "plutus_terminal.core.exchange.orderly.trader.uuid4",
-            return_value=SimpleNamespace(hex="fedcba9876543210fedcba9876543210"),
+        with (
+            patch(
+                "plutus_terminal.core.exchange.orderly.trader.uuid4",
+                return_value=SimpleNamespace(hex="fedcba9876543210fedcba9876543210"),
+            ),
+            self.assertRaises(TransactionFailedError) as error_context,
         ):
             # Act / Assert
-            with self.assertRaises(TransactionFailedError) as error_context:
-                await self.trader.create_order(_build_trade_arguments())
+            await self.trader.create_order(_build_trade_arguments())
 
         self.request_private.assert_awaited_once()
         assert isinstance(error_context.exception.__cause__, OrderlyRequestError)
@@ -120,7 +122,8 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         # Assert
-        assert result["data"]["status"] == "CANCEL_SENT"
+        result_dict = cast("dict[str, Any]", result)
+        assert result_dict["data"]["status"] == "CANCEL_SENT"
         self.request_private.assert_awaited_once_with(
             "DELETE",
             "/v1/order",
@@ -155,53 +158,108 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(error_context.exception.__cause__, OrderlyRequestError)
         assert "order not found" in str(error_context.exception.__cause__)
 
-    async def test_edit_order_currently_replaces_order_via_cancel_then_create_instead_of_put(
+    async def test_cancel_order_hits_algo_delete_endpoint_with_order_id_param(
         self,
     ) -> None:
-        """Document the current replace-via-cancel flow instead of native PUT edit semantics."""
+        """Cancel algo orders through the native algo delete endpoint using `order_id`."""
         # Arrange
-        self.request_private.side_effect = [
-            {"success": True, "data": {"status": "CANCEL_SENT", "order_id": "12345"}},
-            {"success": True, "data": {"order_id": "54321", "status": "NEW"}},
-        ]
+        self.request_private.return_value = {
+            "success": True,
+            "data": {"status": "CANCEL_SENT", "order_id": "tp-root"},
+        }
 
-        with patch(
-            "plutus_terminal.core.exchange.orderly.trader.uuid4",
-            return_value=SimpleNamespace(hex="00112233445566778899aabbccddeeff"),
-        ):
-            # Act
-            result = await self.trader.edit_order(
-                _build_trade_arguments(
-                    order_id="12345",
-                    reduce_only=False,
-                ),
-            )
+        # Act
+        result = await self.trader.cancel_order(
+            {
+                "order_id": "tp-root",
+                "symbol": "PERP_BTC_USDC",
+                "trade_type": PerpsTradeType.TRIGGER_TP,
+            },
+        )
 
         # Assert
-        assert result == {
-            "cancel": {
-                "success": True,
-                "data": {"status": "CANCEL_SENT", "order_id": "12345"},
+        result_dict = cast("dict[str, Any]", result)
+        assert result_dict["data"]["status"] == "CANCEL_SENT"
+        self.request_private.assert_awaited_once_with(
+            "DELETE",
+            "/v1/algo/order",
+            params={
+                "order_id": "tp-root",
+                "symbol": "PERP_BTC_USDC",
             },
-            "create": {"success": True, "data": {"order_id": "54321", "status": "NEW"}},
-        }
-        assert self.request_private.await_count == 2
-        cancel_call = self.request_private.await_args_list[0]
-        create_call = self.request_private.await_args_list[1]
-        assert cancel_call.args[:2] == ("DELETE", "/v1/order")
-        assert cancel_call.kwargs["params"] == {
-            "order_id": "12345",
-            "symbol": "PERP_BTC_USDC",
-        }
-        assert create_call.args[:2] == ("POST", "/v1/order")
-        create_payload = create_call.kwargs["json_body"]
-        assert create_payload["client_order_id"] == "plutus_00112233445566778899aabb"
-        assert Decimal(create_payload["order_price"]) == Decimal("97500.50")
+        )
 
-    async def test_edit_order_stops_after_cancel_failure_without_submitting_replacement_order(
+    async def test_edit_order_uses_native_put_for_regular_orders(self) -> None:
+        """Edit pending regular orders through Orderly native PUT semantics."""
+        # Arrange
+        self.request_private.return_value = {
+            "success": True,
+            "data": {"status": "EDIT_SENT", "order_id": "12345"},
+        }
+
+        # Act
+        result = await self.trader.edit_order(
+            _build_trade_arguments(
+                order_id="12345",
+                reduce_only=False,
+            ),
+        )
+
+        # Assert
+        result_dict = cast("dict[str, Any]", result)
+        assert result_dict["data"]["status"] == "EDIT_SENT"
+        self.request_private.assert_awaited_once()
+        call = self.request_private.await_args
+        assert call is not None
+        assert call.args[:2] == ("PUT", "/v1/order")
+        payload = call.kwargs["json_body"]
+        assert payload["order_id"] == "12345"
+        assert payload["symbol"] == "PERP_BTC_USDC"
+        assert payload["side"] == "BUY"
+        assert payload["order_type"] == "LIMIT"
+        assert Decimal(payload["order_quantity"]) == Decimal("0.01")
+        assert Decimal(payload["order_price"]) == Decimal("97500.50")
+
+    async def test_edit_order_uses_native_put_for_tp_sl_root_orders(self) -> None:
+        """Edit TP/SL orders through the root algo order instead of replacing them."""
+        # Arrange
+        self.request_private.return_value = {
+            "success": True,
+            "data": {"status": "EDIT_SENT", "order_id": "root-1"},
+        }
+
+        # Act
+        result = await self.trader.edit_order(
+            _build_trade_arguments(
+                order_id="root-1",
+                trade_type=PerpsTradeType.TRIGGER_TP,
+                reduce_only=True,
+                take_profit=Decimal("99000"),
+                stop_loss=Decimal("94000"),
+            ),
+        )
+
+        # Assert
+        result_dict = cast("dict[str, Any]", result)
+        assert result_dict["data"]["status"] == "EDIT_SENT"
+        self.request_private.assert_awaited_once()
+        call = self.request_private.await_args
+        assert call is not None
+        assert call.args[:2] == ("PUT", "/v1/algo/order")
+        payload = call.kwargs["json_body"]
+        assert payload["order_id"] == "root-1"
+        assert payload["algo_type"] == "TP_SL"
+        assert payload["side"] == "SELL"
+        assert Decimal(payload["quantity"]) == Decimal("0.01")
+        assert {child["algo_type"] for child in payload["child_orders"]} == {
+            "TAKE_PROFIT",
+            "STOP_LOSS",
+        }
+
+    async def test_edit_order_wraps_native_put_failures_without_replacing_the_order(
         self,
     ) -> None:
-        """Avoid sending a replacement create when the initial cancel fails."""
+        """Report native PUT failures without sending follow-up create requests."""
         # Arrange
         self.request_private.side_effect = OrderlyRequestError.from_api_error(
             -1006,
@@ -217,8 +275,8 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
                 ),
             )
 
-        self.request_private.assert_awaited_once_with(
-            "DELETE",
-            "/v1/order",
-            params={"order_id": "12345", "symbol": "PERP_BTC_USDC"},
-        )
+        self.request_private.assert_awaited_once()
+        call = self.request_private.await_args
+        assert call is not None
+        assert call.args[:2] == ("PUT", "/v1/order")
+        assert call.kwargs["json_body"]["order_id"] == "12345"

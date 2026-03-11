@@ -97,30 +97,32 @@ class OrderlyTrader:
             "order_id": str(trade_arguments["order_id"]),
             "symbol": str(trade_arguments["symbol"]),
         }
-        if not trade_type.is_regular_order:
-            params = {
-                "algo_order_id": str(trade_arguments["order_id"]),
-                "symbol": str(trade_arguments["symbol"]),
-            }
-            path = "/v1/algo/order"
-        else:
-            path = "/v1/order"
+        path = "/v1/algo/order" if not trade_type.is_regular_order else "/v1/order"
         try:
             return await self._rest_client.request_private("DELETE", path, params=params)
         except Exception as error:
             raise TransactionFailedError from error
 
     async def edit_order(self, trade_arguments: dict) -> TradeResults:
-        """Edit order by replacing existing one (cancel then create)."""
-        cancel_result = await self.cancel_order(
-            {
-                "order_id": trade_arguments["order_id"],
-                "symbol": trade_arguments["symbol"],
-                "trade_type": trade_arguments["trade_type"],
-            },
-        )
-        create_result = await self.create_order(trade_arguments)
-        return {"cancel": cancel_result, "create": create_result}
+        """Edit one order through Orderly native PUT endpoints."""
+        trade_type = PerpsTradeType(trade_arguments["trade_type"])
+        request = _build_order_request(trade_arguments, self._market_registry)
+        order_id = str(trade_arguments["order_id"])
+
+        if trade_type.is_regular_order:
+            path = "/v1/order"
+            payload = _build_regular_edit_payload(order_id, request)
+        elif trade_type.is_stop_order:
+            path = "/v1/algo/order"
+            payload = _build_stop_edit_payload(order_id, request)
+        else:
+            path = "/v1/algo/order"
+            payload = _build_tp_sl_edit_payload(order_id, request)
+
+        try:
+            return await self._rest_client.request_private("PUT", path, json_body=payload)
+        except Exception as error:
+            raise TransactionFailedError from error
 
     async def set_leverage(self, symbol: str, leverage: int) -> dict:
         """Set leverage for one symbol."""
@@ -199,6 +201,23 @@ def _build_regular_order_payload(request: OrderlyOrderRequest) -> OrderlyRegular
     return body
 
 
+def _build_regular_edit_payload(
+    order_id: str, request: OrderlyOrderRequest
+) -> dict[str, str | bool]:
+    """Build `/v1/order` edit payload for a pending regular order."""
+    body: dict[str, str | bool] = {
+        "order_id": order_id,
+        "symbol": request.symbol,
+        "side": request.side.value,
+        "order_type": _native_order_type(request.trade_type).value,
+        "order_quantity": str(request.quantity),
+        "reduce_only": request.reduce_only,
+    }
+    if request.price is not None and request.trade_type is not PerpsTradeType.MARKET:
+        body["order_price"] = str(request.price)
+    return body
+
+
 def _build_stop_order_payload(request: OrderlyOrderRequest) -> OrderlyStopOrderPayload:
     """Build native Orderly `STOP` algo payload."""
     if request.trigger_price is None:
@@ -217,6 +236,13 @@ def _build_stop_order_payload(request: OrderlyOrderRequest) -> OrderlyStopOrderP
     }
     if request.price is not None and request.trade_type is PerpsTradeType.STOP_LIMIT:
         body["price"] = str(request.price)
+    return body
+
+
+def _build_stop_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dict[str, object]:
+    """Build `/v1/algo/order` edit payload for a pending stop order."""
+    body = dict(_build_stop_order_payload(request))
+    body["order_id"] = order_id
     return body
 
 
@@ -250,6 +276,13 @@ def _build_tp_sl_order_payload(request: OrderlyOrderRequest) -> OrderlyTpSlOrder
         "quantity": str(request.quantity),
         "child_orders": child_orders,
     }
+
+
+def _build_tp_sl_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dict[str, object]:
+    """Build `/v1/algo/order` edit payload for an existing TP/SL root order."""
+    body = dict(_build_tp_sl_order_payload(request))
+    body["order_id"] = order_id
+    return body
 
 
 def _build_tp_sl_child_order(
