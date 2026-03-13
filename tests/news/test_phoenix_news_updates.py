@@ -3,13 +3,102 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+from typing import Self
+from unittest.mock import patch
 
+from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
 from plutus_terminal.core.news.phoenix_news import PhoenixNews
 
 
 class TestPhoenixNewsUpdates:
     """Tests for Phoenix update message parsing."""
+
+    def test_fetch_old_news_uses_get_all_news_when_api_key_exists(self) -> None:
+        """Historical Phoenix fetches should use the subscriber endpoint with the API key."""
+        phoenix_news = PhoenixNews(object())
+        captured_requests: list[tuple[str, dict[str, str]]] = []
+
+        class _ResponseStub:
+            def raise_for_status(self) -> None:
+                """Pretend the HTTP response succeeded."""
+
+            def json(self) -> list[dict[str, object]]:
+                """Return an empty news payload."""
+                return []
+
+        class _AsyncClientStub:
+            async def __aenter__(self) -> Self:
+                """Enter the async client context."""
+                return self
+
+            async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+                """Exit the async client context."""
+
+            async def get(self, url: str, headers: dict[str, str]) -> _ResponseStub:
+                """Capture the request and return a stub response."""
+                captured_requests.append((url, headers))
+                return _ResponseStub()
+
+        with (
+            patch(
+                "plutus_terminal.core.news.phoenix_news.keyring_manager.get_news_source_api_key",
+                return_value="phoenix-api-key",
+            ),
+            patch(
+                "plutus_terminal.core.news.phoenix_news.AsyncClient",
+                return_value=_AsyncClientStub(),
+            ),
+        ):
+            assert asyncio.run(phoenix_news.fetch_old_news(50)) == []
+
+        assert captured_requests == [
+            (
+                "https://api.phoenixnews.io/getAllNews?limit=50",
+                {"x-api-key": "phoenix-api-key"},
+            ),
+        ]
+
+    def test_fetch_old_news_uses_public_endpoint_without_api_key(self) -> None:
+        """Historical Phoenix fetches should keep using the public endpoint without a key."""
+        phoenix_news = PhoenixNews(object())
+        captured_requests: list[tuple[str, dict[str, str]]] = []
+
+        class _ResponseStub:
+            def raise_for_status(self) -> None:
+                """Pretend the HTTP response succeeded."""
+
+            def json(self) -> list[dict[str, object]]:
+                """Return an empty news payload."""
+                return []
+
+        class _AsyncClientStub:
+            async def __aenter__(self) -> Self:
+                """Enter the async client context."""
+                return self
+
+            async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+                """Exit the async client context."""
+
+            async def get(self, url: str, headers: dict[str, str]) -> _ResponseStub:
+                """Capture the request and return a stub response."""
+                captured_requests.append((url, headers))
+                return _ResponseStub()
+
+        with (
+            patch(
+                "plutus_terminal.core.news.phoenix_news.keyring_manager.get_news_source_api_key",
+                side_effect=KeyringPasswordNotFoundError("missing"),
+            ),
+            patch(
+                "plutus_terminal.core.news.phoenix_news.AsyncClient",
+                return_value=_AsyncClientStub(),
+            ),
+        ):
+            assert asyncio.run(phoenix_news.fetch_old_news(25)) == []
+
+        assert captured_requests == [("https://api.phoenixnews.io/getLastNews?limit=25", {})]
 
     def test_format_news_keeps_inline_ai_fields_on_historical_news(self) -> None:
         """Historical Phoenix news should keep inline AI summary and important fields."""
