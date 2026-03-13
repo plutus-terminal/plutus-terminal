@@ -29,6 +29,7 @@ class _ExchangeStub:
             "Free Balance": Decimal("80"),
             "Available Balance": Decimal("95"),
             "Unsettled PnL": Decimal("5"),
+            "Account Id": "acct-123",
         }
 
     async def is_ready_to_trade(self) -> bool:
@@ -50,9 +51,8 @@ class _UIControllerStub(QtCore.QObject):
         self.message_bus = _MessageBus()
 
 
-def _layout_value_for_label(widget: AccountInfo, label_text: str) -> str:
+def _layout_value_for_label(layout: QtWidgets.QGridLayout, label_text: str) -> str:
     """Resolve the rendered value text for one account-info row label."""
-    layout = widget._exchange_account_info_layout
     expected_label = " ".join(label_text.lower().split())
     for row in range(layout.rowCount()):
         label_item = layout.itemAtPosition(row, 0)
@@ -79,8 +79,8 @@ class OrderlyAccountInfoWidgetParityTests(unittest.TestCase):
         """Ensure one QApplication exists for widget tests."""
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-    def test_balance_signal_refreshes_summary_and_rows_from_exchange_state(self) -> None:
-        """Refresh both the top summary and detail rows when balances/positions change."""
+    def test_balance_details_are_collapsed_by_default_and_expand_on_toggle(self) -> None:
+        """Keep the total visible by default and reveal supporting rows only on demand."""
         # Arrange
         ui_controller: Any = _UIControllerStub()
         widget = AccountInfo(ui_controller)
@@ -89,13 +89,26 @@ class OrderlyAccountInfoWidgetParityTests(unittest.TestCase):
             "Free Balance": Decimal("87.5"),
             "Available Balance": Decimal("100"),
             "Unsettled PnL": Decimal("12.5"),
+            "Account Id": "acct-456",
         }
 
         # Act
         ui_controller.message_bus.balance_fetched.emit(Decimal("0"))
 
         # Assert
+        assert widget._balance_label.text() == "Total Balance"
+        assert "available balance plus unsettled PnL" in widget._balance_label.toolTip()
         assert widget._balance_value.text() == "$112.500 USD"
-        assert _layout_value_for_label(widget, "Free Balance") == "87.5"
-        assert _layout_value_for_label(widget, "Available Balance") == "100"
-        assert _layout_value_for_label(widget, "Available Balance + Unsettled Pn L") == "112.5"
+        assert _layout_value_for_label(widget._exchange_account_info_layout, "Account Id") == "acct-456"
+        assert widget._toggle_details_button.text() == "Show Balance Details"
+        assert widget._details_container.isHidden() is True
+
+        # Act
+        widget._toggle_details_button.click()
+
+        # Assert
+        assert widget._toggle_details_button.text() == "Hide Balance Details"
+        assert widget._details_container.isHidden() is False
+        assert _layout_value_for_label(widget._balance_breakdown_layout, "Available Balance") == "100"
+        assert _layout_value_for_label(widget._balance_breakdown_layout, "Unsettled Pn L") == "12.5"
+        assert _layout_value_for_label(widget._balance_breakdown_layout, "Free Balance") == "87.5"

@@ -479,6 +479,7 @@ class OrderlyExchange(ExchangeBase):
             )
             return
 
+        await self.fetcher._refresh_balance()  # noqa: SLF001
         await self.fetcher.fetch_all_positions()
         self.message_bus.positions_fetched.emit(self.fetcher._cached_positions)  # noqa: SLF001
 

@@ -72,6 +72,7 @@ def _build_exchange(
     )
     exchange._fetcher = fetcher or SimpleNamespace(
         start=AsyncMock(),
+        _refresh_balance=AsyncMock(),
         fetch_all_orders=AsyncMock(),
         fetch_all_positions=AsyncMock(),
         fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
@@ -441,6 +442,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         message_bus = _build_message_bus()
         trader = SimpleNamespace(close_position=AsyncMock(return_value={"success": True}))
         fetcher = SimpleNamespace(
+            _refresh_balance=AsyncMock(),
             fetch_all_positions=AsyncMock(),
             _cached_positions=[{"id": 99}],
         )
@@ -462,6 +464,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert trade_arguments["symbol"] == "PERP_BTC_USDC"
         assert trade_arguments["trade_type"] is PerpsTradeType.MARKET
         assert trade_arguments["base_size"] == "0.00102564"
+        fetcher._refresh_balance.assert_awaited_once()
         fetcher.fetch_all_positions.assert_awaited_once()
         message_bus.positions_fetched.emit.assert_called_once_with(fetcher._cached_positions)
 
