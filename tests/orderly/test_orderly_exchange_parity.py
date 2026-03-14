@@ -528,7 +528,6 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert pnl_details["funding_fee_usd"] == Decimal("0.75")
         assert pnl_details["opening_fee_usd"] == Decimal("0.582")
         assert pnl_details["closing_fee_usd"] == Decimal("0.61")
-        assert pnl_details["position_fee_usd"] == Decimal("0.582")
         assert pnl_details["pnl_usd_after_fees"] == Decimal("3.063")
         assert pnl_details["pnl_label"] == "Unrealized PnL"
         assert pnl_details["net_pnl_label"] == "Close-now PnL"

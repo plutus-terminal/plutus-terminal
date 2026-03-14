@@ -111,7 +111,6 @@ class PnlDetails(TypedDict):
     funding_fee_usd: Decimal
     opening_fee_usd: Decimal
     closing_fee_usd: Decimal
-    position_fee_usd: Decimal
     pnl_usd_after_fees: Decimal
     pnl_percentage_after_fees: Decimal
     funding_fee_included_in_pnl: NotRequired[bool]

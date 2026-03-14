@@ -535,9 +535,21 @@ class NewsWidget(QtWidgets.QGroupBox):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Emit signal when clicked."""
-        if event.button() == Qt.MouseButton.LeftButton:
+        click_target = self.childAt(event.position().toPoint())
+        if event.button() == Qt.MouseButton.LeftButton and not self._is_pair_interaction_target(
+            click_target,
+        ):
             self.news_clicked.emit(self)
         return super().mousePressEvent(event)
+
+    def _is_pair_interaction_target(self, widget: QtWidgets.QWidget | None) -> bool:
+        """Return whether the click happened inside the pair interaction area."""
+        current_widget = widget
+        while current_widget is not None and current_widget is not self:
+            if current_widget.property("news_pair_interaction"):
+                return True
+            current_widget = current_widget.parentWidget()
+        return False
 
     async def set_initial_prices(self, fetch_price_at_time: Callable) -> None:
         """Set initial prices for coins in data."""
@@ -576,6 +588,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             interaction_pairs.add(pair)
 
             button_group_box = ClickableGroupBox(coin)
+            button_group_box.setProperty("news_pair_interaction", True)
             button_group_box.clicked.connect(partial(self.pair_clicked.emit, pair))
             self.group_box_layout[coin] = QtWidgets.QVBoxLayout()
             self.percent_label[pair] = QtWidgets.QLabel("0%")
@@ -907,5 +920,8 @@ class ClickableGroupBox(QtWidgets.QGroupBox):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Emit signal when clicked."""
-        self.clicked.emit()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return None
         return super().mousePressEvent(event)

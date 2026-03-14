@@ -716,7 +716,6 @@ class ExchangeBase(ABC):
                 "pnl_percentage_before_fees": pnl_percentage,
                 "opening_fee_usd": opening_fee,
                 "closing_fee_usd": closing_fee,
-                "position_fee_usd": position_fee,
                 "funding_fee_usd": funding_fee,
                 "pnl_usd_after_fees": pnl_usd_after_fees,
                 "pnl_percentage_after_fees": pnl_percentage_after_fees,

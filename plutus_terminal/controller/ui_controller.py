@@ -70,6 +70,7 @@ class UIController(QObject):
         self.news_manager: NewsManager
         self.current_exchange: ExchangeBase
         self.current_pair: str
+        self._is_current_pair_subscribed = False
 
         self._connect_signals()
 
@@ -115,6 +116,7 @@ class UIController(QObject):
         # Init price fetching loops
         await self.current_exchange.fetch_prices()
 
+        self._is_current_pair_subscribed = False
         if self.current_pair in self.current_exchange.available_pairs:
             await self.change_current_pair(self.current_pair)
         else:
@@ -123,7 +125,7 @@ class UIController(QObject):
         self.exchange_changed.emit()
         self.message_bus.blockSignals(False)
 
-    @asyncSlot()
+    @asyncSlot(str)
     async def change_current_pair(self, pair: str) -> None:
         """Change current pair.
 
@@ -132,11 +134,20 @@ class UIController(QObject):
         Args:
             pair (str): Pair name e.g Crypto.BTC/USD.
         """
-        if pair != self.current_pair:
-            await self.current_exchange.fetcher.unsubscribe_to_price(self.current_pair)
+        if pair not in self.current_exchange.available_pairs:
+            LOGGER.warning("Ignoring unavailable pair change request: %s", pair)
+            return
+
+        if pair == self.current_pair and self._is_current_pair_subscribed:
+            return
+
+        previous_pair = self.current_pair if self._is_current_pair_subscribed else None
         await self.current_exchange.fetcher.subscribe_to_price(pair)
+        if previous_pair is not None and previous_pair != pair:
+            await self.current_exchange.fetcher.unsubscribe_to_price(previous_pair)
 
         self.current_pair = pair
+        self._is_current_pair_subscribed = True
         self.pair_changed.emit(pair)
 
     async def fetch_price_history(self) -> tuple[pandas.DataFrame, int]:

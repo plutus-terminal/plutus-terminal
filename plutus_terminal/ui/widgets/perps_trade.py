@@ -141,11 +141,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             )
 
         self._set_data_from_exchange()
-        self._pair_combo_box.currentTextChanged.connect(
-            lambda pair: self._ui_controller.change_current_pair(
-                f"{self._exchange.pair_prefix}{pair}{self._exchange.pair_suffix}",
-            ),
-        )
+        self._pair_combo_box.currentIndexChanged.connect(self._on_pair_combo_index_changed)
 
         pair_layout = QtWidgets.QVBoxLayout()
         pair_layout.addWidget(self._pair_combo_box)
@@ -328,6 +324,14 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._update_leverage_buttons(leverage_value)
 
         await self._set_leverage()
+
+    @asyncSlot(int)
+    async def _on_pair_combo_index_changed(self, index: int) -> None:
+        """Change current pair from the combo-box selection."""
+        pair = self._pair_combo_box.itemData(index)
+        if not isinstance(pair, str):
+            return
+        await self._ui_controller.change_current_pair(pair)
 
     def _update_leverage_values(self) -> None:
         """Update leverage spin."""
@@ -550,7 +554,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             return PerpsTradeType.STOP_MARKET
         return PerpsTradeType.LIMIT
 
-    @asyncSlot()
+    @asyncSlot(str)
     async def _update_current_pair(self, pair: str) -> None:
         """Update current pair.
 

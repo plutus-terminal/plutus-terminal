@@ -231,7 +231,6 @@ class OrderlyExchange(ExchangeBase):
             "funding_fee_usd": funding_fee,
             "opening_fee_usd": opening_fee,
             "closing_fee_usd": closing_fee,
-            "position_fee_usd": opening_fee,
             "pnl_usd_after_fees": pnl_usd_after_fees,
             "pnl_percentage_after_fees": pnl_percentage_after_fees,
             "pnl_label": "Unrealized PnL",
