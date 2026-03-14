@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QCoreApplication
 
@@ -213,3 +213,12 @@ class TestNewsManagerUpdates:
         assert historical_news[0]["summary_body"] == "AI summary body"
         assert historical_news[0]["is_important"] is True
         assert historical_news[0]["applied_updates"] == {"important-auto", "summary-ai"}
+
+    def test_merge_news_update_handles_missing_existing_coin_set(self) -> None:
+        """Merge coin updates defensively when the cached payload has a null coin field."""
+        current_news = _make_news(coin=cast("Any", None))
+        incoming_news = _make_news(is_update=True, update_type="coins", coin={"BTC", "ETH"})
+
+        merged_news = merge_news_update(current_news, incoming_news)
+
+        assert merged_news["coin"] == {"BTC", "ETH"}

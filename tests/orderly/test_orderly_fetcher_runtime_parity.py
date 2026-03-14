@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from httpx import HTTPStatusError, Request, Response
+from httpx import HTTPStatusError, Request, RequestError, Response
 import pytest
 
 from plutus_terminal.core.exchange.orderly.fetcher import (
@@ -60,6 +60,11 @@ def _retry_state(attempt_number: int, exception: BaseException) -> SimpleNamespa
     )
 
 
+def _request_error(path: str, message: str = "request failed") -> RequestError:
+    request = Request("GET", f"https://example.invalid{path}")
+    return RequestError(message, request=request)
+
+
 class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
     """Verify Orderly fetcher runtime behavior stays deterministic and source-aligned."""
 
@@ -82,6 +87,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
                 subscribe_private=AsyncMock(),
                 next_private_event=AsyncMock(),
                 should_stop=Mock(return_value=False),
+                connect_public=AsyncMock(),
                 connect_private=AsyncMock(),
                 subscribe_public=AsyncMock(),
                 unsubscribe_public=AsyncMock(),
@@ -478,6 +484,42 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         )
         self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("10"))
 
+    async def test_fetch_all_positions_retries_transient_request_errors(self) -> None:
+        """Retry transient transport failures before giving up on positions snapshots."""
+        request_count = 0
+
+        async def request_private(_method: str, path: str, **_kwargs: object) -> dict[str, object]:
+            nonlocal request_count
+            assert path == "/v1/positions"
+            request_count += 1
+            if request_count == 1:
+                raise _request_error(path, "server disconnected")
+            return {"data": {"rows": []}}
+
+        self.request_private.side_effect = request_private
+
+        positions = await self.fetcher.fetch_all_positions()
+
+        assert positions == []
+        assert request_count == 2
+
+    async def test_fetch_all_orders_retries_transient_request_errors(self) -> None:
+        """Retry transient transport failures independently for private order snapshots."""
+        request_counts = {"/v1/orders": 0, "/v1/algo/orders": 0}
+
+        async def request_private(_method: str, path: str, **_kwargs: object) -> dict[str, object]:
+            request_counts[path] += 1
+            if path == "/v1/orders" and request_counts[path] == 1:
+                raise _request_error(path, "timed out")
+            return {"data": {"rows": []}}
+
+        self.request_private.side_effect = request_private
+
+        orders = await self.fetcher.fetch_all_orders()
+
+        assert orders == []
+        assert request_counts == {"/v1/orders": 2, "/v1/algo/orders": 1}
+
     async def test_apply_positions_event_drops_unknown_or_empty_rows_but_still_emits_snapshot(
         self,
     ) -> None:
@@ -655,7 +697,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
     async def test_consume_private_events_reconnects_and_replays_account_topics_after_errors(
         self,
     ) -> None:
-        """Reconnect the private stream and resubscribe account topics after unexpected errors."""
+        """Reconnect the private stream without sending duplicate subscribe messages."""
         # Arrange
         self.websocket_manager.should_stop = Mock(side_effect=[False, True])
         self.websocket_manager.next_private_event.side_effect = RuntimeError("stream dropped")
@@ -670,4 +712,24 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         sleep_mock.assert_awaited_once_with(0.2)
         self.websocket_manager.connect_private.assert_awaited_once()
-        self.websocket_manager.subscribe_private.assert_awaited_once_with(ACCOUNT_TOPICS)
+        self.websocket_manager.subscribe_private.assert_not_awaited()
+
+    async def test_receive_subscribed_prices_reconnects_without_duplicate_resubscribe(self) -> None:
+        """Reconnect the public stream without replaying subscriptions twice."""
+        # Arrange
+        self.fetcher.start = AsyncMock()  # type: ignore[method-assign]
+        self.websocket_manager.has_public_topics = Mock(return_value=True)
+        self.websocket_manager.should_stop = Mock(side_effect=[False, True])
+        self.websocket_manager.next_public_event.side_effect = RuntimeError("stream dropped")
+
+        with patch(
+            "plutus_terminal.core.exchange.orderly.fetcher.asyncio.sleep",
+            new=AsyncMock(),
+        ) as sleep_mock:
+            # Act
+            await self.fetcher.receive_subscribed_prices()
+
+        # Assert
+        self.fetcher.start.assert_awaited_once()  # type: ignore[attr-defined]
+        sleep_mock.assert_awaited_once_with(0.2)
+        self.websocket_manager.connect_public.assert_awaited_once()

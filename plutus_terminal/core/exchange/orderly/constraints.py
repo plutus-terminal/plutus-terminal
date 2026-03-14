@@ -47,6 +47,7 @@ def validate_order_size(
 def _quantize_to_step(value: Decimal, step: Decimal) -> Decimal:
     """Round down value to nearest multiple of step."""
     if step <= Decimal(0):
-        return value
+        msg = f"invalid tick/step metadata: step={step}, value={value}"
+        raise ValueError(msg)
     units = (value / step).to_integral_value(rounding=ROUND_DOWN)
     return units * step

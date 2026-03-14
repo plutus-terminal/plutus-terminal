@@ -55,17 +55,26 @@ class OrderlyTrader:
 
         try:
             primary_result = await self._submit_order_request(request)
-            result: TradeResults = primary_result
-            if request.trade_type.is_regular_order and request.has_any_tp_sl:
+        except Exception as error:
+            raise TransactionFailedError from error
+
+        result: TradeResults = primary_result
+        if request.trade_type.is_regular_order and request.has_any_tp_sl:
+            try:
                 tp_sl_result = await self._rest_client.request_private(
                     "POST",
                     "/v1/algo/order",
                     json_body=_build_tp_sl_order_payload(request),
                 )
                 result = {"primary": primary_result, "tp_sl": tp_sl_result}
-            return result  # noqa: TRY300
-        except Exception as error:
-            raise TransactionFailedError from error
+            except Exception as error:
+                result = {
+                    "primary": primary_result,
+                    "tp_sl": None,
+                    "partial_success": True,
+                    "tp_sl_error": str(error),
+                }
+        return result
 
     async def create_reduce_order(self, trade_arguments: dict) -> TradeResults:
         """Create reduce-only order for an existing position."""
@@ -181,8 +190,10 @@ def _build_order_request(
         reduce_only=reduce_only,
         price=_optional_quantized_price(trade_arguments.get("price"), market_rule),
         trigger_price=_optional_quantized_price(trigger_price, market_rule),
-        take_profit=Decimal(str(trade_arguments.get("take_profit", 0))),
-        stop_loss=Decimal(str(trade_arguments.get("stop_loss", 0))),
+        take_profit=_optional_quantized_price(trade_arguments.get("take_profit"), market_rule)
+        or Decimal(0),
+        stop_loss=_optional_quantized_price(trade_arguments.get("stop_loss"), market_rule)
+        or Decimal(0),
     )
 
 
@@ -269,9 +280,13 @@ def _build_tp_sl_order_payload(request: OrderlyOrderRequest) -> OrderlyTpSlOrder
         msg = "TP/SL algo orders require at least one trigger target."
         raise ValueError(msg)
 
+    side = request.side
+    if not request.reduce_only:
+        side = OrderlySide.SELL if request.side is OrderlySide.BUY else OrderlySide.BUY
+
     return {
         "symbol": request.symbol,
-        "side": request.side.value,
+        "side": side.value,
         "algo_type": OrderlyAlgoType.TP_SL.value,
         "quantity": str(request.quantity),
         "child_orders": child_orders,
@@ -345,7 +360,10 @@ def _optional_quantized_price(
     """Quantize optional price fields when present."""
     if raw_price is None:
         return None
-    return quantize_price(Decimal(str(raw_price)), market_rule)
+    text = str(raw_price).strip()
+    if text == "":
+        return None
+    return quantize_price(Decimal(text), market_rule)
 
 
 def _resolve_base_size(

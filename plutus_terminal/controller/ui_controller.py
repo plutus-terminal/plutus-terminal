@@ -391,7 +391,10 @@ class UIController(QObject):
         """Convert optional numeric payload fields to Decimal."""
         if value is None:
             return None
-        return Decimal(str(value))
+        text = str(value).strip()
+        if text == "":
+            return None
+        return Decimal(text)
 
     def show_toast_message(self, message: UserMessage) -> None:
         """Handle user message.

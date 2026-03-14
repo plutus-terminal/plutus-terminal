@@ -99,7 +99,10 @@ class OrderlyAccountInfoWidgetParityTests(unittest.TestCase):
         assert widget._balance_label.text() == "Total Balance"
         assert "available balance plus unsettled PnL" in widget._balance_label.toolTip()
         assert widget._balance_value.text() == "$112.500 USD"
-        assert _layout_value_for_label(widget._exchange_account_info_layout, "Account Id") == "acct-456"
+        assert (
+            _layout_value_for_label(widget._exchange_account_info_layout, "Account Id")
+            == "acct-456"
+        )
         assert widget._toggle_details_button.text() == "Show Balance Details"
         assert widget._details_container.isHidden() is True
 
@@ -109,6 +112,8 @@ class OrderlyAccountInfoWidgetParityTests(unittest.TestCase):
         # Assert
         assert widget._toggle_details_button.text() == "Hide Balance Details"
         assert widget._details_container.isHidden() is False
-        assert _layout_value_for_label(widget._balance_breakdown_layout, "Available Balance") == "100"
-        assert _layout_value_for_label(widget._balance_breakdown_layout, "Unsettled Pn L") == "12.5"
+        assert (
+            _layout_value_for_label(widget._balance_breakdown_layout, "Available Balance") == "100"
+        )
+        assert _layout_value_for_label(widget._balance_breakdown_layout, "Unsettled PnL") == "12.5"
         assert _layout_value_for_label(widget._balance_breakdown_layout, "Free Balance") == "87.5"

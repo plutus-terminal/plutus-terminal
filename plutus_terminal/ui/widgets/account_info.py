@@ -36,7 +36,8 @@ def _humanize_label(label: str) -> str:
         if humanized and character.isupper() and humanized[-1] not in {" ", "/"}:
             humanized.append(" ")
         humanized.append(character)
-    return " ".join("".join(humanized).split()).title()
+    formatted_label = " ".join("".join(humanized).split()).title()
+    return formatted_label.replace("Pn L", "PnL")
 
 
 def _format_decimal_value(value: Decimal, label: str) -> str:

@@ -58,6 +58,10 @@ _KLINE_HISTORY_RATE_LIMIT_INTERVAL_SECONDS = 0.25
 _KLINE_HISTORY_RETRY_BASE_SECONDS = 0.5
 _KLINE_HISTORY_RETRY_MAX_SECONDS = 12.0
 _KLINE_HISTORY_429_MIN_BACKOFF_SECONDS = 1.0
+_PRIVATE_SNAPSHOT_RETRY_ATTEMPTS = 3
+_PRIVATE_SNAPSHOT_RETRY_BASE_SECONDS = 0.5
+_PRIVATE_SNAPSHOT_RETRY_MAX_SECONDS = 4.0
+_PRIVATE_SNAPSHOT_429_MIN_BACKOFF_SECONDS = 1.0
 _BPS_DENOMINATOR = Decimal("10000")
 _DEFAULT_FUTURES_TAKER_FEE_RATE_BPS = Decimal("6")
 _FUNDING_FEE_CACHE_TTL_SECONDS = 60.0
@@ -123,6 +127,37 @@ def _extract_retry_after_seconds(exception: BaseException | None) -> float | Non
         return max(0.0, float(header_value))
     except ValueError:
         return None
+
+
+def _is_retryable_private_snapshot_status_error(exception: BaseException) -> bool:
+    """Return True when private snapshot HTTP status is retryable."""
+    if not isinstance(exception, HTTPStatusError):
+        return False
+    status_code = exception.response.status_code
+    return status_code == _HTTP_TOO_MANY_REQUESTS or (
+        _HTTP_SERVER_ERROR_MIN <= status_code < _HTTP_SERVER_ERROR_MAX
+    )
+
+
+def _private_snapshot_retry_wait(retry_state: RetryCallState) -> float:
+    """Return adaptive retry delay for private snapshot requests."""
+    attempt = max(1, int(retry_state.attempt_number))
+    exponential_seconds = min(
+        _PRIVATE_SNAPSHOT_RETRY_MAX_SECONDS,
+        _PRIVATE_SNAPSHOT_RETRY_BASE_SECONDS * (2 ** (attempt - 1)),
+    )
+
+    exception = retry_state.outcome.exception() if retry_state.outcome is not None else None
+    retry_after_seconds = _extract_retry_after_seconds(exception)
+    if retry_after_seconds is not None:
+        return retry_after_seconds
+
+    if (
+        isinstance(exception, HTTPStatusError)
+        and exception.response.status_code == _HTTP_TOO_MANY_REQUESTS
+    ):
+        return max(_PRIVATE_SNAPSHOT_429_MIN_BACKOFF_SECONDS, exponential_seconds)
+    return exponential_seconds
 
 
 class OrderlyFetcher(ExchangeFetcher):
@@ -390,7 +425,6 @@ class OrderlyFetcher(ExchangeFetcher):
                 LOGGER.exception("Unexpected error while receiving public Orderly prices")
                 await asyncio.sleep(0.2)
                 await self._ws.connect_public()
-                await self.resubscribe_on_going_connections()
 
     async def watch_all_positions(self) -> None:
         """Emit positions from cache and refresh snapshot periodically."""
@@ -401,7 +435,7 @@ class OrderlyFetcher(ExchangeFetcher):
 
     async def fetch_all_positions(self) -> list[PerpsPosition]:
         """Fetch all open positions from private REST endpoint."""
-        payload = await self._rest_client.request_private("GET", "/v1/positions")
+        payload = await self._request_private_snapshot_with_retry("/v1/positions")
         data = payload.get("data", {})
         rows = data.get("rows", []) if isinstance(data, Mapping) else []
         self._cached_unsettled_pnl = _sum_unsettled_pnl(rows)
@@ -424,12 +458,11 @@ class OrderlyFetcher(ExchangeFetcher):
     async def fetch_all_orders(self) -> list[OrderData]:
         """Fetch all incomplete orders from private REST endpoint."""
         regular_payload, algo_payload = await asyncio.gather(
-            self._rest_client.request_private(
-                "GET",
+            self._request_private_snapshot_with_retry(
                 "/v1/orders",
                 params={"status": "INCOMPLETE"},
             ),
-            self._rest_client.request_private("GET", "/v1/algo/orders"),
+            self._request_private_snapshot_with_retry("/v1/algo/orders"),
         )
 
         regular_rows = regular_payload.get("data", {}).get("rows", [])
@@ -453,6 +486,26 @@ class OrderlyFetcher(ExchangeFetcher):
             reverse=True,
         )
         return self._cached_orders
+
+    @retry(
+        retry=(
+            retry_if_exception_type(RequestError)
+            | retry_if_exception(_is_retryable_private_snapshot_status_error)
+        ),
+        stop=stop_after_attempt(_PRIVATE_SNAPSHOT_RETRY_ATTEMPTS),
+        wait=_private_snapshot_retry_wait,
+        before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
+        retry_error_callback=log_retry(LOGGER),
+        reraise=True,
+    )
+    async def _request_private_snapshot_with_retry(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Request a private snapshot endpoint with transient-failure retries."""
+        return await self._rest_client.request_private("GET", path, params=params)
 
     async def fetch_price_at_time(self, pair: str, timestamp: int) -> PriceData:
         """Fetch price for pair close to a timestamp."""
@@ -755,7 +808,6 @@ class OrderlyFetcher(ExchangeFetcher):
                 LOGGER.exception("Unexpected error while consuming private Orderly events")
                 await asyncio.sleep(0.2)
                 await self._ws.connect_private()
-                await self._ws.subscribe_private(ACCOUNT_TOPICS)
 
     async def _apply_balance_event(self, event: dict[str, Any]) -> None:
         """Extract and apply balance updates from private stream event."""
@@ -1390,25 +1442,20 @@ def _resolve_position_collateral(
     leverage: Decimal,
 ) -> Decimal:
     """Resolve position collateral from native amounts or IMR ratio fields."""
-    collateral = _decimal_from_mapping(
-        row,
-        (
-            "collateral",
-            "collateral_stable",
-            "imr_with_orders",
-            "imrwithOrders",
-            "IMR_withdraw_orders",
-            "imr",
-        ),
-    )
-    if collateral <= Decimal(0):
-        if leverage > Decimal(0):
-            return notional / leverage
-        return Decimal(0)
+    collateral = _decimal_from_mapping(row, ("collateral", "collateral_stable"))
+    if collateral > Decimal(0):
+        return collateral
 
-    if collateral <= Decimal(1) and notional > Decimal(0):
-        return notional * collateral
-    return collateral
+    collateral_ratio = _decimal_from_mapping(
+        row,
+        ("imr_with_orders", "imrwithOrders", "IMR_withdraw_orders", "imr"),
+    )
+    if collateral_ratio > Decimal(0) and notional > Decimal(0):
+        return notional * collateral_ratio
+
+    if leverage > Decimal(0):
+        return notional / leverage
+    return Decimal(0)
 
 
 def _parse_position(

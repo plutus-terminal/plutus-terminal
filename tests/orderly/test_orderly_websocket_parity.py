@@ -18,6 +18,7 @@ from plutus_terminal.core.exchange.orderly.websocket import (
 from plutus_terminal.core.exchange.orderly.ws_topics import (
     ACCOUNT_TOPICS,
     ALGO_EXECUTION_REPORT_TOPIC,
+    build_topic_command_message,
 )
 
 
@@ -50,6 +51,15 @@ def _build_manager() -> OrderlyWebsocketManager:
 
 class OrderlyWebsocketParityTests(unittest.IsolatedAsyncioTestCase):
     """Verify websocket subscribe flows preserve algo acks and push events."""
+
+    def test_build_topic_command_message_preserves_explicit_empty_params(self) -> None:
+        """Keep intentionally empty params mappings in the outgoing payload."""
+        assert build_topic_command_message("1", "subscribe", "topic", params={}) == {
+            "id": "1",
+            "event": "subscribe",
+            "topic": "topic",
+            "params": {},
+        }
 
     async def test_subscribe_public_retries_once_when_socket_closes_before_ack(self) -> None:
         """Reconnect once for public subscribe when the socket closes during send/ack."""

@@ -148,10 +148,54 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         assert regular_payload["order_type"] == "LIMIT"
         assert Decimal(regular_payload["order_quantity"]) == Decimal("0.01")
         assert Decimal(regular_payload["order_price"]) == Decimal("97500.50")
+        assert tp_sl_payload["side"] == "SELL"
         assert len(tp_sl_payload["child_orders"]) == 2
         assert {child["algo_type"] for child in tp_sl_payload["child_orders"]} == {
             "TAKE_PROFIT",
             "STOP_LOSS",
+        }
+
+    async def test_create_order_quantizes_attached_tp_sl_trigger_prices(self) -> None:
+        """Round attached TP/SL trigger prices to the market quote tick before sending."""
+        # Arrange
+        self.request_private.side_effect = [{"order_id": "primary"}, {"algo_order_id": "tp_sl"}]
+
+        # Act
+        await self.trader.create_order(
+            _build_trade_arguments(
+                take_profit=Decimal("99000.019"),
+                stop_loss=Decimal("94000.019"),
+            ),
+        )
+
+        # Assert
+        payload = self.request_private.await_args_list[1].kwargs["json_body"]
+        child_orders = {child["algo_type"]: child for child in payload["child_orders"]}
+        assert Decimal(child_orders["TAKE_PROFIT"]["trigger_price"]) == Decimal("99000.01")
+        assert Decimal(child_orders["STOP_LOSS"]["trigger_price"]) == Decimal("94000.01")
+
+    async def test_create_order_returns_partial_success_when_tp_sl_attach_fails(self) -> None:
+        """Keep the live primary order visible when the follow-up TP/SL request fails."""
+        # Arrange
+        self.request_private.side_effect = [
+            {"order_id": "primary"},
+            TransactionFailedError("[429] too many requests"),
+        ]
+
+        # Act
+        result = await self.trader.create_order(
+            _build_trade_arguments(
+                take_profit=Decimal("99000"),
+                stop_loss=Decimal("94000"),
+            ),
+        )
+
+        # Assert
+        assert result == {
+            "primary": {"order_id": "primary"},
+            "tp_sl": None,
+            "partial_success": True,
+            "tp_sl_error": "[429] too many requests",
         }
 
     async def test_create_order_without_tp_sl_submits_only_the_primary_regular_order(self) -> None:

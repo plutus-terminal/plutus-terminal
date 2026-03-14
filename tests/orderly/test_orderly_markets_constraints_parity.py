@@ -139,6 +139,59 @@ class OrderlyMarketRegistryParityTests(unittest.IsolatedAsyncioTestCase):
         assert refreshed_rule.min_notional == Decimal("25")
         assert refreshed_rule.max_leverage == 12
 
+    async def test_refresh_skips_malformed_rows_and_keeps_valid_perp_rows(self) -> None:
+        """Ignore malformed PERP rows instead of aborting the whole refresh."""
+        # Arrange
+        request_public = AsyncMock(
+            return_value={
+                "data": {
+                    "rows": [
+                        {
+                            "symbol": "PERP_BTC_USDC",
+                            "base_min": "bad-decimal",
+                        },
+                        {
+                            "symbol": "PERP_ETH_USDC",
+                            "base_min": "0.01",
+                            "base_max": "100",
+                            "base_tick": "0.01",
+                            "quote_min": "1",
+                            "quote_max": "1000000",
+                            "quote_tick": "0.10",
+                            "min_notional": "5",
+                            "max_leverage": "20",
+                        },
+                    ],
+                },
+            },
+        )
+        registry = OrderlyMarketRegistry()
+
+        # Act
+        await registry.refresh(
+            cast("OrderlyRestClient", SimpleNamespace(request_public=request_public)),
+        )
+
+        # Assert
+        assert registry.pairs == {"Crypto.ETH/USDC"}
+        assert registry.get_symbol_for_pair("Crypto.ETH/USDC") == "PERP_ETH_USDC"
+
+    async def test_refresh_preserves_existing_rules_when_payload_has_no_valid_rows(self) -> None:
+        """Keep the previous registry when bootstrap data is entirely malformed."""
+        # Arrange
+        request_public = AsyncMock(return_value={"data": {"rows": [{"symbol": "PERP_BTC_USDC"}]}})
+        registry = OrderlyMarketRegistry()
+        registry.load_fallback_symbols(("PERP_BTC_USDC",))
+
+        # Act
+        await registry.refresh(
+            cast("OrderlyRestClient", SimpleNamespace(request_public=request_public)),
+        )
+
+        # Assert
+        assert registry.pairs == {"Crypto.BTC/USDC"}
+        assert registry.get_symbol_for_pair("Crypto.BTC/USDC") == "PERP_BTC_USDC"
+
     async def test_load_fallback_symbols_ignores_non_perp_inputs(self) -> None:
         """Skip fallback entries that are not perpetual symbols."""
         # Arrange
@@ -170,18 +223,17 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         assert quantized_price == Decimal("97500.50")
         assert quantized_size == Decimal("0.015")
 
-    def test_quantize_helpers_leave_values_unchanged_when_tick_is_not_positive(self) -> None:
-        """Preserve values when current metadata exposes a non-positive tick."""
+    def test_quantize_helpers_raise_when_tick_is_not_positive(self) -> None:
+        """Fail fast when market metadata exposes a non-positive tick size."""
         # Arrange
         market_rule = _build_market_rule(base_tick=Decimal("0"), quote_tick=Decimal("0"))
 
-        # Act
-        quantized_price = quantize_price(Decimal("97500.74"), market_rule)
-        quantized_size = quantize_base_size(Decimal("0.0199"), market_rule)
+        # Act / Assert
+        with self.assertRaisesRegex(ValueError, "step=0"):
+            quantize_price(Decimal("97500.74"), market_rule)
 
-        # Assert
-        assert quantized_price == Decimal("97500.74")
-        assert quantized_size == Decimal("0.0199")
+        with self.assertRaisesRegex(ValueError, "step=0"):
+            quantize_base_size(Decimal("0.0199"), market_rule)
 
     def test_validate_order_size_accepts_values_at_dynamic_minimum_boundaries(self) -> None:
         """Accept orders that meet current base-size and min-notional rules exactly."""

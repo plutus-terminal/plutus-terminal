@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRestClient
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +62,9 @@ class OrderlyMarketRegistry:
         """Refresh registry from `/v1/public/info` response."""
         payload = await rest_client.request_public("GET", "/v1/public/info")
         data = payload.get("data", {})
-        rows = data.get("rows", [])
+        rows = data.get("rows", []) if isinstance(data, dict) else []
+        if not isinstance(rows, list):
+            rows = []
         by_symbol: dict[str, OrderlyMarketRule] = {}
         symbol_by_pair: dict[str, str] = {}
 
@@ -69,12 +75,21 @@ class OrderlyMarketRegistry:
             if not symbol.startswith("PERP_"):
                 continue
 
-            rule = _build_market_rule(row)
+            try:
+                rule = _build_market_rule(row)
+            except (InvalidOperation, KeyError, ValueError) as error:
+                LOGGER.warning(
+                    "Skipping malformed Orderly market row for symbol=%s: %s",
+                    symbol or "<missing>",
+                    error,
+                )
+                continue
             by_symbol[rule.symbol] = rule
             symbol_by_pair[rule.pair] = rule.symbol
 
-        self._by_symbol = by_symbol
-        self._symbol_by_pair = symbol_by_pair
+        if by_symbol:
+            self._by_symbol = by_symbol
+            self._symbol_by_pair = symbol_by_pair
 
     def load_fallback_symbols(self, symbols: tuple[str, ...]) -> None:
         """Load conservative fallback symbol rules when bootstrap refresh fails."""

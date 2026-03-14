@@ -9,11 +9,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from httpx import TimeoutException
+from httpx import HTTPStatusError, Request, Response, TimeoutException
 
 from plutus_terminal.core.exceptions import TransactionFailedError
 from plutus_terminal.core.exchange.orderly.exchange import OrderlyExchange
 from plutus_terminal.core.exchange.orderly.models import OrderlyNetwork
+from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRequestError
 from plutus_terminal.core.types_ import MessageLevel, PerpsTradeDirection, PerpsTradeType
 
 
@@ -92,6 +93,12 @@ def _build_exchange(
     exchange._async_tasks = []
     exchange._watched_positions = []
     return exchange
+
+
+def _market_bootstrap_http_error(status_code: int) -> HTTPStatusError:
+    request = Request("GET", "https://example.invalid/v1/public/info")
+    response = Response(status_code, request=request)
+    return HTTPStatusError(f"status {status_code}", request=request, response=response)
 
 
 class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
@@ -198,6 +205,86 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert exchange._fetcher is fetcher
         assert exchange._trader is trader
         assert exchange._max_leverage == 33
+
+    async def test_init_async_uses_fallback_market_symbols_for_http_failures(self) -> None:
+        """Use fallback symbols when bootstrap fails with retried HTTP status errors."""
+        # Arrange
+        exchange = _build_exchange()
+        market_registry = SimpleNamespace(load_fallback_symbols=Mock(), pairs=set())
+
+        # Act
+        with (
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyRestClient",
+                side_effect=[SimpleNamespace(), SimpleNamespace()],
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyMarketRegistry",
+                return_value=market_registry,
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyFetcher",
+                return_value=SimpleNamespace(),
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyTrader",
+                return_value=SimpleNamespace(),
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyWebsocketManager",
+                return_value=SimpleNamespace(),
+            ),
+            patch.object(
+                exchange,
+                "_refresh_market_registry_with_retry",
+                AsyncMock(side_effect=_market_bootstrap_http_error(503)),
+            ),
+            patch.object(exchange, "_fetch_max_leverage", AsyncMock(return_value=33)),
+        ):
+            await exchange.init_async()
+
+        # Assert
+        market_registry.load_fallback_symbols.assert_called_once()
+
+    async def test_init_async_uses_fallback_market_symbols_for_api_failures(self) -> None:
+        """Use fallback symbols when bootstrap fails with Orderly API-level errors."""
+        # Arrange
+        exchange = _build_exchange()
+        market_registry = SimpleNamespace(load_fallback_symbols=Mock(), pairs=set())
+
+        # Act
+        with (
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyRestClient",
+                side_effect=[SimpleNamespace(), SimpleNamespace()],
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyMarketRegistry",
+                return_value=market_registry,
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyFetcher",
+                return_value=SimpleNamespace(),
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyTrader",
+                return_value=SimpleNamespace(),
+            ),
+            patch(
+                "plutus_terminal.core.exchange.orderly.exchange.OrderlyWebsocketManager",
+                return_value=SimpleNamespace(),
+            ),
+            patch.object(
+                exchange,
+                "_refresh_market_registry_with_retry",
+                AsyncMock(side_effect=OrderlyRequestError("gateway rejected request")),
+            ),
+            patch.object(exchange, "_fetch_max_leverage", AsyncMock(return_value=33)),
+        ):
+            await exchange.init_async()
+
+        # Assert
+        market_registry.load_fallback_symbols.assert_called_once()
 
     async def test_set_leverage_clamps_to_pair_maximum_and_updates_config(self) -> None:
         """Clamp leverage to the effective pair limit before sending the request."""
@@ -334,6 +421,50 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         fetcher.fetch_all_positions.assert_not_awaited()
         message_bus.orders_fetched.emit.assert_not_called()
         message_bus.positions_fetched.emit.assert_not_called()
+
+    async def test_create_order_warns_when_primary_succeeds_but_tp_sl_attach_fails(self) -> None:
+        """Report partial success without surfacing the entry as a full failure."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(
+            create_order=AsyncMock(
+                return_value={
+                    "primary": {"order_id": "abc"},
+                    "tp_sl": None,
+                    "partial_success": True,
+                    "tp_sl_error": "[429] too many requests",
+                },
+            ),
+        )
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
+            _cached_orders=[{"id": "abc"}],
+            _cached_positions=[{"id": 1}],
+            _cached_prices={},
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.create_order(
+            pair="Crypto.BTC/USDC",
+            amount=Decimal("10"),
+            trade_direction=PerpsTradeDirection.LONG,
+            trade_type=PerpsTradeType.LIMIT,
+            execution_price=Decimal("97500.5"),
+        )
+
+        # Assert
+        message = message_bus.send_message.emit.call_args.args[0]
+        assert message.level is MessageLevel.WARNING
+        assert message.text == (
+            "Created LIMIT order for Crypto.BTC/USDC, but failed to attach TP/SL: "
+            "[429] too many requests"
+        )
+        fetcher.fetch_all_orders.assert_awaited_once()
+        fetcher.fetch_all_positions.assert_awaited_once()
 
     async def test_edit_order_refreshes_open_orders_after_successful_native_edit(self) -> None:
         """Refresh open orders after Orderly accepts a native edit request."""

@@ -43,6 +43,6 @@ def build_topic_command_message(
 ) -> dict[str, Any]:
     """Build websocket command payload for topic subscribe/unsubscribe calls."""
     payload: dict[str, Any] = {"id": request_id, "event": event, "topic": topic}
-    if params:
+    if params is not None:
         payload["params"] = dict(params)
     return payload

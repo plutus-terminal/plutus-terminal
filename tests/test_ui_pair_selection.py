@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 import unittest
@@ -130,6 +131,16 @@ class UIControllerPairSelectionTests(unittest.IsolatedAsyncioTestCase):
             ("unsubscribe", "Crypto.BTC/USDC"),
         ]
         assert self.controller.current_pair == "Crypto.ETH/USDC"
+
+    def test_optional_decimal_treats_blank_inputs_as_missing(self) -> None:
+        """Ignore blank TP/SL inputs instead of attempting Decimal conversion."""
+        assert self.controller._optional_decimal(None) is None  # noqa: SLF001
+        assert self.controller._optional_decimal("") is None  # noqa: SLF001
+        assert self.controller._optional_decimal("   ") is None  # noqa: SLF001
+
+    def test_optional_decimal_strips_whitespace_for_numeric_inputs(self) -> None:
+        """Trim optional numeric strings before converting them to Decimal."""
+        assert self.controller._optional_decimal(" 1.25 ") == Decimal("1.25")  # noqa: SLF001
 
 
 class NewsWidgetPairSelectionTests(unittest.TestCase):

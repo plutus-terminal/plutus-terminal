@@ -7,7 +7,7 @@ from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING, Optional, Self
 
-from httpx import RequestError, TimeoutException
+from httpx import HTTPStatusError, RequestError, TimeoutException
 from qasync import asyncSlot
 from tenacity import (
     before_sleep_log,
@@ -28,7 +28,7 @@ from plutus_terminal.core.exchange.orderly.models import (
     OrderlyNetwork,
     endpoints_for_network,
 )
-from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRestClient
+from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRequestError, OrderlyRestClient
 from plutus_terminal.core.exchange.orderly.trader import OrderlyTrader
 from plutus_terminal.core.exchange.orderly.websocket import OrderlyWebsocketManager
 from plutus_terminal.core.types_ import (
@@ -120,7 +120,7 @@ class OrderlyExchange(ExchangeBase):
         self._market_registry = OrderlyMarketRegistry()
         try:
             await self._refresh_market_registry_with_retry()
-        except (RequestError, TimeoutException):
+        except (HTTPStatusError, OrderlyRequestError, RequestError, TimeoutException):
             LOGGER.warning("Orderly market bootstrap unavailable, using fallback market symbols")
             self._market_registry.load_fallback_symbols(_FALLBACK_MARKET_SYMBOLS)
 
@@ -135,7 +135,9 @@ class OrderlyExchange(ExchangeBase):
         self._max_leverage = await self._fetch_max_leverage()
 
     @retry(
-        retry=retry_if_exception_type((TimeoutException, RequestError)),
+        retry=retry_if_exception_type(
+            (TimeoutException, RequestError, HTTPStatusError, OrderlyRequestError)
+        ),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=0.3, max=2),
         before_sleep=before_sleep_log(LOGGER, logging.DEBUG),
@@ -339,13 +341,24 @@ class OrderlyExchange(ExchangeBase):
         }
 
         try:
-            await self.trader.create_order(trade_arguments)
-            info_message = UserMessage(
-                text=f"Creating {trade_type.name} order for {pair}",
-                level=MessageLevel.INFO,
-                timeout_ms=5000,
+            result = await self.trader.create_order(trade_arguments)
+            if isinstance(result, dict) and result.get("partial_success") is True:
+                message_text = (
+                    f"Created {trade_type.name} order for {pair}, but failed to attach TP/SL: "
+                    f"{result.get('tp_sl_error', 'unknown error')}"
+                )
+                message_level = MessageLevel.WARNING
+            else:
+                message_text = f"Creating {trade_type.name} order for {pair}"
+                message_level = MessageLevel.INFO
+
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=message_text,
+                    level=message_level,
+                    timeout_ms=5000,
+                ),
             )
-            self.message_bus.send_message.emit(info_message)
         except TransactionFailedError as error:
             self.message_bus.send_message.emit(
                 UserMessage(

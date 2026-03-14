@@ -217,6 +217,33 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         assert self.fetcher.fetch_opening_fee(partial_position) == Decimal("0.291")
 
+    async def test_fetch_all_positions_preserves_small_absolute_collateral_values(self) -> None:
+        """Do not reinterpret sub-1 collateral fields as IMR ratios."""
+        # Arrange
+        self.request_private.return_value = {
+            "data": {
+                "rows": [
+                    {
+                        "symbol": "PERP_BTC_USDC",
+                        "position_qty": "0.01",
+                        "average_open_price": "97000",
+                        "mark_price": "97500",
+                        "cost_position": "970",
+                        "leverage": "10",
+                        "collateral": "0.5",
+                        "imr": "0.1",
+                        "position_id": 11,
+                    },
+                ],
+            },
+        }
+
+        # Act
+        positions = await self.fetcher.fetch_all_positions()
+
+        # Assert
+        assert positions[0]["collateral_stable"] == Decimal("0.5")
+
     async def test_calculate_close_fee_uses_selected_close_price_not_entry_notional(self) -> None:
         """Estimate close fee from the close notional at the target price."""
         # Arrange

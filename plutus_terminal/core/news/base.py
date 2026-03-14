@@ -28,10 +28,11 @@ def merge_news_update(current_news: NewsData, incoming_news: NewsData) -> NewsDa
             continue
 
         if key == "coin":
-            if value:
-                merged_news[key] = set(cast("set[str]", merged_news["coin"])) | set(
-                    cast("set[str]", value),
-                )
+            existing_coin = merged_news.get("coin") or set()
+            incoming_coin = value or set()
+            merged_news[key] = set(cast("set[str]", existing_coin)) | set(
+                cast("set[str]", incoming_coin),
+            )
             continue
 
         if isinstance(value, bool):
