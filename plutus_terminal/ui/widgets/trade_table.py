@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 
 from plutus_terminal.core.exchange.types import OrderData, PerpsPosition
 from plutus_terminal.ui.widgets.orders_table import OrdersTableModel, OrdersTableView
@@ -43,6 +43,9 @@ class TradeTable(QtWidgets.QWidget):
         )
         self._orders_model = OrdersTableModel(self._exchange.format_simple_pair_from_pair)
         self._orders_table = OrdersTableView(self._exchange)
+        self._liquidation_refresh_timer = QTimer(self)
+        self._liquidation_refresh_timer.setSingleShot(True)
+        self._liquidation_refresh_timer.setInterval(100)
 
         self._setup_widgets()
         self._connect_signals()
@@ -66,6 +69,8 @@ class TradeTable(QtWidgets.QWidget):
         self._ui_controller.message_bus.positions_fetched.connect(self.update_positions)
         self._ui_controller.message_bus.orders_fetched.connect(self.update_orders)
         self._ui_controller.message_bus.subscribed_prices_fetched.connect(self.update_prices)
+        self._ui_controller.message_bus.balance_fetched.connect(self._schedule_liquidation_refresh)
+        self._liquidation_refresh_timer.timeout.connect(self._refresh_liquidation_column)
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
@@ -90,5 +95,18 @@ class TradeTable(QtWidgets.QWidget):
 
     def _on_new_exchange(self) -> None:
         """Update info based on new exchange."""
-        self._positions_model.on_new_exchange(self._ui_controller.current_exchange)
-        self._orders_model.on_new_exchange(self._ui_controller.current_exchange)
+        exchange = self._ui_controller.current_exchange
+        self._positions_model.on_new_exchange(exchange)
+        self._orders_model.on_new_exchange(exchange)
+        self._positions_table.on_new_exchange(exchange)
+        self._orders_table.on_new_exchange(exchange)
+
+    def _schedule_liquidation_refresh(self, _balance) -> None:  # noqa: ANN001
+        """Coalesce balance events before refreshing liquidation cells."""
+        if self._liquidation_refresh_timer.isActive():
+            return
+        self._liquidation_refresh_timer.start()
+
+    def _refresh_liquidation_column(self) -> None:
+        """Refresh only the liquidation column cells."""
+        self._positions_table.refresh_liquidation_prices()

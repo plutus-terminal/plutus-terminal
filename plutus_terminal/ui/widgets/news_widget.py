@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 from functools import partial
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
@@ -48,6 +48,11 @@ NEWS_TIME_COLORS = {
     "yellow": 20,
 }
 
+PHOENIX_UPDATE_LABELS = {
+    "important-auto": "Important Auto",
+    "summary-ai": "AI Summary",
+}
+
 
 class NewsWidget(QtWidgets.QGroupBox):
     """Widget to display news data and interact with news."""
@@ -63,7 +68,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         available_pairs: set,
         display_delay: bool,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared variables."""
         super().__init__(parent=parent)
@@ -114,6 +119,12 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.quote_title = QtWidgets.QLabel()
         self.quote_label = QtWidgets.QLabel()
         self.quote_image = ImageWebViewer()
+        self.summary_frame = QtWidgets.QFrame()
+        self.summary_layout = QtWidgets.QVBoxLayout()
+        self.summary_header = QtWidgets.QLabel()
+        self.summary_title = QtWidgets.QLabel()
+        self.summary_body = QtWidgets.QLabel()
+        self.update_label = QtWidgets.QLabel()
         self.metadata_layout = QtWidgets.QHBoxLayout()
         self.time_layout = QtWidgets.QVBoxLayout()
         self.time_label = QtWidgets.QLabel()
@@ -121,6 +132,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.feed_label = QtWidgets.QLabel()
         self.source_label = QtWidgets.QLabel()
         self.link_button = QtWidgets.QPushButton()
+        self.important_label = QtWidgets.QLabel()
         self.coin_label = QtWidgets.QLabel()
         self.interactions_layout = QtWidgets.QVBoxLayout()
 
@@ -147,9 +159,15 @@ class NewsWidget(QtWidgets.QGroupBox):
         if self.news_data["reply_image"]:
             self.reply_image.setVisible(value)
 
+    @property
+    def display_delay(self) -> bool:
+        """Return if delay metadata should be shown."""
+        return self._display_delay
+
     def _setup_widgets(self) -> None:  # noqa: C901, PLR0912, PLR0915
         """Create internal widgets."""
         self.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.setProperty("hasUpdate", bool(self.news_data["applied_updates"]))
 
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -282,6 +300,44 @@ class NewsWidget(QtWidgets.QGroupBox):
             else:
                 self.quote_image.deleteLater()
 
+        if self.news_data["summary_title"] or self.news_data["summary_body"]:
+            self.summary_frame.setFrameStyle(QtWidgets.QFrame.Shape.Box)
+            self.summary_frame.setObjectName("newsFrameSummary")
+
+            self.summary_header.setObjectName("newsSummaryHeader")
+            self.summary_header.setText(
+                "Phoenix AI Summary" if self.news_data["feed"] == "PhoenixNews" else "AI Summary",
+            )
+            self.summary_header.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
+
+            if self.news_data["summary_title"]:
+                self.summary_title.setObjectName("subTitle")
+                self.summary_title.setTextFormat(Qt.TextFormat.RichText)
+                self.summary_title.setText(self.news_data["summary_title"])
+                self.summary_title.setWordWrap(True)
+                self.summary_title.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse,
+                )
+
+            if self.news_data["summary_body"]:
+                self.summary_body.setObjectName("newsBody")
+                self.summary_body.setTextFormat(Qt.TextFormat.RichText)
+                self.summary_body.setText(self.news_data["summary_body"])
+                self.summary_body.setWordWrap(True)
+                self.summary_body.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse,
+                )
+
+        if self.news_data["applied_updates"]:
+            self.update_label.setObjectName("newsUpdateBadge")
+            self.update_label.setText(self._build_update_label_text())
+            self.update_label.setWordWrap(True)
+            self.update_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
+
         self.link_button.setObjectName("frameless")
         self.link_button.setFlat(True)
         self.link_button.setIcon(QPixmap(":/icons/external_link"))
@@ -306,8 +362,8 @@ class NewsWidget(QtWidgets.QGroupBox):
 
         if self._display_delay:
             self.time_delay.setObjectName("newsTime")
-            delay_time = datetime.now().astimezone(ui_utils.LOCAL_TIMEZONE) - converted_time
-            delay_time = delay_time.total_seconds() * 1000
+            delay_delta = datetime.now().astimezone(ui_utils.LOCAL_TIMEZONE) - converted_time
+            delay_time = delay_delta.total_seconds() * 1000
             self.time_delay.setText(
                 f"Delay: {delay_time:.2f} ms",
             )
@@ -335,6 +391,13 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.source_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
+
+        if self.news_data["is_important"]:
+            self.important_label.setObjectName("newsCoin")
+            self.important_label.setText("Important Auto")
+            self.important_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse,
+            )
 
         if self.news_data["coin"]:
             self.coin_label.setObjectName("newsCoin")
@@ -379,7 +442,7 @@ class NewsWidget(QtWidgets.QGroupBox):
         QPixmapCache.insert(self.news_data["icon"], pixmap)
         target_label.setPixmap(pixmap)
 
-    def _setup_layout(self) -> None:  # noqa: C901, PLR0915
+    def _setup_layout(self) -> None:  # noqa: C901, PLR0912, PLR0915
         """Connect widgets to layouts."""
         self.icon_layout.addWidget(self.icon_label)
         self.icon_layout.addWidget(self.stop_watch_label)
@@ -394,6 +457,8 @@ class NewsWidget(QtWidgets.QGroupBox):
         self.title_layout.addLayout(self.time_layout)
         self.title_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.info_layout.addLayout(self.title_layout)
+        if self.news_data["applied_updates"]:
+            self.info_layout.addWidget(self.update_label)
 
         self.retweet_frame.setLayout(self.retweet_layout)
         self.retweet_layout.addWidget(self.retweet_icon)
@@ -407,6 +472,15 @@ class NewsWidget(QtWidgets.QGroupBox):
             self.quote_layout.addWidget(self.quote_label)
         if self.news_data["quote_image"]:
             self.quote_layout.addWidget(self.quote_image)
+
+        self.summary_frame.setLayout(self.summary_layout)
+        self.summary_layout.setContentsMargins(12, 10, 12, 12)
+        self.summary_layout.setSpacing(6)
+        self.summary_layout.addWidget(self.summary_header)
+        if self.news_data["summary_title"]:
+            self.summary_layout.addWidget(self.summary_title)
+        if self.news_data["summary_body"]:
+            self.summary_layout.addWidget(self.summary_body)
 
         self.reply_frame.setLayout(self.reply_layout)
         if self.news_data["reply_message"]:
@@ -430,8 +504,18 @@ class NewsWidget(QtWidgets.QGroupBox):
             (self.news_data["quote_message"], self.news_data["quote_image"]),
         ):
             self.body_layout.addWidget(self.quote_frame)
+        if self.news_data["summary_title"] or self.news_data["summary_body"]:
+            self.body_layout.addWidget(self.summary_frame)
 
-        if self.news_data["body"] or self.news_data["image"]:
+        if self.news_data["is_important"]:
+            self.info_layout.addWidget(self.important_label)
+
+        if (
+            self.news_data["body"]
+            or self.news_data["image"]
+            or self.news_data["summary_title"]
+            or self.news_data["summary_body"]
+        ):
             self.info_layout.addWidget(self.body_frame)
 
         self.metadata_layout.addWidget(self.feed_label)
@@ -451,9 +535,21 @@ class NewsWidget(QtWidgets.QGroupBox):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Emit signal when clicked."""
-        if event.button() == Qt.MouseButton.LeftButton:
+        click_target = self.childAt(event.position().toPoint())
+        if event.button() == Qt.MouseButton.LeftButton and not self._is_pair_interaction_target(
+            click_target,
+        ):
             self.news_clicked.emit(self)
         return super().mousePressEvent(event)
+
+    def _is_pair_interaction_target(self, widget: QtWidgets.QWidget | None) -> bool:
+        """Return whether the click happened inside the pair interaction area."""
+        current_widget = widget
+        while current_widget is not None and current_widget is not self:
+            if current_widget.property("news_pair_interaction"):
+                return True
+            current_widget = current_widget.parentWidget()
+        return False
 
     async def set_initial_prices(self, fetch_price_at_time: Callable) -> None:
         """Set initial prices for coins in data."""
@@ -492,6 +588,7 @@ class NewsWidget(QtWidgets.QGroupBox):
             interaction_pairs.add(pair)
 
             button_group_box = ClickableGroupBox(coin)
+            button_group_box.setProperty("news_pair_interaction", True)
             button_group_box.clicked.connect(partial(self.pair_clicked.emit, pair))
             self.group_box_layout[coin] = QtWidgets.QVBoxLayout()
             self.percent_label[pair] = QtWidgets.QLabel("0%")
@@ -705,6 +802,18 @@ class NewsWidget(QtWidgets.QGroupBox):
                 f"{current_price:,.{minimal_digits}f} ({round(percentage, 3):.3f}%)"
             )
 
+    def _build_update_label_text(self) -> str:
+        """Build a readable label for merged same-ID update packets."""
+        ordered_updates = sorted(
+            self.news_data["applied_updates"],
+            key=lambda update_type: (update_type not in PHOENIX_UPDATE_LABELS, update_type),
+        )
+        readable_updates = [
+            PHOENIX_UPDATE_LABELS.get(update_type, update_type.replace("-", " ").title())
+            for update_type in ordered_updates
+        ]
+        return f"Updated: {', '.join(readable_updates)}"
+
     def set_selected_style(self) -> None:
         """Set border to selected style."""
         self.setProperty("class", "selected")
@@ -765,9 +874,36 @@ class NewsWidget(QtWidgets.QGroupBox):
             quote_minimum_height = max(0, quote_minimum_height)
             self.quote_label.setMinimumHeight(quote_minimum_height)
 
+            # Update summary title
+            summary_title_minimum_height = self.summary_title.heightForWidth(
+                self.summary_title.width(),
+            )
+            summary_title_minimum_height = max(0, summary_title_minimum_height)
+            self.summary_title.setMinimumHeight(summary_title_minimum_height)
+
+            # Update summary body
+            summary_body_minimum_height = self.summary_body.heightForWidth(
+                self.summary_body.width(),
+            )
+            summary_body_minimum_height = max(0, summary_body_minimum_height)
+            self.summary_body.setMinimumHeight(summary_body_minimum_height)
+
             # Only update once
             self._is_label_size_updated = True
             self.setVisible(True)
+
+    def stop_async(self) -> None:
+        """Stop timers and pending tasks before the widget is removed."""
+        pending_tasks = list(self._async_tasks)
+        self._async_tasks = []
+
+        for task in pending_tasks:
+            if not task.done():
+                task.cancel()
+
+        if self.timer.isActive():
+            self.timer.stop()
+            self.timer_end.emit()
 
 
 class ClickableGroupBox(QtWidgets.QGroupBox):
@@ -775,7 +911,7 @@ class ClickableGroupBox(QtWidgets.QGroupBox):
 
     clicked = Signal()
 
-    def __init__(self, title: str, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, title: str, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(title, parent=parent)
         self.installEventFilter(self)
@@ -784,5 +920,8 @@ class ClickableGroupBox(QtWidgets.QGroupBox):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Emit signal when clicked."""
-        self.clicked.emit()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return None
         return super().mousePressEvent(event)

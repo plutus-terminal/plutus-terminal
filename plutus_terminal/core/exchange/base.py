@@ -339,7 +339,7 @@ class ExchangeBase(ABC):
         """Return max leverage."""
 
     @property
-    def account_info(self) -> dict[str, str]:
+    def account_info(self) -> dict[str, object]:
         """Return info to be added to account info widget."""
         return {
             "Exchange": self.name(),
@@ -698,26 +698,33 @@ class ExchangeBase(ABC):
         """
         leverage = perps_position["leverage"]
         trade_collateral = perps_position["position_size_stable"] / leverage
-        position_fee = self.fetcher.calculate_margin_fee(perps_position["position_size_stable"])
+        opening_fee = self.fetcher.calculate_margin_fee(perps_position["position_size_stable"])
+        closing_fee = opening_fee
+        position_fee = opening_fee
         funding_fee = self.fetcher.fetch_funding_fee(perps_position)
         pnl_percentage = self.fetcher.calculate_pnl_percent_before_fees(
             perps_position,
             current_price,
         )
         pnl_usd = (trade_collateral * pnl_percentage) / 100
-        pnl_usd_after_fees = pnl_usd - (2 * position_fee) - funding_fee
+        pnl_usd_after_fees = pnl_usd - opening_fee - closing_fee - funding_fee
         pnl_percentage_after_fees = pnl_usd_after_fees * 100 / trade_collateral
 
         return PnlDetails(
             {
                 "pnl_usd_before_fees": pnl_usd,
                 "pnl_percentage_before_fees": pnl_percentage,
-                "position_fee_usd": position_fee,
+                "opening_fee_usd": opening_fee,
+                "closing_fee_usd": closing_fee,
                 "funding_fee_usd": funding_fee,
                 "pnl_usd_after_fees": pnl_usd_after_fees,
                 "pnl_percentage_after_fees": pnl_percentage_after_fees,
             },
         )
+
+    def use_native_position_pnl(self) -> bool:
+        """Return whether positions table should prefer native position PnL state."""
+        return False
 
     async def stop_async(self) -> None:
         """Stop all async tasks and cleanup for deletion."""

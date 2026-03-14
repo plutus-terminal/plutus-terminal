@@ -120,7 +120,7 @@ class PerpsConfig(QtWidgets.QWidget):
             self._leverage_layout.addWidget(button)
 
         self._leverage_spin.setMinimum(1)
-        self._leverage_spin.setMaximum(50)
+        self._leverage_spin.setMaximum(self._ui_controller.current_exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
 
         self._leverage_set_button.setMinimumHeight(35)
@@ -237,6 +237,7 @@ class PerpsConfig(QtWidgets.QWidget):
         * Update leverage
         """
         self.blockSignals(True)
+        self._leverage_spin.setMaximum(self._ui_controller.current_exchange.max_leverage)
         # Update spin box values
         for spin, attr in self._spin_config_map.items():
             spin.blockSignals(True)

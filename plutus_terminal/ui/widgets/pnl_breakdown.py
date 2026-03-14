@@ -35,8 +35,7 @@ class PnlBreakdown(QWidget):
         self.pnl_label.setObjectName("pnl")
         self._main_layout.addWidget(self.pnl_label)
         self.setLayout(self._main_layout)
-
-        self._show_tooltip = False
+        self.setToolTipDuration(0)
 
     def set_pnl(self, usd: Decimal, percent: Decimal) -> None:
         """Set pnl."""
@@ -50,47 +49,54 @@ class PnlBreakdown(QWidget):
         self,
         pnl: Decimal,
         funding_fee: Decimal,
-        position_fee: Decimal,
+        opening_fee: Decimal,
+        closing_fee: Decimal | None,
         pnl_after_fee: Decimal,
+        *,
+        funding_fee_included: bool = False,
+        opening_fee_included: bool = False,
+        labels: tuple[str, str] = ("PnL", "PnL After Fees"),
+        show_closing_fee: bool = True,
         push_tool_tip: bool = True,
     ) -> None:
         """Set tooltip content."""
-        self._tooltip_content = (
-            f"PnL: {round(pnl, 3)}<br>"
-            f"Funding Fee: -{round(funding_fee, 3)}<br>"
-            f"Opening Fee: -{round(position_fee, 3)}<br>"
-            f"Closing Fee: -{round(position_fee, 3)}<br><br>"
-            f"PnL After Fees: {round(pnl_after_fee, 3)}"
-        )
-        if self._show_tooltip and push_tool_tip:
-            QToolTip.showText(
-                self.mapToGlobal(self.rect().center()),
-                self._tooltip_content,
-            )
-        elif not push_tool_tip:
-            self.setToolTip(self._tooltip_content)
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Override event to show tooltip."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._show_tooltip = True
-            return None
-        return super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Override event to hide tooltip."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._show_tooltip = False
-            QToolTip.hideText()
-            return None
-        return super().mouseReleaseEvent(event)
+        pnl_label_text, pnl_after_fee_label = labels
+        lines = [
+            f"{pnl_label_text}: {round(pnl, 3)}",
+            _format_fee_line("Funding Fee", funding_fee, included=funding_fee_included),
+            _format_fee_line("Opening Fee", opening_fee, included=opening_fee_included),
+        ]
+        if show_closing_fee and closing_fee is not None:
+            lines.append(_format_fee_line("Estimated Closing Fee", closing_fee))
+        lines.append("")
+        lines.append(f"{pnl_after_fee_label}: {round(pnl_after_fee, 3)}")
+        self._tooltip_content = "<br>".join(lines)
+        self.setToolTip(self._tooltip_content)
+        if push_tool_tip and self.underMouse():
+            QToolTip.showText(self.mapToGlobal(self.rect().center()), self._tooltip_content, self)
 
     def enterEvent(self, event: QEnterEvent) -> None:
         """Override event to change cursor on hover."""
         self.setCursor(Qt.CursorShape.WhatsThisCursor)
+        if self._tooltip_content:
+            QToolTip.showText(self.mapToGlobal(self.rect().center()), self._tooltip_content, self)
         return super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
         """Override event to reset cursor on leave."""
         self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().leaveEvent(event)
+
+
+def _format_signed_fee(fee: Decimal) -> str:
+    """Format fee values with the correct sign semantics for the tooltip."""
+    rounded_fee = round(abs(fee), 3)
+    if fee < 0:
+        return f"+{rounded_fee}"
+    return f"-{rounded_fee}"
+
+
+def _format_fee_line(label: str, fee: Decimal, *, included: bool = False) -> str:
+    """Format one tooltip fee line."""
+    suffix = " (included)" if included else ""
+    return f"{label}{suffix}: {_format_signed_fee(fee)}"

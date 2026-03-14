@@ -82,6 +82,9 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             quote_symbol=self._exchange.quote_symbol,
         )
         self._trade_type_limit_layout = QtWidgets.QGridLayout()
+        self._trade_type_stop = StopTradeWidget(
+            quote_symbol=self._exchange.quote_symbol,
+        )
 
         self._info_frame = QtWidgets.QFrame()
         self._info_layout = QtWidgets.QGridLayout()
@@ -138,11 +141,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             )
 
         self._set_data_from_exchange()
-        self._pair_combo_box.currentTextChanged.connect(
-            lambda pair: self._ui_controller.change_current_pair(
-                f"{self._exchange.pair_prefix}{pair}{self._exchange.pair_suffix}",
-            ),
-        )
+        self._pair_combo_box.currentIndexChanged.connect(self._on_pair_combo_index_changed)
 
         pair_layout = QtWidgets.QVBoxLayout()
         pair_layout.addWidget(self._pair_combo_box)
@@ -156,7 +155,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._leverage_group.buttonClicked.connect(self._set_leverage_button)
 
         self._leverage_spin.setMinimum(1)
-        self._leverage_spin.setMaximum(50)
+        self._leverage_spin.setMaximum(self._exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
         self._leverage_spin.editingFinished.connect(
             lambda: self._set_leverage_spin(
@@ -169,6 +168,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._trade_tab.tabBar().setObjectName("tradeTypeTab")
         self._trade_tab.addTab(self._trade_type_market, "Market")
         self._trade_tab.addTab(self._trade_type_limit, "Limit")
+        self._trade_tab.addTab(self._trade_type_stop, "Stop")
         self._trade_tab.currentChanged.connect(self._update_tab)
         self._trade_tab.setMinimumHeight(self._trade_tab.sizeHint().height() + 5)
         self._trade_tab.setSizePolicy(
@@ -192,6 +192,12 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             self._update_info,
         )
         self._trade_type_limit.percent_button_clicked.connect(
+            self._handle_percent_button_click,
+        )
+        self._trade_type_stop.amount_changed.connect(
+            self._update_info,
+        )
+        self._trade_type_stop.percent_button_clicked.connect(
             self._handle_percent_button_click,
         )
 
@@ -267,6 +273,9 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._ui_controller.message_bus.subscribed_prices_fetched.connect(
             self.update_liquidation_info
         )
+        self._ui_controller.message_bus.balance_fetched.connect(
+            lambda *_: self.update_liquidation_info(),
+        )
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
         self._ui_controller.pair_changed.connect(self._update_current_pair)
@@ -315,6 +324,14 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._update_leverage_buttons(leverage_value)
 
         await self._set_leverage()
+
+    @asyncSlot(int)
+    async def _on_pair_combo_index_changed(self, index: int) -> None:
+        """Change current pair from the combo-box selection."""
+        pair = self._pair_combo_box.itemData(index)
+        if not isinstance(pair, str):
+            return
+        await self._ui_controller.change_current_pair(pair)
 
     def _update_leverage_values(self) -> None:
         """Update leverage spin."""
@@ -367,7 +384,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
     def _update_info(self) -> None:
         """Update frame info."""
         current_widget = self._trade_tab.currentWidget()
-        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
+        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget | StopTradeWidget):
             return
         amount = current_widget.amount_box.value()
         margin_fee = self._exchange.calculate_margin_fee(
@@ -382,7 +399,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
     def update_liquidation_info(self) -> None:
         """Update liquidation info."""
         current_widget = self._trade_tab.currentWidget()
-        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
+        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget | StopTradeWidget):
             return
 
         amount = current_widget.amount_box.value()
@@ -393,8 +410,17 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         leverage_value = self._leverage_spin.value()
         pair = self._pair_combo_box.currentData()
+        position_size = Decimal(amount * leverage_value)
+        available_balance = self._exchange.stable_balance
+        collateral = available_balance if available_balance > Decimal(0) else Decimal(amount)
+        effective_leverage = Decimal(leverage_value)
+        if collateral > Decimal(0):
+            effective_leverage = position_size / collateral
+
         if isinstance(current_widget, LimitTradeWidget):
             open_price = Decimal(current_widget.target_price_box.value())
+        elif isinstance(current_widget, StopTradeWidget):
+            open_price = Decimal(current_widget.trigger_price_box.value())
         else:
             pair_cached = self._exchange.cached_prices.get(pair, None)
             if pair_cached is None:
@@ -406,11 +432,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 {
                     "pair": pair,
                     "id": 0,
-                    "position_size_stable": Decimal(amount * leverage_value),
-                    "collateral_stable": Decimal(amount),
+                    "position_size_stable": position_size,
+                    "collateral_stable": collateral,
                     "open_price": open_price,
                     "trade_direction": PerpsTradeDirection.LONG,
-                    "leverage": Decimal(leverage_value),
+                    "leverage": effective_leverage,
                     "liquidation_price": Decimal(0),
                 },
             ),
@@ -426,11 +452,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 {
                     "pair": pair,
                     "id": 0,
-                    "position_size_stable": Decimal(amount * leverage_value),
-                    "collateral_stable": Decimal(amount),
+                    "position_size_stable": position_size,
+                    "collateral_stable": collateral,
                     "open_price": open_price,
                     "trade_direction": PerpsTradeDirection.SHORT,
-                    "leverage": Decimal(leverage_value),
+                    "leverage": effective_leverage,
                     "liquidation_price": Decimal(0),
                 },
             ),
@@ -469,7 +495,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             button (QtWidgets.QAbstractButton): Percent button clicked.
         """
         current_widget = self._trade_tab.currentWidget()
-        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget):
+        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget | StopTradeWidget):
             return
         balance = self._exchange.stable_balance
         percentage = Decimal(current_widget.percent_group.id(button) / 100)
@@ -483,7 +509,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         """Create new order."""
         pair = self._pair_combo_box.currentData()
         current_tab = self._trade_tab.currentWidget()
-        if not isinstance(current_tab, LimitTradeWidget) and not isinstance(
+        if not isinstance(current_tab, LimitTradeWidget | StopTradeWidget) and not isinstance(
             current_tab,
             MarketTradeWidget,
         ):
@@ -491,13 +517,18 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         amount = Decimal(current_tab.get_amount())
         trade_type = self.get_trade_type()
         # Get None in case the order is Market
-        execution_price = (
-            Decimal(current_tab.get_target_price())
-            if isinstance(current_tab, LimitTradeWidget)
-            else None
-        )
-        stop_loss = current_tab.get_stop_loss()
-        take_profit = current_tab.get_take_profit()
+        execution_price = None
+        stop_loss = 0.0
+        take_profit = 0.0
+        if isinstance(current_tab, LimitTradeWidget):
+            execution_price = Decimal(current_tab.get_target_price())
+            stop_loss = current_tab.get_stop_loss()
+            take_profit = current_tab.get_take_profit()
+        elif isinstance(current_tab, StopTradeWidget):
+            execution_price = Decimal(current_tab.get_trigger_price())
+        else:
+            stop_loss = current_tab.get_stop_loss()
+            take_profit = current_tab.get_take_profit()
         try:
             await self._exchange.create_order(
                 pair,
@@ -519,9 +550,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         current_tab = self._trade_tab.currentWidget()
         if current_tab == self._trade_type_market:
             return PerpsTradeType.MARKET
+        if current_tab == self._trade_type_stop:
+            return PerpsTradeType.STOP_MARKET
         return PerpsTradeType.LIMIT
 
-    @asyncSlot()
+    @asyncSlot(str)
     async def _update_current_pair(self, pair: str) -> None:
         """Update current pair.
 
@@ -557,6 +590,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._update_info()
         self._trade_type_market.update_button_position()
         self._trade_type_limit.update_button_position()
+        self._trade_type_stop.update_button_position()
 
     def _refresh_limit_price(self) -> None:
         """Refresh limit price."""
@@ -576,6 +610,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self.update_trade_buttons()
 
         self.blockSignals(True)
+        self._leverage_spin.setMaximum(self._exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
         self._update_leverage_buttons(self._app_config.leverage)
         self.blockSignals(False)
@@ -768,3 +803,58 @@ class LimitTradeWidget(QtWidgets.QWidget):
     def get_stop_loss(self) -> float:
         """Get stop loss."""
         return self.stop_loss_box.value()
+
+
+class StopTradeWidget(QtWidgets.QWidget):
+    """Widget to fill a stop-market trade."""
+
+    amount_changed = Signal()
+    percent_button_clicked = Signal(QtWidgets.QAbstractButton)
+
+    def __init__(
+        self,
+        quote_symbol: str,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ) -> None:
+        """Initialize widget."""
+        super().__init__(parent=parent)
+
+        self.main_layout = QtWidgets.QGridLayout()
+        self.setLayout(self.main_layout)
+
+        self.amount_label = QtWidgets.QLabel("Amount:")
+        self.amount_label.setFixedWidth(70)
+        self.amount_box = DecimalSpinBoxWithButton(button_text=quote_symbol)
+        self.amount_box.decimalValueChanged.connect(lambda _: self.amount_changed.emit())
+        self.percent_group = QtWidgets.QButtonGroup(self)
+        self.percent_group_layout = QtWidgets.QHBoxLayout()
+        for value in ("25%", "50%", "75%", "100%"):
+            button = QtWidgets.QRadioButton(value)
+            self.percent_group.addButton(button)
+            self.percent_group.setId(button, int(value[:-1]))
+            self.percent_group.buttonClicked.connect(self.percent_button_clicked)
+            self.percent_group_layout.addWidget(button)
+
+        self.trigger_price_label = QtWidgets.QLabel("Trigger:")
+        self.trigger_price_label.setFixedWidth(70)
+        self.trigger_price_box = DecimalSpinBoxWithButton(button_text=quote_symbol)
+
+        self.main_layout.addWidget(self.amount_label, 0, 0)
+        self.main_layout.addWidget(self.amount_box, 0, 1)
+        self.main_layout.addLayout(self.percent_group_layout, 1, 0, 1, 2)
+        self.main_layout.addWidget(self.trigger_price_label, 2, 0)
+        self.main_layout.addWidget(self.trigger_price_box, 2, 1)
+        self.main_layout.setRowStretch(3, 1)
+
+    def update_button_position(self) -> None:
+        """Update embedded button positions."""
+        self.amount_box.update_button_position()
+        self.trigger_price_box.update_button_position()
+
+    def get_amount(self) -> Decimal:
+        """Get order amount."""
+        return self.amount_box.value()
+
+    def get_trigger_price(self) -> Decimal:
+        """Get stop trigger price."""
+        return self.trigger_price_box.value()

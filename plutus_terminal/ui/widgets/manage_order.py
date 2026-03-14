@@ -24,7 +24,7 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 class ManageOrder(QtWidgets.QDialog):
     """Dialog to manage orders."""
 
-    execute_order = Signal(OrderData)
+    execute_order = Signal(object)
 
     def __init__(
         self,
@@ -61,6 +61,10 @@ class ManageOrder(QtWidgets.QDialog):
         self._trigger_label = QtWidgets.QLabel("Trigger Price:")
         self.trigger_box = DecimalSpinBoxWithButton(button_text="USD")
         self.trigger_max_button = QtWidgets.QPushButton("MAX")
+        self._pair_order_checkbox = QtWidgets.QCheckBox()
+        self._secondary_trigger_label = QtWidgets.QLabel("Stop Loss Price:")
+        self.secondary_trigger_box = DecimalSpinBoxWithButton(button_text="USD")
+        self.secondary_trigger_max_button = QtWidgets.QPushButton("MAX")
 
         self._amount_label = QtWidgets.QLabel("Amount:")
         self.amount_box = DecimalSpinBoxWithButton(button_text="USD")
@@ -99,6 +103,7 @@ class ManageOrder(QtWidgets.QDialog):
         self._type_group.addButton(self.tp_button, PerpsTradeType.TRIGGER_TP.value)
         self._type_group.addButton(self.sl_button, PerpsTradeType.TRIGGER_SL.value)
         self._type_group.button(self._order_data["order_type"].value).click()
+        self._type_group.buttonClicked.connect(self._update_tp_sl_mode_ui)
 
         self._type_group.button(PerpsTradeType.LIMIT.value).setDisabled(
             self._order_data["reduce_only"],
@@ -117,6 +122,18 @@ class ManageOrder(QtWidgets.QDialog):
         self.trigger_max_button.setFixedWidth(50)
         self.trigger_max_button.clicked.connect(
             partial(self.trigger_box.setValue, self._order_data["trigger_price"]),
+        )
+
+        self._pair_order_checkbox.toggled.connect(self._toggle_secondary_trigger)
+
+        self.secondary_trigger_box.setDecimals(trigger_minimum_digits)
+        self.secondary_trigger_box.setValue(self._order_data["trigger_price"])
+
+        self.secondary_trigger_max_button.setObjectName("actionButton")
+        self.secondary_trigger_max_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.secondary_trigger_max_button.setFixedWidth(50)
+        self.secondary_trigger_max_button.clicked.connect(
+            partial(self.secondary_trigger_box.setValue, self._order_data["trigger_price"]),
         )
 
         self.amount_box.setDecimals(4)
@@ -141,6 +158,8 @@ class ManageOrder(QtWidgets.QDialog):
         self.execute_order_button.clicked.connect(self.on_execute_order)
 
         self.update_liquidation_price()
+        self._toggle_secondary_trigger(False)
+        self._update_tp_sl_mode_ui()
 
     def _setup_layout(self) -> None:
         """Configure layouts."""
@@ -153,9 +172,13 @@ class ManageOrder(QtWidgets.QDialog):
         self._main_layout.addWidget(self._trigger_label, 2, 0)
         self._main_layout.addWidget(self.trigger_box, 2, 1)
         self._main_layout.addWidget(self.trigger_max_button, 2, 2)
-        self._main_layout.addWidget(self._amount_label, 3, 0)
-        self._main_layout.addWidget(self.amount_box, 3, 1)
-        self._main_layout.addWidget(self.amount_max_button, 3, 2)
+        self._main_layout.addWidget(self._pair_order_checkbox, 3, 0, 1, 3)
+        self._main_layout.addWidget(self._secondary_trigger_label, 4, 0)
+        self._main_layout.addWidget(self.secondary_trigger_box, 4, 1)
+        self._main_layout.addWidget(self.secondary_trigger_max_button, 4, 2)
+        self._main_layout.addWidget(self._amount_label, 5, 0)
+        self._main_layout.addWidget(self.amount_box, 5, 1)
+        self._main_layout.addWidget(self.amount_max_button, 5, 2)
 
         self._info_layout.addWidget(self._open_price_label, 0, 0)
         self._info_layout.addWidget(self._open_price_value, 0, 1)
@@ -164,9 +187,9 @@ class ManageOrder(QtWidgets.QDialog):
         self._info_layout.addWidget(self._pnl_label, 2, 0)
         self._info_layout.addWidget(self._pnl_value, 2, 1)
         self._info_frame.setLayout(self._info_layout)
-        self._main_layout.addWidget(self._info_frame, 4, 0, 1, 3)
+        self._main_layout.addWidget(self._info_frame, 6, 0, 1, 3)
 
-        self._main_layout.addWidget(self.execute_order_button, 5, 0, 1, 3)
+        self._main_layout.addWidget(self.execute_order_button, 7, 0, 1, 3)
 
         self.setLayout(self._main_layout)
 
@@ -197,8 +220,16 @@ class ManageOrder(QtWidgets.QDialog):
         self._pnl_value.set_tooltip_content(
             pnl_details["pnl_usd_before_fees"],
             pnl_details["funding_fee_usd"],
-            pnl_details["position_fee_usd"],
+            pnl_details["opening_fee_usd"],
+            pnl_details["closing_fee_usd"] if pnl_details.get("show_closing_fee", True) else None,
             pnl_details["pnl_usd_after_fees"],
+            funding_fee_included=pnl_details.get("funding_fee_included_in_pnl", False),
+            opening_fee_included=pnl_details.get("opening_fee_included_in_pnl", False),
+            labels=(
+                pnl_details.get("pnl_label", "PnL"),
+                pnl_details.get("net_pnl_label", "PnL After Fees"),
+            ),
+            show_closing_fee=pnl_details.get("show_closing_fee", True),
             push_tool_tip=False,
         )
 
@@ -213,6 +244,126 @@ class ManageOrder(QtWidgets.QDialog):
             self._associated_position["position_size_stable"] = new_quantity
         self.update_pnl(self.trigger_box.value())
 
+    def _update_tp_sl_mode_ui(self, _button: QtWidgets.QAbstractButton | None = None) -> None:
+        """Update labels and paired-order affordance for reduce-only TP/SL flow."""
+        is_reduce_only = self._order_data["reduce_only"]
+        is_tp_selected = self._selected_order_type() is PerpsTradeType.TRIGGER_TP
+
+        self._pair_order_checkbox.setVisible(is_reduce_only)
+        self._pair_order_checkbox.setEnabled(is_reduce_only)
+        self._secondary_trigger_label.setVisible(
+            is_reduce_only and self._pair_order_checkbox.isChecked()
+        )
+        self.secondary_trigger_box.setVisible(
+            is_reduce_only and self._pair_order_checkbox.isChecked()
+        )
+        self.secondary_trigger_max_button.setVisible(
+            is_reduce_only and self._pair_order_checkbox.isChecked()
+        )
+
+        if not is_reduce_only:
+            self._trigger_label.setText("Trigger Price:")
+            self.execute_order_button.setText("Execute Order")
+            return
+
+        if is_tp_selected:
+            self._trigger_label.setText("Take Profit Price:")
+            self._secondary_trigger_label.setText("Stop Loss Price:")
+            self._pair_order_checkbox.setText("Also submit a stop loss")
+        else:
+            self._trigger_label.setText("Stop Loss Price:")
+            self._secondary_trigger_label.setText("Take Profit Price:")
+            self._pair_order_checkbox.setText("Also submit a take profit")
+
+        self.execute_order_button.setText("Submit TP/SL")
+
+    def _toggle_secondary_trigger(self, checked: bool) -> None:
+        """Show or hide the optional paired TP/SL input."""
+        self._secondary_trigger_label.setVisible(checked)
+        self.secondary_trigger_box.setVisible(checked)
+        self.secondary_trigger_max_button.setVisible(checked)
+
+    def _selected_order_type(self) -> PerpsTradeType:
+        """Return currently selected order type."""
+        type_button_id = self._type_group.id(self._type_group.checkedButton())
+        return PerpsTradeType(type_button_id)
+
+    def _paired_order_type(self) -> PerpsTradeType:
+        """Return opposite TP/SL order type for paired submission."""
+        if self._selected_order_type() is PerpsTradeType.TRIGGER_TP:
+            return PerpsTradeType.TRIGGER_SL
+        return PerpsTradeType.TRIGGER_TP
+
+    def _validate_reduce_trigger_price(
+        self,
+        order_type: PerpsTradeType,
+        trigger_price: Decimal,
+    ) -> str | None:
+        """Validate TP/SL trigger price against the associated position."""
+        if trigger_price <= 0:
+            return "Trigger price must be greater than zero."
+
+        if self._associated_position is None:
+            return None
+
+        open_price = self._associated_position["open_price"]
+        is_long = self._associated_position["trade_direction"] is PerpsTradeDirection.LONG
+
+        if order_type is PerpsTradeType.TRIGGER_TP:
+            is_valid = trigger_price > open_price if is_long else trigger_price < open_price
+            if not is_valid:
+                return "Take profit must be on the profitable side of the open price."
+            return None
+
+        is_valid = trigger_price < open_price if is_long else trigger_price > open_price
+        if not is_valid:
+            return "Stop loss must be on the protective side of the open price."
+        return None
+
+    def _build_reduce_order_request(self) -> dict[str, object] | None:
+        """Build single or paired reduce-order request payload."""
+        primary_order_type = self._selected_order_type()
+        primary_trigger_price = Decimal(self.trigger_box.value())
+        validation_error = self._validate_reduce_trigger_price(
+            primary_order_type, primary_trigger_price
+        )
+        if validation_error is not None:
+            QtWidgets.QMessageBox.warning(self, "Invalid Trigger Price", validation_error)
+            return None
+
+        secondary_order_type: PerpsTradeType | None = None
+        secondary_trigger_price: Decimal | None = None
+        if self._pair_order_checkbox.isChecked():
+            secondary_order_type = self._paired_order_type()
+            secondary_trigger_price = Decimal(self.secondary_trigger_box.value())
+            validation_error = self._validate_reduce_trigger_price(
+                secondary_order_type,
+                secondary_trigger_price,
+            )
+            if validation_error is not None:
+                QtWidgets.QMessageBox.warning(self, "Invalid Trigger Price", validation_error)
+                return None
+
+        take_profit_price = (
+            primary_trigger_price if primary_order_type is PerpsTradeType.TRIGGER_TP else None
+        )
+        stop_loss_price = (
+            primary_trigger_price if primary_order_type is PerpsTradeType.TRIGGER_SL else None
+        )
+        if secondary_order_type is PerpsTradeType.TRIGGER_TP:
+            take_profit_price = secondary_trigger_price
+        if secondary_order_type is PerpsTradeType.TRIGGER_SL:
+            stop_loss_price = secondary_trigger_price
+
+        return {
+            "pair": self._order_data["pair"],
+            "size_stable": Decimal(self.amount_box.value()),
+            "trade_direction": self._order_data["trade_direction"],
+            "take_profit_price": take_profit_price,
+            "stop_loss_price": stop_loss_price,
+            "reference_price": primary_trigger_price,
+        }
+
     def set_edit_mode(self, edit_mode: bool) -> None:
         """Set if the widget is editing or creating order.
 
@@ -223,12 +374,22 @@ class ManageOrder(QtWidgets.QDialog):
         self.amount_max_button.setDisabled(edit_mode)
         for button in self._type_group.buttons():
             button.setDisabled(edit_mode)
+        self._pair_order_checkbox.setDisabled(edit_mode)
+        if edit_mode:
+            self._pair_order_checkbox.setChecked(False)
 
     def on_execute_order(self) -> None:
         """Handle execute order button click."""
+        if self._order_data["reduce_only"]:
+            order_request = self._build_reduce_order_request()
+            if order_request is None:
+                return
+            self.execute_order.emit(order_request)
+            self.close()
+            return
+
         # Create order to execture based on current state
-        type_button_id = self._type_group.id(self._type_group.checkedButton())
-        order_type = PerpsTradeType(type_button_id)
+        order_type = self._selected_order_type()
         order = OrderData(
             id=self._order_data["id"],
             pair=self._order_data["pair"],
@@ -245,4 +406,5 @@ class ManageOrder(QtWidgets.QDialog):
         """Override show method to update button position."""
         super().show()
         self.trigger_box.update_button_position()
+        self.secondary_trigger_box.update_button_position()
         self.amount_box.update_button_position()

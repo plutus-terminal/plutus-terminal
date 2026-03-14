@@ -59,6 +59,10 @@ QGroupBox {
     font-size: 13px;
 }
 
+QGroupBox[hasUpdate="true"] {
+    background-color: #31384A;
+}
+
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
@@ -201,8 +205,21 @@ QFrame#newsFrameQuote {
     border-radius: 5px;
 }
 
+QFrame#newsFrameSummary {
+    background-color: rgba(36, 154, 154, 55);
+    border: 1px solid rgba(79, 201, 201, 140);
+    border-radius: 6px;
+}
+
 QLabel#subTitle{
     font-weight: bold;
+}
+
+QLabel#newsSummaryHeader {
+    color: #83E6E6;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
 }
 
 QLabel#newsQuote {
@@ -242,6 +259,16 @@ QPushButton#frameless:pressed {
 
 QLabel#newsCoin {
     font-weight: bold;
+}
+
+QLabel#newsUpdateBadge {
+    background-color: rgba(214, 131, 71, 45);
+    border: 1px solid rgba(214, 131, 71, 120);
+    border-radius: 5px;
+    color: #F5C26B;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 4px 8px;
 }
 
 QPushButton.LONG {

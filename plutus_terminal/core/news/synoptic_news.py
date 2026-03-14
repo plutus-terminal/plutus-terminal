@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import orjson as json
 import re2
@@ -17,7 +17,11 @@ from websockets import ClientConnection, State, connect
 
 from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
-from plutus_terminal.core.news.base import NewsFetcher
+from plutus_terminal.core.news.base import (
+    NewsFetcher,
+    default_message_key,
+    merge_news_update,
+)
 from plutus_terminal.core.types_ import NewsData
 from plutus_terminal.log_utils import log_retry
 
@@ -41,7 +45,7 @@ class SynopticNews(NewsFetcher):
         """
         self._pass_guard = pass_guard
         self.wss = "wss://api.synoptic.com/graphql?format=tree&apiKey={}"
-        self._socket: Optional[ClientConnection] = None
+        self._socket: ClientConnection | None = None
         self._compiled_pattern_quote = re2.compile(r"https?://\S+")
 
     async def websocket_connect(self, api_key: str) -> ClientConnection:
@@ -154,6 +158,7 @@ class SynopticNews(NewsFetcher):
         retweet_user = ""
 
         return NewsData(
+            news_id="",
             title=title,
             link=link,
             body=body,
@@ -175,8 +180,22 @@ class SynopticNews(NewsFetcher):
             coin=coin,
             feed=self.NEWS_SERVICE_NAME,
             sfx=":/sfx/coin",
+            is_update=False,
+            update_type="",
+            applied_updates=set(),
+            summary_title="",
+            summary_body="",
+            is_important=False,
             ignored=False,
         )
+
+    def get_message_key(self, news_data: NewsData) -> str:
+        """Return the stable key for a news message."""
+        return default_message_key(news_data)
+
+    def merge_update(self, current_news: NewsData, incoming_news: NewsData) -> NewsData:
+        """Merge a partial update packet into a full news payload."""
+        return merge_news_update(current_news, incoming_news)
 
     async def stop_async(self) -> None:
         """Stop infinite loops and close connections."""

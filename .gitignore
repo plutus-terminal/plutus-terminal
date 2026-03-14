@@ -116,3 +116,7 @@ cython_debug/
 # log config
 log_config.ini
 logs/
+
+# temp
+.tmp/
+.opencode/
