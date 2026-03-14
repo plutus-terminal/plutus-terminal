@@ -536,18 +536,23 @@ def build_position(
 
 def build_order(
     *,
+    order_id: str = "order-1",
     pair: str = "Crypto.BTC/USDC",
     trade_direction: PerpsTradeDirection = PerpsTradeDirection.LONG,
     order_type: PerpsTradeType = PerpsTradeType.LIMIT,
     reduce_only: bool = False,
+    trigger_price: Decimal = Decimal("100000"),
+    size_stable: Decimal = Decimal("50"),
+    extra: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Create one deterministic order payload."""
     return {
-        "id": "order-1",
+        "id": order_id,
         "pair": pair,
-        "trigger_price": Decimal("100000"),
-        "size_stable": Decimal("50"),
+        "trigger_price": trigger_price,
+        "size_stable": size_stable,
         "trade_direction": trade_direction,
         "order_type": order_type,
         "reduce_only": reduce_only,
+        "extra": extra or {},
     }

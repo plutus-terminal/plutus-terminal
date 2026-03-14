@@ -97,7 +97,11 @@ class PositionActionsCell(QWidget):
     @asyncSlot()
     async def _on_close_reduce_clicked(self, kwargs: dict) -> None:
         """Handle click on reduce."""
-        if self._position["position_size_stable"] == kwargs["size"]:
+        if _should_close_position_immediately(
+            position_size=self._position["position_size_stable"],
+            reduce_size=kwargs["size"],
+            trade_type=kwargs["trade_type"],
+        ):
             await self._exchange.close_position(self._position)
             return
 
@@ -218,3 +222,13 @@ class PositionActionsCell(QWidget):
             trade_type=trade_type,
             execution_price=execution_price,
         )
+
+
+def _should_close_position_immediately(
+    *,
+    position_size: Decimal,
+    reduce_size: Decimal,
+    trade_type: PerpsTradeType,
+) -> bool:
+    """Return whether the request should bypass reduce-order creation and close immediately."""
+    return trade_type is PerpsTradeType.MARKET and position_size == reduce_size

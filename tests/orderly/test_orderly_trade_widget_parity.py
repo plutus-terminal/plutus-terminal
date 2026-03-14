@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 from typing import Any, ClassVar
 import unittest
+from unittest.mock import AsyncMock
 
 from PySide6 import QtCore, QtWidgets
 
-from plutus_terminal.core.types_ import PerpsTradeType
+from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui.widgets.perps_trade import PerpsTradeWidget
 
 
@@ -108,3 +110,34 @@ class OrderlyTradeWidgetParityTests(unittest.TestCase):
 
         # Assert
         assert widget.get_trade_type() is PerpsTradeType.STOP_MARKET
+
+    def test_limit_tab_submits_regular_limit_order_without_attached_tp_sl(self) -> None:
+        """Keep the desktop limit-entry flow on the regular Orderly order path."""
+        # Arrange
+        ui_controller: Any = _UIControllerStub()
+        ui_controller.current_exchange.create_order = AsyncMock()
+        widget = PerpsTradeWidget(ui_controller)
+        widget._trade_tab.setCurrentWidget(widget._trade_type_limit)
+        widget._trade_type_limit.amount_box.setValue(Decimal("10"))
+        widget._trade_type_limit.target_price_box.setValue(Decimal("97500.5"))
+
+        # Act
+        event_loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(event_loop)
+            task = widget._create_order(PerpsTradeDirection.LONG)
+            event_loop.run_until_complete(task)
+        finally:
+            asyncio.set_event_loop(None)
+            event_loop.close()
+
+        # Assert
+        ui_controller.current_exchange.create_order.assert_awaited_once_with(
+            "Crypto.BTC/USDC",
+            Decimal("10"),
+            PerpsTradeDirection.LONG,
+            PerpsTradeType.LIMIT,
+            Decimal("97500.5"),
+            0.0,
+            0.0,
+        )

@@ -369,9 +369,7 @@ class OrderlyExchange(ExchangeBase):
             )
             return
 
-        await asyncio.gather(self.fetcher.fetch_all_orders(), self.fetcher.fetch_all_positions())
-        self.message_bus.orders_fetched.emit(self.fetcher._cached_orders)  # noqa: SLF001
-        self.message_bus.positions_fetched.emit(self.fetcher._cached_positions)  # noqa: SLF001
+        await self._refresh_after_order_submission(pair=pair, refresh_positions=True)
 
     @asyncSlot()
     async def edit_order(
@@ -435,15 +433,35 @@ class OrderlyExchange(ExchangeBase):
             )
             return
 
-        await self.fetcher.fetch_all_orders()
-        self.message_bus.orders_fetched.emit(self.fetcher._cached_orders)  # noqa: SLF001
+        await self._refresh_after_order_submission(pair=pair, refresh_positions=False)
+
+    async def _refresh_after_order_submission(self, *, pair: str, refresh_positions: bool) -> None:
+        """Refresh order state after a successful Orderly order mutation."""
+        try:
+            if refresh_positions:
+                await asyncio.gather(
+                    self.fetcher.fetch_all_orders(), self.fetcher.fetch_all_positions()
+                )
+                self.message_bus.positions_fetched.emit(self.fetcher._cached_positions)  # noqa: SLF001
+            else:
+                await self.fetcher.fetch_all_orders()
+            self.message_bus.orders_fetched.emit(self.fetcher._cached_orders)  # noqa: SLF001
+        except Exception as error:
+            LOGGER.exception("Failed to refresh Orderly state after submitting order for %s", pair)
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Order submitted for {pair}, but failed to refresh Orderly data: {error}",
+                    level=MessageLevel.WARNING,
+                    timeout_ms=5000,
+                ),
+            )
 
     @asyncSlot()
     async def cancel_order(self, order_data: OrderData) -> None:
         """Cancel one open order."""
         symbol = self._symbol_from_order(order_data)
         cancel_arguments = {
-            "order_id": order_data["id"],
+            "order_id": self._native_order_id(order_data),
             "symbol": symbol,
             "trade_type": order_data["order_type"],
         }
@@ -459,8 +477,7 @@ class OrderlyExchange(ExchangeBase):
             )
             return
 
-        await self.fetcher.fetch_all_orders()
-        self.message_bus.orders_fetched.emit(self.fetcher._cached_orders)  # noqa: SLF001
+        await self._refresh_after_order_submission(pair=order_data["pair"], refresh_positions=False)
 
     @asyncSlot()
     async def close_position(self, perps_position: PerpsPosition) -> None:
@@ -597,7 +614,7 @@ class OrderlyExchange(ExchangeBase):
     ) -> dict[str, object]:
         """Build native edit arguments while preserving existing TP/SL sibling state."""
         trade_arguments: dict[str, object] = {
-            "order_id": order_data["id"],
+            "order_id": self._native_order_id(order_data),
             "symbol": self._symbol_from_order(order_data),
             "trade_direction": order_data["trade_direction"],
             "trade_type": order_data["order_type"],
@@ -611,6 +628,11 @@ class OrderlyExchange(ExchangeBase):
         root_order_id = self._root_algo_order_id(order_data)
         if root_order_id is not None:
             trade_arguments["order_id"] = root_order_id
+        order_extra = order_data.get("extra", {})
+        if isinstance(order_extra, dict):
+            root_algo_type = order_extra.get("root_algo_type")
+            if root_algo_type not in (None, ""):
+                trade_arguments["root_algo_type"] = str(root_algo_type)
 
         take_profit, stop_loss = self._tp_sl_targets_for_edit(
             order_data=order_data,
@@ -671,6 +693,16 @@ class OrderlyExchange(ExchangeBase):
         if root_order_id in (None, ""):
             return None
         return str(root_order_id)
+
+    @staticmethod
+    def _native_order_id(order_data: OrderData) -> str:
+        """Return the native Orderly order identifier used for edits and cancels."""
+        order_extra = order_data.get("extra", {})
+        if isinstance(order_extra, dict):
+            native_order_id = order_extra.get("native_order_id")
+            if native_order_id not in (None, ""):
+                return str(native_order_id)
+        return str(order_data["id"])
 
     @staticmethod
     def name() -> str:

@@ -102,6 +102,30 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(error_context.exception.__cause__, OrderlyRequestError)
         assert "duplicate data/request" in str(error_context.exception.__cause__)
 
+    async def test_create_two_regular_orders_generates_distinct_client_order_ids(self) -> None:
+        """Use a fresh client order id for each regular Orderly order submission."""
+        # Arrange
+        self.request_private.return_value = {"success": True}
+
+        with patch(
+            "plutus_terminal.core.exchange.orderly.trader.uuid4",
+            side_effect=[
+                SimpleNamespace(hex="0123456789abcdef0123456789abcdef"),
+                SimpleNamespace(hex="fedcba9876543210fedcba9876543210"),
+            ],
+        ):
+            # Act
+            await self.trader.create_order(_build_trade_arguments())
+            await self.trader.create_order(_build_trade_arguments(price=Decimal("97510.5")))
+
+        # Assert
+        assert self.request_private.await_count == 2
+        first_payload = self.request_private.await_args_list[0].kwargs["json_body"]
+        second_payload = self.request_private.await_args_list[1].kwargs["json_body"]
+        assert first_payload["client_order_id"] == "plutus_0123456789abcdef01234567"
+        assert second_payload["client_order_id"] == "plutus_fedcba9876543210fedcba98"
+        assert first_payload["client_order_id"] != second_payload["client_order_id"]
+
     async def test_cancel_order_hits_regular_delete_endpoint_and_preserves_cancel_sent_status(
         self,
     ) -> None:
@@ -232,6 +256,7 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         result = await self.trader.edit_order(
             _build_trade_arguments(
                 order_id="root-1",
+                root_algo_type="POSITIONAL_TP_SL",
                 trade_type=PerpsTradeType.TRIGGER_TP,
                 reduce_only=True,
                 take_profit=Decimal("99000"),
@@ -248,13 +273,14 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         assert call.args[:2] == ("PUT", "/v1/algo/order")
         payload = call.kwargs["json_body"]
         assert payload["order_id"] == "root-1"
-        assert payload["algo_type"] == "TP_SL"
-        assert payload["side"] == "SELL"
-        assert Decimal(payload["quantity"]) == Decimal("0.01")
+        assert payload["algo_type"] == "POSITIONAL_TP_SL"
+        assert "side" not in payload
+        assert "quantity" not in payload
         assert {child["algo_type"] for child in payload["child_orders"]} == {
             "TAKE_PROFIT",
             "STOP_LOSS",
         }
+        assert {child["type"] for child in payload["child_orders"]} == {"CLOSE_POSITION"}
 
     async def test_edit_order_wraps_native_put_failures_without_replacing_the_order(
         self,

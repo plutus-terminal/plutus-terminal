@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 from typing import Self
 from unittest.mock import Mock, patch
@@ -17,6 +18,8 @@ from plutus_terminal.ui.widgets.manage_order import ManageOrder
 from plutus_terminal.ui.widgets.news_list import NewsList
 from plutus_terminal.ui.widgets.news_widget import ClickableGroupBox, NewsWidget
 from plutus_terminal.ui.widgets.orders_table_action_cell import OrderActionsCell
+from plutus_terminal.ui.widgets.orders_table_columns import get_order_column_index
+from plutus_terminal.ui.widgets.orders_table_state import get_order_identity_key, get_order_row_key
 from plutus_terminal.ui.widgets.perps_trade import (
     LimitTradeWidget,
     MarketTradeWidget,
@@ -36,6 +39,7 @@ from tests.ui.helpers import (
     build_position,
     create_closed_task,
     ensure_app,
+    process_events,
     run_async,
 )
 
@@ -54,6 +58,26 @@ class _FakeLine:
 
     def delete(self) -> None:
         self.deleted = True
+
+
+class _RaisingDeletedLine(_FakeLine):
+    """Chart line stub that raises once invalidated."""
+
+    def __init__(self, price: float) -> None:
+        super().__init__(price)
+        self.invalidated = False
+
+    def update(self, price: float) -> None:
+        if self.invalidated:
+            msg = "stale line"
+            raise RuntimeError(msg)
+        super().update(price)
+
+    def delete(self) -> None:
+        if self.invalidated:
+            msg = "stale line"
+            raise RuntimeError(msg)
+        super().delete()
 
 
 class _FakeTopBarField:
@@ -156,6 +180,41 @@ class _FakeQtChart:
         line = _FakeLine(price)
         self.lines.append(line)
         return line
+
+
+class _ResetInvalidatingQtChart(_FakeQtChart):
+    """Fake chart that invalidates existing lines after set()."""
+
+    def set(self, data: pandas.DataFrame, keep_drawings: bool = False) -> None:
+        for line in self.lines:
+            if isinstance(line, _RaisingDeletedLine):
+                line.invalidated = True
+        super().set(data, keep_drawings=keep_drawings)
+
+    def horizontal_line(self, price: float, **_kwargs: object) -> _RaisingDeletedLine:
+        line = _RaisingDeletedLine(price)
+        self.lines.append(line)
+        return line
+
+
+class _ImmediateTask:
+    """Minimal task double that runs the coroutine immediately in tests."""
+
+    def __init__(self, coroutine: object) -> None:
+        self._exception: Exception | None = None
+        try:
+            asyncio.run(coroutine)
+        except RuntimeError as error:  # pragma: no cover - exercised via callback path
+            self._exception = error
+
+    def add_done_callback(self, callback: object) -> None:
+        callback(self)
+
+    def cancelled(self) -> bool:
+        return False
+
+    def exception(self) -> Exception | None:
+        return self._exception
 
 
 def test_account_info_refreshes_balance_summary() -> None:
@@ -320,6 +379,169 @@ def test_trade_table_updates_tabs_and_refreshes_liquidation_column() -> None:
     widget._positions_table.refresh_liquidation_prices.assert_called_once()
 
 
+def test_trade_table_keeps_distinct_action_cells_for_same_pair_orders() -> None:
+    """Orders with colliding ids should still keep distinct action widgets and targets."""
+    controller = UIControllerStub()
+    widget = TradeTable(controller)
+    older_order = build_order(
+        order_id="",
+        trigger_price=Decimal("100000"),
+        extra={"client_order_id": "client-old", "updated_time": "1"},
+    )
+    newer_order = build_order(
+        order_id="",
+        trigger_price=Decimal("101000"),
+        extra={"client_order_id": "client-new", "updated_time": "2"},
+    )
+
+    widget.update_orders([newer_order, older_order])
+    process_events()
+
+    buttons_column = get_order_column_index("buttons")
+    first_cell = widget._orders_table.indexWidget(widget._orders_model.index(0, buttons_column))
+    second_cell = widget._orders_table.indexWidget(widget._orders_model.index(1, buttons_column))
+
+    assert isinstance(first_cell, OrderActionsCell)
+    assert isinstance(second_cell, OrderActionsCell)
+    assert first_cell is not second_cell
+
+    run_async(second_cell.cancel_order)
+
+    assert controller.current_exchange.cancelled_orders[0]["trigger_price"] == Decimal("100000")
+
+
+def test_trade_table_cancel_survives_row_removal_during_inflight_close() -> None:
+    """Canceling one row should survive the table reset that removes that same row."""
+    controller = UIControllerStub()
+    widget = TradeTable(controller)
+    older_order = build_order(order_id="older", trigger_price=Decimal("100000"))
+    newer_order = build_order(order_id="newer", trigger_price=Decimal("101000"))
+    widget.update_orders([newer_order, older_order])
+    process_events()
+
+    observed: list[dict[str, object]] = []
+
+    async def _cancel_order(order_data: dict[str, object]) -> None:
+        observed.append(order_data)
+        widget.update_orders([newer_order])
+
+    controller.current_exchange.cancel_order = _cancel_order
+
+    buttons_column = get_order_column_index("buttons")
+    older_cell = widget._orders_table.indexWidget(widget._orders_model.index(1, buttons_column))
+
+    assert isinstance(older_cell, OrderActionsCell)
+
+    with patch(
+        "plutus_terminal.ui.widgets.orders_table_action_cell.asyncio.create_task",
+        side_effect=_ImmediateTask,
+    ):
+        older_cell._on_cancel_order()
+    process_events()
+
+    assert observed[0]["id"] == "older"
+    assert widget._orders_model.rowCount() == 1
+
+
+def test_trade_table_coalesces_bursty_order_updates() -> None:
+    """Only the latest burst snapshot should reach the orders model."""
+    controller = UIControllerStub()
+    widget = TradeTable(controller)
+    widget._orders_model.update_orders = Mock()
+    first_orders = [build_order(order_id="first")]
+    second_orders = [build_order(order_id="second")]
+
+    widget._schedule_order_refresh(first_orders)
+    widget._schedule_order_refresh(second_orders)
+    widget._flush_order_refresh()
+
+    widget._orders_model.update_orders.assert_called_once_with(second_orders)
+    assert widget._tab_widget.tabText(1) == "Orders (1)"
+
+
+def test_trade_table_recreates_deleted_cached_action_cell() -> None:
+    """A cached but deleted order-action cell should be recreated on the next sync."""
+    controller = UIControllerStub()
+    widget = TradeTable(controller)
+    older_order = build_order(
+        order_id="",
+        trigger_price=Decimal("100000"),
+        extra={"client_order_id": "client-old", "updated_time": "1"},
+    )
+    newer_order = build_order(
+        order_id="",
+        trigger_price=Decimal("101000"),
+        extra={"client_order_id": "client-new", "updated_time": "2"},
+    )
+
+    widget.update_orders([newer_order, older_order])
+    process_events()
+
+    buttons_column = get_order_column_index("buttons")
+    first_index = widget._orders_model.index(0, buttons_column)
+    first_cell = widget._orders_table.indexWidget(first_index)
+
+    assert isinstance(first_cell, OrderActionsCell)
+
+    first_cell.hide()
+    first_cell.setParent(None)
+    first_cell.deleteLater()
+    process_events()
+
+    widget.update_orders([newer_order, older_order])
+    process_events()
+
+    recreated_cell = widget._orders_table.indexWidget(first_index)
+    second_cell = widget._orders_table.indexWidget(widget._orders_model.index(1, buttons_column))
+
+    assert isinstance(recreated_cell, OrderActionsCell)
+    assert isinstance(second_cell, OrderActionsCell)
+
+
+def test_trade_table_prunes_deleted_cached_action_cell_without_crashing() -> None:
+    """Pruning stale rows should ignore cached widgets whose C++ object is already gone."""
+    controller = UIControllerStub()
+    widget = TradeTable(controller)
+    older_order = build_order(order_id="older", trigger_price=Decimal("100000"))
+    newer_order = build_order(order_id="newer", trigger_price=Decimal("101000"))
+
+    widget.update_orders([newer_order, older_order])
+    process_events()
+
+    buttons_column = get_order_column_index("buttons")
+    older_index = widget._orders_model.index(1, buttons_column)
+    older_cell = widget._orders_table.indexWidget(older_index)
+
+    assert isinstance(older_cell, OrderActionsCell)
+
+    older_cell.hide()
+    older_cell.setParent(None)
+    older_cell.deleteLater()
+    process_events()
+
+    widget.update_orders([newer_order])
+    process_events()
+
+    assert widget._orders_model.rowCount() == 1
+
+
+def test_order_identity_key_distinguishes_same_pair_orders_with_blank_ids() -> None:
+    """Fallback identity keys should keep multiple same-pair orders distinct in the UI."""
+    older_order = build_order(
+        order_id="",
+        trigger_price=Decimal("100000"),
+        extra={"client_order_id": "client-old", "updated_time": "1"},
+    )
+    newer_order = build_order(
+        order_id="",
+        trigger_price=Decimal("101000"),
+        extra={"client_order_id": "client-new", "updated_time": "2"},
+    )
+
+    assert get_order_identity_key(older_order) != get_order_identity_key(newer_order)
+    assert get_order_row_key(older_order) != get_order_row_key(newer_order)
+
+
 def test_news_list_replaces_selected_widget_on_update() -> None:
     """News list updates should swap the existing widget in place."""
     controller = UIControllerStub(news_items=[])
@@ -343,7 +565,9 @@ def test_news_list_replaces_selected_widget_on_update() -> None:
         def open_link(self) -> None:
             return
 
-    def _create_news_widget(news_data: dict[str, object], display_delay: bool = False) -> _FakeNewsWidget:
+    def _create_news_widget(
+        news_data: dict[str, object], display_delay: bool = False
+    ) -> _FakeNewsWidget:
         del display_delay
         return _FakeNewsWidget(news_data)
 
@@ -421,6 +645,25 @@ def test_trading_chart_updates_pair_text_and_tick_label() -> None:
 
     assert chart.top_bar.title.text() == "Chart | ETH/USDC"
     assert "$99,999.5" in chart._price_label.text()
+
+
+def test_trading_chart_handles_multi_order_refresh_after_chart_reset() -> None:
+    """Chart order overlays should survive a reset followed by multi-order refreshes."""
+    controller = UIControllerStub()
+    with patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _ResetInvalidatingQtChart):
+        chart = TradingChart(controller)
+        orders = [
+            build_order(order_id="first", trigger_price=Decimal("100000")),
+            build_order(order_id="second", trigger_price=Decimal("101000")),
+        ]
+        history = pandas.DataFrame({"date": [pandas.Timestamp("2024-01-01")], "close": [1]})
+
+        chart.draw_orders(orders)
+        chart.set_start_data(history)
+        chart.draw_orders(orders)
+        chart.draw_orders([orders[1]])
+
+    assert list(chart._order_lines) == [get_order_identity_key(orders[1])]
 
 
 def test_search_pair_modal_emits_selected_pair() -> None:

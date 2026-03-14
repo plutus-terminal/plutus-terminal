@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, cast
 import unittest
 from unittest.mock import AsyncMock, Mock
 
+from httpx import HTTPStatusError, Request, Response
+
 from plutus_terminal.core.exceptions import InvalidOrderSizeError, TransactionFailedError
 from plutus_terminal.core.exchange.orderly.markets import OrderlyMarketRegistry
 from plutus_terminal.core.exchange.orderly.trader import OrderlyTrader
@@ -52,7 +54,7 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_create_reduce_order_builds_single_take_profit_child_payload(self) -> None:
-        """Create a single TP child order using native TP_SL payloads."""
+        """Create a single TP child order using native POSITIONAL_TP_SL payloads."""
         # Arrange
         self.request_private.return_value = {"success": True}
 
@@ -73,11 +75,14 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         payload = call.kwargs["json_body"]
         assert method == "POST"
         assert path == "/v1/algo/order"
-        assert payload["side"] == "SELL"
-        assert payload["algo_type"] == "TP_SL"
-        assert Decimal(payload["quantity"]) == Decimal("0.01")
+        assert payload["algo_type"] == "POSITIONAL_TP_SL"
+        assert "side" not in payload
+        assert "quantity" not in payload
         assert len(payload["child_orders"]) == 1
+        assert payload["child_orders"][0]["symbol"] == "PERP_BTC_USDC"
         assert payload["child_orders"][0]["algo_type"] == "TAKE_PROFIT"
+        assert payload["child_orders"][0]["side"] == "SELL"
+        assert payload["child_orders"][0]["type"] == "CLOSE_POSITION"
         assert Decimal(payload["child_orders"][0]["trigger_price"]) == Decimal("99000.00")
 
     async def test_create_reduce_order_raises_when_take_profit_target_is_missing(self) -> None:
@@ -97,7 +102,7 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         assert self.request_private.await_count == 0
 
     async def test_create_reduce_order_builds_single_stop_loss_child_payload(self) -> None:
-        """Create a single SL child order using native TP_SL payloads."""
+        """Create a single SL child order using native POSITIONAL_TP_SL payloads."""
         # Arrange
         self.request_private.return_value = {"success": True}
 
@@ -114,10 +119,12 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         call = self.request_private.await_args
         assert call is not None
         payload = call.kwargs["json_body"]
-        assert payload["side"] == "SELL"
-        assert payload["algo_type"] == "TP_SL"
+        assert payload["algo_type"] == "POSITIONAL_TP_SL"
+        assert "side" not in payload
         assert len(payload["child_orders"]) == 1
         assert payload["child_orders"][0]["algo_type"] == "STOP_LOSS"
+        assert payload["child_orders"][0]["side"] == "SELL"
+        assert payload["child_orders"][0]["type"] == "CLOSE_POSITION"
         assert Decimal(payload["child_orders"][0]["trigger_price"]) == Decimal("94000.00")
 
     async def test_create_order_submits_primary_order_and_paired_tp_sl_algo_request(self) -> None:
@@ -148,12 +155,14 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         assert regular_payload["order_type"] == "LIMIT"
         assert Decimal(regular_payload["order_quantity"]) == Decimal("0.01")
         assert Decimal(regular_payload["order_price"]) == Decimal("97500.50")
-        assert tp_sl_payload["side"] == "SELL"
+        assert "side" not in tp_sl_payload
+        assert tp_sl_payload["trigger_price_type"] == "MARK_PRICE"
         assert len(tp_sl_payload["child_orders"]) == 2
         assert {child["algo_type"] for child in tp_sl_payload["child_orders"]} == {
             "TAKE_PROFIT",
             "STOP_LOSS",
         }
+        assert {child["side"] for child in tp_sl_payload["child_orders"]} == {"SELL"}
 
     async def test_create_order_quantizes_attached_tp_sl_trigger_prices(self) -> None:
         """Round attached TP/SL trigger prices to the market quote tick before sending."""
@@ -212,6 +221,48 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         call = self.request_private.await_args
         assert call is not None
         assert call.args[:2] == ("POST", "/v1/order")
+
+    async def test_create_reduce_order_uses_regular_endpoint_for_reduce_only_limit_orders(
+        self,
+    ) -> None:
+        """Keep reduce-only limit closes on the native regular endpoint."""
+        # Arrange
+        self.request_private.return_value = {"order_id": "reduce-limit"}
+
+        # Act
+        result = await self.trader.create_reduce_order(
+            _build_trade_arguments(
+                trade_type=PerpsTradeType.LIMIT,
+                reduce_only=True,
+            ),
+        )
+
+        # Assert
+        assert result == {"order_id": "reduce-limit"}
+        self.request_private.assert_awaited_once()
+        call = self.request_private.await_args
+        assert call is not None
+        assert call.args[:2] == ("POST", "/v1/order")
+        assert call.kwargs["json_body"]["reduce_only"] is True
+
+    async def test_create_order_preserves_orderly_http_error_message_when_wrapped(self) -> None:
+        """Expose the Orderly API error body instead of an empty transaction failure."""
+        # Arrange
+        request = Request("POST", "https://api.orderly.org/v1/order")
+        response = Response(
+            400,
+            request=request,
+            json={"code": -1102, "message": "order price is invalid"},
+        )
+        self.request_private.side_effect = HTTPStatusError(
+            "Client error '400 Bad Request'",
+            request=request,
+            response=response,
+        )
+
+        # Act / Assert
+        with self.assertRaisesRegex(TransactionFailedError, r"\[-1102\] order price is invalid"):
+            await self.trader.create_order(_build_trade_arguments())
 
     async def test_create_order_rejects_final_notional_below_market_minimum(self) -> None:
         """Validate the final Orderly payload notional instead of the raw margin input."""

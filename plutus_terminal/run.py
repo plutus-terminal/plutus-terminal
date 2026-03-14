@@ -186,12 +186,13 @@ def run() -> None:
 
         setproctitle.setproctitle("Plutus Terminal")
 
-    from plutus_terminal.log_utils import setup_logging
+    from plutus_terminal.log_utils import install_asyncio_exception_logging, setup_logging
 
     setup_logging()
 
     event_loop = QEventLoop(app)
     asyncio.set_event_loop(event_loop)
+    install_asyncio_exception_logging(event_loop)
 
     app_close_event = asyncio.Event()
     app.aboutToQuit.connect(app_close_event.set)

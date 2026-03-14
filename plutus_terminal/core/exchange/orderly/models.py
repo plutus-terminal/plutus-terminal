@@ -71,6 +71,7 @@ class OrderlySide(StrEnum):
 class OrderlyOrderType(StrEnum):
     """Supported native Orderly execution types used by Plutus."""
 
+    CLOSE_POSITION = "CLOSE_POSITION"
     LIMIT = "LIMIT"
     MARKET = "MARKET"
 
@@ -78,6 +79,7 @@ class OrderlyOrderType(StrEnum):
 class OrderlyAlgoType(StrEnum):
     """Orderly algo order families used by Plutus."""
 
+    POSITIONAL_TP_SL = "POSITIONAL_TP_SL"
     STOP = "STOP"
     TP_SL = "TP_SL"
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from plutus_terminal.core.exchange.types import OrderData
@@ -12,7 +12,39 @@ OrderRowKey = tuple[str, str]
 
 def get_order_row_key(order: OrderData) -> OrderRowKey:
     """Build a stable row key for an order."""
-    return (order["id"], order["pair"])
+    return (order["pair"], get_order_identity_key(order))
+
+
+def get_order_identity_key(order: OrderData) -> str:
+    """Build a collision-resistant identity key for one order."""
+    order_extra = order.get("extra", {})
+    if not isinstance(order_extra, dict):
+        order_extra = {}
+
+    identity_parts = [
+        str(order["id"]),
+        _extra_text(order_extra, "native_order_id"),
+        _extra_text(order_extra, "client_order_id"),
+        _extra_text(order_extra, "algo_order_id"),
+        _extra_text(order_extra, "root_algo_order_id"),
+        str(order["order_type"].value),
+        str(order["trade_direction"].value),
+        _decimal_text(order["trigger_price"]),
+        _decimal_text(order["size_stable"]),
+        str(order["reduce_only"]),
+    ]
+    return "|".join(identity_parts)
+
+
+def _extra_text(order_extra: dict[str, Any], key: str) -> str:
+    """Return normalized string value from order extras."""
+    value = order_extra.get(key, "")
+    return str(value).strip()
+
+
+def _decimal_text(value: object) -> str:
+    """Return a stable decimal string for UI identity keys."""
+    return format(value, "f")
 
 
 def get_changed_plain_fields(previous_order: OrderData, next_order: OrderData) -> set[str]:

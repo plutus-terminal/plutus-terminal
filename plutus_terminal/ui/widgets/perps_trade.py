@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from functools import partial
+import logging
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -21,6 +22,9 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
     from plutus_terminal.controller.ui_controller import UIController
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class PerpsTradeWidget(QtWidgets.QWidget):
@@ -485,6 +489,12 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         except InvalidOrderSizeError as error:
             Toast.show_message(
                 f"{error}",
+                type_=ToastType.ERROR,
+            )
+        except Exception as error:
+            LOGGER.exception("Unexpected failure while creating trade from perps widget")
+            Toast.show_message(
+                f"Failed to create order: {error}",
                 type_=ToastType.ERROR,
             )
 
