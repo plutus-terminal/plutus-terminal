@@ -140,13 +140,33 @@ class PhoenixNews(NewsFetcher):
             list[NewsData]: List of old news. This list is expected to be ordered.
             from latest to oldest.
         """
-        request_url = f"https://api.phoenixnews.io/getLastNews?limit={limit}"
+        request_url, request_headers = self._get_historical_news_request(limit)
         async with AsyncClient() as client:
-            response = await client.get(request_url)
+            response = await client.get(request_url, headers=request_headers)
         response.raise_for_status()
         data = response.json()
         list_news = [self.format_news(news) for news in data]
         return list_news[::-1]
+
+    def _get_historical_news_request(self, limit: int) -> tuple[str, dict[str, str]]:
+        """Build the Phoenix historical news request URL and headers."""
+        request_url = f"https://api.phoenixnews.io/getLastNews?limit={limit}"
+
+        try:
+            phoenix_api_key = keyring_manager.get_news_source_api_key(
+                self.NEWS_SERVICE_NAME,
+                pass_guard=self._pass_guard,
+            )
+        except KeyringPasswordNotFoundError:
+            return request_url, {}
+
+        if not phoenix_api_key:
+            return request_url, {}
+
+        return (
+            f"https://api.phoenixnews.io/getAllNews?limit={limit}",
+            {"x-api-key": phoenix_api_key},
+        )
 
     def format_news(self, news_message: dict) -> NewsData:  # noqa: C901, PLR0915
         """Format given news.
