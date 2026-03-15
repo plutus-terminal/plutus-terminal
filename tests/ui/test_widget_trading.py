@@ -706,14 +706,9 @@ def test_clickable_group_box_emits_click_signal() -> None:
     observed: list[str] = []
     group.clicked.connect(lambda: observed.append("clicked"))
 
-    event = QtGui.QMouseEvent(
-        QtCore.QEvent.Type.MouseButtonPress,
-        QtCore.QPointF(1, 1),
-        QtCore.Qt.MouseButton.LeftButton,
-        QtCore.Qt.MouseButton.LeftButton,
-        QtCore.Qt.KeyboardModifier.NoModifier,
-    )
-    group.mousePressEvent(event)
+    group.show()
+    QtTest.QTest.mouseClick(group, QtCore.Qt.MouseButton.LeftButton)
+    process_events()
 
     assert observed == ["clicked"]
 
