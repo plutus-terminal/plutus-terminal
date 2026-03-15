@@ -4,27 +4,23 @@ from __future__ import annotations
 
 from decimal import Decimal
 from functools import partial
-import logging
 from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Signal
 from qasync import asyncSlot
 
-from plutus_terminal.core.exceptions import InvalidOrderSizeError
+from plutus_terminal.controller.widgets.perps_trade_controller import PerpsTradeController
 from plutus_terminal.core.exchange.types import PerpsPosition
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.decimal_spin_box import DecimalSpinBoxWithButton
 from plutus_terminal.ui.widgets.double_spin_button import DoubleSpinBoxWithButton
-from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
     from plutus_terminal.controller.ui_controller import UIController
-
-
-LOGGER = logging.getLogger(__name__)
+    from plutus_terminal.core.exchange.base import ExchangeBase
 
 
 class PerpsTradeWidget(QtWidgets.QWidget):
@@ -38,7 +34,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         """Initialize widget."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller
-        self._exchange = ui_controller.current_exchange
+        self._exchange: ExchangeBase = ui_controller.current_exchange
         self._app_config = self._ui_controller.app_config
 
         self.main_layout = QtWidgets.QGridLayout(self)
@@ -103,10 +99,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
         self._long_button = QtWidgets.QPushButton("Open Long")
         self._short_button = QtWidgets.QPushButton("Open Short")
+        self._controller = PerpsTradeController(ui_controller, self)
 
         self._setup_widgets()
         self._setup_layout()
-        self._connect_signals()
 
     def _setup_widgets(self) -> None:  # noqa: PLR0915
         """Configure widgets."""
@@ -128,7 +124,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             btn.setMinimumHeight(25)
             btn.clicked.connect(
                 partial(
-                    self._handle_quick_trade_click,
+                    self._controller.handle_quick_trade_click,
                     option_keys[index],
                     PerpsTradeDirection.LONG,
                 ),
@@ -138,14 +134,13 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             btn.setMinimumHeight(25)
             btn.clicked.connect(
                 partial(
-                    self._handle_quick_trade_click,
+                    self._controller.handle_quick_trade_click,
                     option_keys[index],
                     PerpsTradeDirection.SHORT,
                 ),
             )
 
         self._set_data_from_exchange()
-        self._pair_combo_box.currentIndexChanged.connect(self._on_pair_combo_index_changed)
 
         pair_layout = QtWidgets.QVBoxLayout()
         pair_layout.addWidget(self._pair_combo_box)
@@ -156,13 +151,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             self._leverage_group.addButton(button)
             self._leverage_group.setId(button, value)
             self._leverage_btn_layout.addWidget(button)
-        self._leverage_group.buttonClicked.connect(self._set_leverage_button)
-
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(self._exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
         self._leverage_spin.editingFinished.connect(
-            lambda: self._set_leverage_spin(
+            lambda: self._controller.set_leverage_spin(
                 self._leverage_spin.value(),
             ),
         )
@@ -173,7 +166,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._trade_tab.addTab(self._trade_type_market, "Market")
         self._trade_tab.addTab(self._trade_type_limit, "Limit")
         self._trade_tab.addTab(self._trade_type_stop, "Stop")
-        self._trade_tab.currentChanged.connect(self._update_tab)
+        self._trade_tab.currentChanged.connect(self._controller.handle_tab_changed)
         self._trade_tab.setMinimumHeight(self._trade_tab.sizeHint().height() + 5)
         self._trade_tab.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.MinimumExpanding,
@@ -181,28 +174,28 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         )
 
         self._trade_type_market.amount_changed.connect(
-            self._update_info,
+            self._controller.refresh_trade_summary,
         )
         self._trade_type_market.percent_button_clicked.connect(
-            self._handle_percent_button_click,
+            self._controller.handle_percent_button_click,
         )
         self._trade_type_limit.price_refresh_btn.clicked.connect(
-            self._refresh_limit_price,
+            self._controller.refresh_limit_price,
         )
         self._trade_type_limit.target_price_box.buttonClicked.connect(
-            self._refresh_limit_price,
+            self._controller.refresh_limit_price,
         )
         self._trade_type_limit.amount_changed.connect(
-            self._update_info,
+            self._controller.refresh_trade_summary,
         )
         self._trade_type_limit.percent_button_clicked.connect(
-            self._handle_percent_button_click,
+            self._controller.handle_percent_button_click,
         )
         self._trade_type_stop.amount_changed.connect(
-            self._update_info,
+            self._controller.refresh_trade_summary,
         )
         self._trade_type_stop.percent_button_clicked.connect(
-            self._handle_percent_button_click,
+            self._controller.handle_percent_button_click,
         )
 
         self._info_frame.setObjectName("newsFrameQuote")
@@ -215,12 +208,12 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._long_button.setProperty("class", "LONG")
         self._long_button.setMinimumHeight(40)
         self._long_button.clicked.connect(
-            partial(self._create_order, PerpsTradeDirection.LONG),
+            partial(self._controller.create_order, PerpsTradeDirection.LONG),
         )
         self._short_button.setProperty("class", "SHORT")
         self._short_button.setMinimumHeight(40)
         self._short_button.clicked.connect(
-            partial(self._create_order, PerpsTradeDirection.SHORT),
+            partial(self._controller.create_order, PerpsTradeDirection.SHORT),
         )
 
     def _setup_layout(self) -> None:
@@ -272,24 +265,6 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             alignment=QtCore.Qt.AlignmentFlag.AlignBottom,
         )
 
-    def _connect_signals(self) -> None:
-        """Connect signals."""
-        self._ui_controller.message_bus.subscribed_prices_fetched.connect(
-            self.update_liquidation_info
-        )
-        self._ui_controller.message_bus.balance_fetched.connect(
-            lambda *_: self.update_liquidation_info(),
-        )
-
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
-        self._ui_controller.pair_changed.connect(self._update_current_pair)
-
-        self._app_config.trade_value_high_changed.connect(self.update_trade_buttons)
-        self._app_config.trade_value_low_changed.connect(self.update_trade_buttons)
-        self._app_config.trade_value_lowest_changed.connect(self.update_trade_buttons)
-        self._app_config.trade_value_high_changed.connect(self.update_trade_buttons)
-        self._app_config.leverage_changed.connect(self._update_leverage_values)
-
     def _set_data_from_exchange(self) -> None:
         """Set data from exchange.
 
@@ -311,8 +286,109 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self.top_bar.title.setText(f"Persp Trade | {default_pair}")
         self._pair_combo_box.blockSignals(False)
 
+    @property
+    def pair_combo_box(self) -> QtWidgets.QComboBox:
+        """Expose the pair selector for the controller."""
+        return self._pair_combo_box
+
+    @property
+    def leverage_group(self) -> QtWidgets.QButtonGroup:
+        """Expose leverage radio buttons for the controller."""
+        return self._leverage_group
+
+    @property
+    def exchange(self) -> ExchangeBase:
+        """Expose the current exchange for the controller."""
+        return self._exchange
+
+    def set_exchange(self, exchange: ExchangeBase) -> None:
+        """Update the widget exchange reference."""
+        self._exchange = exchange
+
+    def current_trade_widget(self) -> MarketTradeWidget | LimitTradeWidget | StopTradeWidget | None:
+        """Return the active trade-entry widget when supported."""
+        current_widget = self._trade_tab.currentWidget()
+        if isinstance(current_widget, MarketTradeWidget | LimitTradeWidget | StopTradeWidget):
+            return current_widget
+        return None
+
+    def is_market_tab_active(self) -> bool:
+        """Return whether the market trade tab is active."""
+        return self._trade_tab.currentWidget() == self._trade_type_market
+
+    def is_stop_tab_active(self) -> bool:
+        """Return whether the stop trade tab is active."""
+        return self._trade_tab.currentWidget() == self._trade_type_stop
+
+    @staticmethod
+    def is_limit_widget(widget: object) -> bool:
+        """Return whether a widget is a limit-trade widget."""
+        return isinstance(widget, LimitTradeWidget)
+
+    @staticmethod
+    def is_stop_widget(widget: object) -> bool:
+        """Return whether a widget is a stop-trade widget."""
+        return isinstance(widget, StopTradeWidget)
+
+    def current_pair_data(self) -> str:
+        """Return the currently selected pair data."""
+        return str(self._pair_combo_box.currentData())
+
+    def set_pair_text(self, simplified_pair: str) -> None:
+        """Render the simplified pair in the selector and title."""
+        self._pair_combo_box.blockSignals(True)
+        self._pair_combo_box.setCurrentText(simplified_pair)
+        self._pair_combo_box.blockSignals(False)
+        self.top_bar.title.setText(f"Persp Trade | {simplified_pair}")
+
+    def populate_pairs_from_exchange(self) -> None:
+        """Populate the pair selector from the current exchange."""
+        self._pair_combo_box.blockSignals(True)
+        self._pair_combo_box.clear()
+        for pair in sorted(self._exchange.available_pairs):
+            self._pair_combo_box.addItem(
+                self._exchange.format_simple_pair_from_pair(pair),
+                userData=pair,
+            )
+        default_pair = self._exchange.format_simple_pair_from_pair(self._exchange.default_pair)
+        self._pair_combo_box.setCurrentText(default_pair)
+        self.top_bar.title.setText(f"Persp Trade | {default_pair}")
+        self._pair_combo_box.blockSignals(False)
+
+    def set_leverage_spin_value(self, leverage_value: int) -> None:
+        """Render leverage into the spin box without emitting signals."""
+        self._leverage_spin.blockSignals(True)
+        self._leverage_spin.setValue(leverage_value)
+        self._leverage_spin.blockSignals(False)
+
+    def leverage_value(self) -> int:
+        """Return the current leverage selection."""
+        return self._leverage_spin.value()
+
+    def set_max_leverage(self, leverage_value: int) -> None:
+        """Update the maximum allowed leverage."""
+        self._leverage_spin.setMaximum(leverage_value)
+
+    def set_fee_value(self, text: str) -> None:
+        """Render the fee summary text."""
+        self._fees_value.setText(text)
+
+    def set_leverage_info_value(self, text: str) -> None:
+        """Render the leverage summary text."""
+        self._leverage_info_value.setText(text)
+
+    def set_limit_price(self, price: Decimal) -> None:
+        """Render the latest cached limit price."""
+        self._trade_type_limit.target_price_box.setValue(price)
+
+    def update_trade_type_button_positions(self) -> None:
+        """Realign inline buttons after tab changes."""
+        self._trade_type_market.update_button_position()
+        self._trade_type_limit.update_button_position()
+        self._trade_type_stop.update_button_position()
+
     @asyncSlot()
-    async def _set_leverage_spin(self, leverage_value: int) -> None:
+    async def set_leverage_spin(self, leverage_value: int) -> None:
         """Set leverage when spin is changed.
 
         Update buttons if values matches.
@@ -320,31 +396,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         Args:
             leverage_value (int): Leverage value.
         """
-        self._leverage_spin.blockSignals(True)
-        self._leverage_spin.setValue(leverage_value)
-        self._leverage_spin.blockSignals(False)
+        await self._controller.set_leverage_spin(leverage_value)
 
-        self._update_info()
-        self._update_leverage_buttons(leverage_value)
-
-        await self._set_leverage()
-
-    @asyncSlot(int)
-    async def _on_pair_combo_index_changed(self, index: int) -> None:
-        """Change current pair from the combo-box selection."""
-        pair = self._pair_combo_box.itemData(index)
-        if not isinstance(pair, str):
-            return
-        await self._ui_controller.change_current_pair(pair)
-
-    def _update_leverage_values(self) -> None:
+    def sync_leverage_values(self) -> None:
         """Update leverage spin."""
-        self._leverage_spin.blockSignals(True)
-        self._leverage_spin.setValue(self._app_config.leverage)
-        self._leverage_spin.blockSignals(False)
-
-        self._update_info()
-        self._update_leverage_buttons(self._app_config.leverage)
+        self._controller.sync_leverage_values()
 
     def _update_leverage_buttons(self, leverage_value: int) -> None:
         """Update leverage buttons state based on leverage value."""
@@ -357,48 +413,13 @@ class PerpsTradeWidget(QtWidgets.QWidget):
                 button.setChecked(False)
                 self._leverage_group.setExclusive(True)
 
-    @asyncSlot()
-    async def _set_leverage_button(self, button: QtWidgets.QRadioButton) -> None:
-        """Set leverage spin when button is clicked.
-
-        Args:
-            button (QtWidgets.QRadioButton): Leverage button clicked.
-        """
-        await self._set_leverage_spin(self._leverage_group.id(button))
-
-    @asyncSlot()
-    async def _set_leverage(self) -> None:
-        """Set leverage on exchange for current pair.
-
-        Args:
-            leverage_value (int): Leverage value to set.
-        """
-        leverage_value = self._leverage_spin.value()
-        pair = self._pair_combo_box.currentData()
-        coin = self._exchange.format_coin_from_pair(pair)
-        await self._ui_controller.set_leverage(coin, leverage_value)
-
-        # In case the levarage was changed due to limits, ensure UI is up to date
-        if self._app_config.leverage != leverage_value:
-            self._leverage_spin.blockSignals(True)
-            self._leverage_spin.setValue(self._app_config.leverage)
-            self._update_leverage_buttons(self._app_config.leverage)
-            self._leverage_spin.blockSignals(False)
+    def update_leverage_buttons(self, leverage_value: int) -> None:
+        """Public wrapper for leverage button state updates."""
+        self._update_leverage_buttons(leverage_value)
 
     def _update_info(self) -> None:
         """Update frame info."""
-        current_widget = self._trade_tab.currentWidget()
-        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget | StopTradeWidget):
-            return
-        amount = current_widget.amount_box.value()
-        margin_fee = self._exchange.calculate_margin_fee(
-            Decimal(amount) * self._leverage_spin.value(),
-        )
-        self._fees_value.setText(f"${margin_fee:.3f}")
-
-        leverage_value = self._leverage_spin.value()
-        self._leverage_info_value.setText(f"{leverage_value}x")
-        self.update_liquidation_info()
+        self._controller.refresh_trade_summary()
 
     def update_liquidation_info(self) -> None:
         """Update liquidation info."""
@@ -470,117 +491,31 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             f"<span style='color:rgb(255, 100, 100)'>${short_liq_price:,.{minimal_digits}f}</span>",
         )
 
-    @asyncSlot()
-    async def _handle_quick_trade_click(
-        self,
-        option_key: str,
-        direction: PerpsTradeDirection,
-    ) -> None:
-        """Handle quick trade click."""
-        amount = getattr(self._app_config, option_key)
-        pair = self._pair_combo_box.currentData()
-        try:
-            await self._exchange.create_order(
-                pair,
-                amount,
-                direction,
-                PerpsTradeType.MARKET,
-            )
-        except InvalidOrderSizeError as error:
-            Toast.show_message(
-                f"{error}",
-                type_=ToastType.ERROR,
-            )
-        except Exception as error:
-            LOGGER.exception("Unexpected failure while creating trade from perps widget")
-            Toast.show_message(
-                f"Failed to create order: {error}",
-                type_=ToastType.ERROR,
-            )
-
     def _handle_percent_button_click(self, button: QtWidgets.QAbstractButton) -> None:
         """Handle percent button click.
 
         Args:
             button (QtWidgets.QAbstractButton): Percent button clicked.
         """
-        current_widget = self._trade_tab.currentWidget()
-        if not isinstance(current_widget, MarketTradeWidget | LimitTradeWidget | StopTradeWidget):
-            return
-        balance = self._exchange.stable_balance
-        percentage = Decimal(current_widget.percent_group.id(button) / 100)
-        current_widget.amount_box.setValue(balance * percentage)
+        self._controller.handle_percent_button_click(button)
 
     @asyncSlot()
-    async def _create_order(
-        self,
-        direction: PerpsTradeDirection,
-    ) -> None:
-        """Create new order."""
-        pair = self._pair_combo_box.currentData()
-        current_tab = self._trade_tab.currentWidget()
-        if not isinstance(current_tab, LimitTradeWidget | StopTradeWidget) and not isinstance(
-            current_tab,
-            MarketTradeWidget,
-        ):
-            return
-        amount = Decimal(current_tab.get_amount())
-        trade_type = self.get_trade_type()
-        # Get None in case the order is Market
-        execution_price = None
-        stop_loss = 0.0
-        take_profit = 0.0
-        if isinstance(current_tab, LimitTradeWidget):
-            execution_price = Decimal(current_tab.get_target_price())
-            stop_loss = current_tab.get_stop_loss()
-            take_profit = current_tab.get_take_profit()
-        elif isinstance(current_tab, StopTradeWidget):
-            execution_price = Decimal(current_tab.get_trigger_price())
-        else:
-            stop_loss = current_tab.get_stop_loss()
-            take_profit = current_tab.get_take_profit()
-        try:
-            await self._exchange.create_order(
-                pair,
-                amount,
-                direction,
-                trade_type,
-                execution_price,
-                take_profit,
-                stop_loss,
-            )
-        except InvalidOrderSizeError as error:
-            Toast.show_message(
-                f"{error}",
-                type_=ToastType.ERROR,
-            )
+    async def _create_order(self, direction: PerpsTradeDirection) -> None:
+        """Backward-compatible wrapper for order creation."""
+        await self._controller.create_order(direction)
 
     def get_trade_type(self) -> PerpsTradeType:
         """Get trade type from active tab."""
-        current_tab = self._trade_tab.currentWidget()
-        if current_tab == self._trade_type_market:
-            return PerpsTradeType.MARKET
-        if current_tab == self._trade_type_stop:
-            return PerpsTradeType.STOP_MARKET
-        return PerpsTradeType.LIMIT
+        return self._controller.get_trade_type()
 
     @asyncSlot(str)
-    async def _update_current_pair(self, pair: str) -> None:
+    async def sync_current_pair(self, pair: str) -> None:
         """Update current pair.
 
         Args:
             pair (str): New pair.
         """
-        simplified_pair = self._exchange.format_simple_pair_from_pair(pair)
-        self._pair_combo_box.blockSignals(True)
-        self._pair_combo_box.setCurrentText(simplified_pair)
-        self._pair_combo_box.blockSignals(False)
-
-        # Ensure leverage is set correctly
-        coin = self._exchange.format_coin_from_pair(pair)
-        await self._ui_controller.set_leverage(coin, self._app_config.leverage)
-
-        self.top_bar.title.setText(f"Persp Trade | {simplified_pair}")
+        await self._controller.handle_pair_changed(pair)
 
     def update_trade_buttons(self) -> None:
         """Update trade buttons values."""
@@ -597,33 +532,20 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
     def _update_tab(self) -> None:
         """Update tab buttons."""
-        self._update_info()
-        self._trade_type_market.update_button_position()
-        self._trade_type_limit.update_button_position()
-        self._trade_type_stop.update_button_position()
+        self._controller.handle_tab_changed()
 
     def _refresh_limit_price(self) -> None:
         """Refresh limit price."""
-        self._trade_type_limit.target_price_box.setValue(
-            self._exchange.cached_prices[self._pair_combo_box.currentData()]["price"],
-        )
+        self._controller.refresh_limit_price()
 
-    def _on_new_exchange(self) -> None:
+    def handle_new_exchange(self) -> None:
         """Update widget on new exchange.
 
         * Set data from exchange
         * Update trade buttons
         * Update leverage
         """
-        self._exchange = self._ui_controller.current_exchange
-        self._set_data_from_exchange()
-        self.update_trade_buttons()
-
-        self.blockSignals(True)
-        self._leverage_spin.setMaximum(self._exchange.max_leverage)
-        self._leverage_spin.setValue(self._app_config.leverage)
-        self._update_leverage_buttons(self._app_config.leverage)
-        self.blockSignals(False)
+        self._controller.handle_exchange_changed()
 
 
 class MarketTradeWidget(QtWidgets.QWidget):

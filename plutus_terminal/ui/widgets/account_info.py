@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Optional
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from qasync import asyncSlot
 
+from plutus_terminal.controller.widgets.account_info_controller import AccountInfoController
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
@@ -146,8 +146,8 @@ class AccountInfo(QtWidgets.QWidget):
         self.approve_btn = QtWidgets.QPushButton("Approve For Trading")
 
         self._setup_widgets()
-        self._connect_signals()
         self._setup_layout()
+        self._controller = AccountInfoController(ui_controller, self)
 
     def _setup_widgets(self) -> None:
         """Configure widgets."""
@@ -179,15 +179,6 @@ class AccountInfo(QtWidgets.QWidget):
         self._frame_layout.setContentsMargins(0, 0, 0, 0)
 
         self.refresh_exchange_account_info()
-
-    def _connect_signals(self) -> None:
-        """Connect signals."""
-        self.approve_btn.clicked.connect(self._on_approve_for_trading)
-
-        self._ui_controller.message_bus.balance_fetched.connect(self.update_balance)
-        self._ui_controller.message_bus.positions_fetched.connect(self._refresh_account_snapshot)
-
-        self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
     def refresh_exchange_account_info(self) -> None:
         """Refresh exchange account info."""
@@ -275,32 +266,24 @@ class AccountInfo(QtWidgets.QWidget):
 
     def update_balance(self, _balance: Decimal) -> None:
         """Update account balance summary and detail rows."""
-        self._refresh_account_snapshot()
+        self._controller.refresh_for_balance(_balance)
 
     def _refresh_account_snapshot(self, *_args: object) -> None:
         """Refresh account info rows and top summary from current exchange state."""
-        self.refresh_exchange_account_info()
+        self._controller.refresh_account_snapshot(*_args)
 
-    @asyncSlot()
     async def set_approve_btn_visibility(self) -> None:
         """Set approve button visibility."""
-        if await self._ui_controller.current_exchange.is_ready_to_trade():
-            self.approve_btn.setVisible(False)
-        else:
-            self.approve_btn.setVisible(True)
+        await self._controller.set_approve_btn_visibility()
 
-    @asyncSlot()
     async def _on_approve_for_trading(self) -> None:
         """Approve for trading."""
-        await self._ui_controller.current_exchange.approve_for_trading()
-        await self.set_approve_btn_visibility()
+        await self._controller.handle_approve_for_trading()
 
-    @asyncSlot()
     async def _on_new_exchange(self) -> None:
         """Update widget on new exchange.
 
         * Refresh exchange account info
         * Set approve button visibility
         """
-        self._refresh_account_snapshot()
-        await self.set_approve_btn_visibility()
+        await self._controller.handle_exchange_changed()

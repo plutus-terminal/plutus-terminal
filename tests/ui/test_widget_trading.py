@@ -10,8 +10,9 @@ from typing import Self
 from unittest.mock import Mock, patch
 
 import pandas
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 
+from plutus_terminal.controller.widgets.ui_update_batcher import UiUpdateBatcher
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 from plutus_terminal.ui.widgets.manage_order import ManageOrder
@@ -44,6 +45,8 @@ from tests.ui.helpers import (
 )
 
 ensure_app()
+
+_EXPECTED_ACCOUNT_REFRESH_COUNT = 2
 
 
 class _FakeLine:
@@ -220,12 +223,41 @@ class _ImmediateTask:
 def test_account_info_refreshes_balance_summary() -> None:
     """AccountInfo should render the grouped balance summary and details."""
     controller = UIControllerStub()
-    widget = AccountInfo(controller)
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with patch(
+        "plutus_terminal.controller.widgets.account_info_controller.UiUpdateBatcher.shared",
+        return_value=batcher,
+    ):
+        widget = AccountInfo(controller)
 
-    controller.message_bus.balance_fetched.emit(Decimal("0"))
+        controller.message_bus.balance_fetched.emit(Decimal("0"))
+        QtTest.QTest.qWait(15)
+        process_events()
 
     assert widget._balance_value.text() == "$200.000 USD"
     assert widget._toggle_details_button.text() == "Show Balance Details"
+
+
+def test_account_info_refreshes_snapshot_for_balance_and_position_signals() -> None:
+    """AccountInfo should rebuild the snapshot for both balance and position events."""
+    controller = UIControllerStub()
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with patch(
+        "plutus_terminal.controller.widgets.account_info_controller.UiUpdateBatcher.shared",
+        return_value=batcher,
+    ):
+        widget = AccountInfo(controller)
+        widget.refresh_exchange_account_info = Mock()
+
+        controller.message_bus.balance_fetched.emit(Decimal("0"))
+        controller.message_bus.positions_fetched.emit([build_position()])
+
+        assert widget.refresh_exchange_account_info.call_count == 0
+
+        QtTest.QTest.qWait(15)
+        process_events()
+
+    assert widget.refresh_exchange_account_info.call_count == 1
 
 
 def test_perps_trade_widget_percent_button_sets_amount() -> None:
@@ -238,6 +270,31 @@ def test_perps_trade_widget_percent_button_sets_amount() -> None:
     widget._handle_percent_button_click(first_button)
 
     assert market.amount_box.value() == Decimal("50")
+
+
+def test_perps_trade_widget_refreshes_liquidation_labels_from_market_data() -> None:
+    """PerpsTradeWidget should recalculate liquidation labels on price updates."""
+    controller = UIControllerStub()
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with patch(
+        "plutus_terminal.controller.widgets.perps_trade_controller.UiUpdateBatcher.shared",
+        return_value=batcher,
+    ):
+        widget = PerpsTradeWidget(controller)
+        widget._trade_type_market.amount_box.setValue(Decimal("10"))
+        widget._liq_price_long_value.setText("--")
+        widget._liq_price_short_value.setText("--")
+
+        controller.message_bus.subscribed_prices_fetched.emit(controller.current_exchange.cached_prices)
+
+        assert widget._liq_price_long_value.text() == "--"
+        assert widget._liq_price_short_value.text() == "--"
+
+        QtTest.QTest.qWait(15)
+        process_events()
+
+    assert "$90,000" in widget._liq_price_long_value.text()
+    assert "$110,000" in widget._liq_price_short_value.text()
 
 
 def test_market_limit_and_stop_widgets_return_current_values() -> None:
@@ -459,6 +516,40 @@ def test_trade_table_coalesces_bursty_order_updates() -> None:
     assert widget._tab_widget.tabText(1) == "Orders (1)"
 
 
+def test_trade_table_forwards_cached_prices_to_positions_table() -> None:
+    """TradeTable should pass cached market prices through to the positions table."""
+    controller = UIControllerStub()
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with patch(
+        "plutus_terminal.controller.widgets.trade_table_controller.UiUpdateBatcher.shared",
+        return_value=batcher,
+    ):
+        widget = TradeTable(controller)
+        widget._positions_table.update_cached_prices = Mock()
+        first_prices = {
+            "Crypto.BTC/USDC": {
+                "price": Decimal("100500"),
+                "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
+            }
+        }
+        second_prices = {
+            "Crypto.BTC/USDC": {
+                "price": Decimal("100750"),
+                "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
+            }
+        }
+
+        controller.message_bus.subscribed_prices_fetched.emit(first_prices)
+        controller.message_bus.subscribed_prices_fetched.emit(second_prices)
+
+        widget._positions_table.update_cached_prices.assert_not_called()
+
+        QtTest.QTest.qWait(15)
+        process_events()
+
+    widget._positions_table.update_cached_prices.assert_called_once_with(second_prices)
+
+
 def test_trade_table_recreates_deleted_cached_action_cell() -> None:
     """A cached but deleted order-action cell should be recreated on the next sync."""
     controller = UIControllerStub()
@@ -630,7 +721,14 @@ def test_clickable_group_box_emits_click_signal() -> None:
 def test_trading_chart_updates_pair_text_and_tick_label() -> None:
     """TradingChart should react to pair text changes and live ticks."""
     controller = UIControllerStub()
-    with patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _FakeQtChart):
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with (
+        patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _FakeQtChart),
+        patch(
+            "plutus_terminal.controller.widgets.trading_chart_controller.UiUpdateBatcher.shared",
+            return_value=batcher,
+        ),
+    ):
         chart = TradingChart(controller)
         chart.main_chart.candle_data = pandas.DataFrame({"time": [1]})
         chart.set_pair_text("Crypto.ETH/USDC")
@@ -642,9 +740,100 @@ def test_trading_chart_updates_pair_text_and_tick_label() -> None:
                 }
             }
         )
+        QtTest.QTest.qWait(15)
+        process_events()
 
     assert chart.top_bar.title.text() == "Chart | ETH/USDC"
     assert "$99,999.5" in chart._price_label.text()
+
+
+def test_trading_chart_skips_tick_redraw_before_history_is_loaded() -> None:
+    """TradingChart should update the live label without redrawing an empty chart."""
+    controller = UIControllerStub()
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with (
+        patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _FakeQtChart),
+        patch(
+            "plutus_terminal.controller.widgets.trading_chart_controller.UiUpdateBatcher.shared",
+            return_value=batcher,
+        ),
+    ):
+        chart = TradingChart(controller)
+        chart.main_chart.update_from_tick = Mock()
+
+        chart.update_chart_tick(
+            {
+                "Crypto.BTC/USDC": {
+                    "price": Decimal("100001.25"),
+                    "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
+                }
+            }
+        )
+        QtTest.QTest.qWait(15)
+        process_events()
+
+    assert "$100,001.25" in chart._price_label.text()
+    chart.main_chart.update_from_tick.assert_not_called()
+
+
+def test_ui_update_batcher_defers_flush_while_user_input_has_priority() -> None:
+    """UiUpdateBatcher should postpone redraw work while user input is active."""
+    observed: list[str] = []
+    batcher = UiUpdateBatcher(flush_interval_ms=0, user_priority_window_ms=25)
+
+    batcher.submit("demo", lambda: observed.append("flushed"))
+    batcher.mark_user_interaction()
+
+    QtTest.QTest.qWait(10)
+    process_events()
+
+    assert observed == []
+
+    QtTest.QTest.qWait(25)
+    process_events()
+
+    assert observed == ["flushed"]
+
+
+def test_trading_chart_batches_bursty_ticks_to_latest_value() -> None:
+    """TradingChart should coalesce bursty ticks and render only the latest one."""
+    controller = UIControllerStub()
+    batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+    with (
+        patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _FakeQtChart),
+        patch(
+            "plutus_terminal.controller.widgets.trading_chart_controller.UiUpdateBatcher.shared",
+            return_value=batcher,
+        ),
+    ):
+        chart = TradingChart(controller)
+        chart.main_chart.candle_data = pandas.DataFrame({"time": [1]})
+        chart.main_chart.update_from_tick = Mock()
+
+        controller.message_bus.subscribed_prices_fetched.emit(
+            {
+                "Crypto.BTC/USDC": {
+                    "price": Decimal("100001.25"),
+                    "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
+                }
+            }
+        )
+        controller.message_bus.subscribed_prices_fetched.emit(
+            {
+                "Crypto.BTC/USDC": {
+                    "price": Decimal("100123.5"),
+                    "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
+                }
+            }
+        )
+
+        assert chart._price_label.text() == ""
+
+        QtTest.QTest.qWait(15)
+        process_events()
+
+    assert "$100,123.5" in chart._price_label.text()
+    chart.main_chart.update_from_tick.assert_called_once()
 
 
 def test_trading_chart_handles_multi_order_refresh_after_chart_reset() -> None:

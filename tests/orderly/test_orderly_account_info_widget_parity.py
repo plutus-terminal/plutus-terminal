@@ -7,9 +7,11 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 import unittest
+from unittest.mock import patch
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtTest, QtWidgets
 
+from plutus_terminal.controller.widgets.ui_update_batcher import UiUpdateBatcher
 from plutus_terminal.ui.widgets.account_info import AccountInfo
 
 
@@ -83,17 +85,24 @@ class OrderlyAccountInfoWidgetParityTests(unittest.TestCase):
         """Keep the total visible by default and reveal supporting rows only on demand."""
         # Arrange
         ui_controller: Any = _UIControllerStub()
-        widget = AccountInfo(ui_controller)
-        ui_controller.current_exchange.account_info = {
-            "Available Balance + Unsettled PnL": Decimal("112.5"),
-            "Free Balance": Decimal("87.5"),
-            "Available Balance": Decimal("100"),
-            "Unsettled PnL": Decimal("12.5"),
-            "Account Id": "acct-456",
-        }
+        batcher = UiUpdateBatcher(flush_interval_ms=5, user_priority_window_ms=20)
+        with patch(
+            "plutus_terminal.controller.widgets.account_info_controller.UiUpdateBatcher.shared",
+            return_value=batcher,
+        ):
+            widget = AccountInfo(ui_controller)
+            ui_controller.current_exchange.account_info = {
+                "Available Balance + Unsettled PnL": Decimal("112.5"),
+                "Free Balance": Decimal("87.5"),
+                "Available Balance": Decimal("100"),
+                "Unsettled PnL": Decimal("12.5"),
+                "Account Id": "acct-456",
+            }
 
-        # Act
-        ui_controller.message_bus.balance_fetched.emit(Decimal("0"))
+            # Act
+            ui_controller.message_bus.balance_fetched.emit(Decimal("0"))
+            QtTest.QTest.qWait(15)
+            self._app.processEvents()
 
         # Assert
         assert widget._balance_label.text() == "Total Balance"
