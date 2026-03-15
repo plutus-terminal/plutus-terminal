@@ -31,6 +31,7 @@ from qasync import asyncSlot
 
 from plutus_terminal.core.exchange.types import PerpsTradeType
 from plutus_terminal.ui import ui_utils
+from plutus_terminal.ui.widgets.orders_table_state import get_order_identity_key
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 if TYPE_CHECKING:
@@ -116,6 +117,7 @@ class TradingChart(QWidget):
         self._position_lines: dict[int, HorizontalLine] = {}
         self._liquidation_lines: dict[int, HorizontalLine] = {}
         self._order_lines: dict[str, HorizontalLine] = {}
+        self._order_line_state: dict[str, tuple[float, str, str, str]] = {}
 
         self._config_widgets()
         self._connect_signals()
@@ -222,6 +224,7 @@ class TradingChart(QWidget):
             ohlcv (pandas.DataFrame): Open, high, low, close, volume data.
             keep_drawings (bool): Keep drawings on chart.
         """
+        self._clear_overlay_lines()
         # Convert to local timezone
         ohlcv["date"] = ohlcv["date"].apply(ui_utils.convert_timestamp_to_local_timezone)
         self._main_chart.set(ohlcv)
@@ -300,37 +303,31 @@ class TradingChart(QWidget):
             if pos_id in self._position_lines:
                 # Update position if open price has changed
                 current_line = self._position_lines[pos_id]
-                if float(position["open_price"]) != current_line.price:
-                    current_line.update(float(position["open_price"]))
+                try:
+                    if float(position["open_price"]) != current_line.price:
+                        current_line.update(float(position["open_price"]))
+                except RuntimeError:
+                    LOGGER.debug("Recreating stale position line for %s", pos_id)
+                    self._safe_delete_line(current_line)
+                    del self._position_lines[pos_id]
+                    current_line = self._create_position_line(position)
+                    self._position_lines[pos_id] = current_line
 
                 # Update liquidation line if price has changed
                 liquidation_price = position["liquidation_price"]
                 current_liquidation_line = self._liquidation_lines[pos_id]
-                if float(liquidation_price) != current_liquidation_line.price:
-                    current_liquidation_line.update(float(liquidation_price))
+                try:
+                    if float(liquidation_price) != current_liquidation_line.price:
+                        current_liquidation_line.update(float(liquidation_price))
+                except RuntimeError:
+                    LOGGER.debug("Recreating stale liquidation line for %s", pos_id)
+                    self._safe_delete_line(current_liquidation_line)
+                    del self._liquidation_lines[pos_id]
+                    current_liquidation_line = self._create_liquidation_line(position)
+                    self._liquidation_lines[pos_id] = current_liquidation_line
             else:
-                # Create new position line
-                new_pos_line = self._main_chart.horizontal_line(
-                    float(position["open_price"]),
-                    width=1,
-                    color="rgb(255, 80, 80)",
-                    style="dotted",
-                    text=f"Open {position['trade_direction'].name.capitalize()}",
-                    axis_label_visible=False,
-                )
-                self._position_lines[pos_id] = new_pos_line
-
-                # Create new liquidation line
-                liquidation_price = position["liquidation_price"]
-                new_liquidation_line = self._main_chart.horizontal_line(
-                    float(liquidation_price),
-                    width=1,
-                    color="rgb(225, 110, 30)",
-                    style="solid",
-                    text=f"Est. Liq {position['trade_direction'].name.capitalize()}",
-                    axis_label_visible=False,
-                )
-                self._liquidation_lines[pos_id] = new_liquidation_line
+                self._position_lines[pos_id] = self._create_position_line(position)
+                self._liquidation_lines[pos_id] = self._create_liquidation_line(position)
 
         # Delete old lines
         positions_to_delete = [
@@ -338,9 +335,9 @@ class TradingChart(QWidget):
         ]
 
         for pos_id in positions_to_delete:
-            self._position_lines[pos_id].delete()
+            self._safe_delete_line(self._position_lines[pos_id])
             del self._position_lines[pos_id]
-            self._liquidation_lines[pos_id].delete()
+            self._safe_delete_line(self._liquidation_lines[pos_id])
             del self._liquidation_lines[pos_id]
 
     def draw_orders(self, all_orders: list[OrderData]) -> None:
@@ -350,7 +347,7 @@ class TradingChart(QWidget):
             all_orders (list[OrderData]): List of current orders.
         """
         new_orders = {
-            order["id"]: order
+            get_order_identity_key(order): order
             for order in all_orders
             if order["pair"] == self._ui_controller.current_pair and order["trigger_price"] > 0
         }
@@ -358,24 +355,73 @@ class TradingChart(QWidget):
         for order_id, order in new_orders.items():
             order_label = _format_chart_order_label(order)
             line_color, line_style = _order_line_style(order)
-            if order_id in self._order_lines:
-                self._order_lines[order_id].delete()
+            line_state = (float(order["trigger_price"]), line_color, line_style, order_label)
+            current_line = self._order_lines.get(order_id)
+            if current_line is not None and self._order_line_state.get(order_id) == line_state:
+                continue
+            if current_line is not None:
+                self._safe_delete_line(current_line)
 
             self._order_lines[order_id] = self._main_chart.horizontal_line(
-                float(order["trigger_price"]),
+                line_state[0],
                 width=1,
-                color=line_color,
-                style=line_style,
-                text=order_label,
+                color=line_state[1],
+                style=line_state[2],
+                text=line_state[3],
                 axis_label_visible=False,
             )
+            self._order_line_state[order_id] = line_state
 
         # Delete old lines
         order_to_delete = [order_id for order_id in self._order_lines if order_id not in new_orders]
 
         for order_id in order_to_delete:
-            self._order_lines[order_id].delete()
+            self._safe_delete_line(self._order_lines[order_id])
             del self._order_lines[order_id]
+            self._order_line_state.pop(order_id, None)
+
+    def _clear_overlay_lines(self) -> None:
+        """Clear cached chart overlays before resetting chart data."""
+        for line in self._order_lines.values():
+            self._safe_delete_line(line)
+        for line in self._position_lines.values():
+            self._safe_delete_line(line)
+        for line in self._liquidation_lines.values():
+            self._safe_delete_line(line)
+        self._order_lines.clear()
+        self._position_lines.clear()
+        self._liquidation_lines.clear()
+        self._order_line_state.clear()
+
+    def _create_position_line(self, position: PerpsPosition) -> HorizontalLine:
+        """Create an open-position line on the chart."""
+        return self._main_chart.horizontal_line(
+            float(position["open_price"]),
+            width=1,
+            color="rgb(255, 80, 80)",
+            style="dotted",
+            text=f"Open {position['trade_direction'].name.capitalize()}",
+            axis_label_visible=False,
+        )
+
+    def _create_liquidation_line(self, position: PerpsPosition) -> HorizontalLine:
+        """Create a liquidation line on the chart."""
+        return self._main_chart.horizontal_line(
+            float(position["liquidation_price"]),
+            width=1,
+            color="rgb(225, 110, 30)",
+            style="solid",
+            text=f"Est. Liq {position['trade_direction'].name.capitalize()}",
+            axis_label_visible=False,
+        )
+
+    @staticmethod
+    def _safe_delete_line(line: HorizontalLine) -> None:
+        """Delete a chart line while tolerating stale-handle failures."""
+        try:
+            line.delete()
+        except RuntimeError:
+            LOGGER.debug("Skipping delete for stale chart line", exc_info=True)
 
     async def on_timeframe_selection(self, chart: Chart) -> None:
         """Emit signal to change timeframe."""

@@ -445,6 +445,10 @@ class OrderlyFetcher(ExchangeFetcher):
         parsed_positions = [_parse_position(row, self._market_registry) for row in rows]
         self._cached_positions = [position for position in parsed_positions if position is not None]
         await self._refresh_public_funding_rates()
+        try:
+            await self._refresh_opening_fee_cache(self._cached_positions)
+        except (HTTPStatusError, RequestError):
+            LOGGER.debug("Unable to refresh Orderly opening fee cache", exc_info=True)
         self._message_bus.balance_fetched.emit(self.trading_balance())
         return self._cached_positions
 
@@ -482,7 +486,7 @@ class OrderlyFetcher(ExchangeFetcher):
         all_orders.extend(parsed_algo_orders)
         self._cached_orders = sorted(
             all_orders,
-            key=_order_sort_key,
+            key=_order_sort_tuple,
             reverse=True,
         )
         return self._cached_orders
@@ -569,19 +573,16 @@ class OrderlyFetcher(ExchangeFetcher):
         return position_size * _bps_to_fraction(self._futures_taker_fee_rate_bps)
 
     def fetch_opening_fee(self, perps_position: PerpsPosition) -> Decimal:
-        """Return the SDK-equivalent opening-fee component from cost position."""
+        """Return the current-leg opening fee when cached, else estimate it."""
         position_extra = perps_position.get("extra", {})
         if not isinstance(position_extra, dict):
             return self._estimate_opening_fee(perps_position)
 
-        signed_base_size = self._resolve_position_base_size(perps_position)
-        raw_cost_position = _decimal_from_mapping(position_extra, ("raw_cost_position",))
-        if raw_cost_position == Decimal(0):
+        symbol = str(position_extra.get("symbol", ""))
+        cached_opening_fee = self._cached_opening_fees.get(symbol)
+        if cached_opening_fee is None:
             return self._estimate_opening_fee(perps_position)
-
-        signed_cost_position = raw_cost_position * self._position_size_ratio(perps_position)
-        entry_notional = signed_base_size * perps_position["open_price"]
-        return abs(signed_cost_position - entry_notional)
+        return cached_opening_fee * self._position_size_ratio(perps_position)
 
     def fetch_unsettled_pnl(self, perps_position: PerpsPosition) -> Decimal:
         """Return scaled native unsettled PnL for the position."""
@@ -1582,9 +1583,11 @@ def _parse_regular_order(
     trigger_price = _decimal_from_mapping(row, ("price", "order_price"))
     order_qty = _decimal_from_mapping(row, ("quantity", "order_quantity"))
     size_stable = _resolve_order_notional(row, order_qty, trigger_price)
+    order_id = _regular_order_id(row)
+    native_order_id = _native_regular_order_id(row)
 
     return {
-        "id": str(row.get("order_id", row.get("client_order_id", ""))),
+        "id": order_id,
         "pair": rule.pair,
         "trigger_price": trigger_price,
         "size_stable": size_stable,
@@ -1593,6 +1596,8 @@ def _parse_regular_order(
         "reduce_only": reduce_only,
         "extra": {
             "symbol": symbol,
+            "native_order_id": native_order_id,
+            "client_order_id": str(row.get("client_order_id", "")),
             "native_fee": str(_decimal_from_mapping(row, ("total_fee",))),
             "fee_asset": str(row.get("fee_asset", "")),
             "realized_pnl": str(_decimal_from_mapping(row, ("realized_pnl",))),
@@ -1752,6 +1757,7 @@ def _parse_algo_order_base(
             "symbol": symbol,
             "algo_order_id": str(row.get("algo_order_id", "")),
             "root_algo_order_id": str(row.get("root_algo_order_id", row.get("algo_order_id", ""))),
+            "root_algo_type": str(row.get("algo_type", "")),
             "parent_algo_order_id": str(row.get("parent_algo_order_id", "")),
             "algo_type": str(row.get("algo_type", "")),
             "native_fee": str(_decimal_from_mapping(row, ("total_fee",))),
@@ -1762,6 +1768,32 @@ def _parse_algo_order_base(
             "updated_time": str(row.get("updated_time", row.get("created_time", "0"))),
         },
     }
+
+
+def _native_regular_order_id(row: Mapping[str, Any]) -> str:
+    """Return the native regular order id when the payload includes one."""
+    return str(row.get("order_id", "")).strip()
+
+
+def _regular_order_id(row: Mapping[str, Any]) -> str:
+    """Return a stable terminal order id for regular Orderly orders."""
+    order_id = _native_regular_order_id(row)
+    if order_id:
+        return order_id
+
+    client_order_id = str(row.get("client_order_id", "")).strip()
+    if client_order_id:
+        return client_order_id
+
+    fallback_parts = (
+        str(row.get("symbol", "")).strip(),
+        str(row.get("side", "")).strip(),
+        str(row.get("order_type", row.get("type", "LIMIT"))).strip(),
+        str(row.get("price", row.get("order_price", ""))).strip(),
+        str(row.get("quantity", row.get("order_quantity", ""))).strip(),
+        str(row.get("updated_time", row.get("created_time", "0"))).strip(),
+    )
+    return "|".join(part for part in fallback_parts if part)
 
 
 def _direction_from_side(side: str, reduce_only: bool) -> PerpsTradeDirection:
@@ -1813,9 +1845,19 @@ def _is_open_algo_row(
     return not _bool_from_mapping(row, ("is_triggered", "triggered"))
 
 
-def _order_sort_key(order: OrderData) -> int:
-    """Return stable sort key for mixed regular and algo orders."""
+def _order_sort_tuple(order: OrderData) -> tuple[int, str]:
+    """Return stable sort tuple for mixed regular and algo orders."""
     order_extra = order.get("extra", {})
     if not isinstance(order_extra, dict):
-        return 0
-    return _int_from_mapping(order_extra, ("updated_time",))
+        return (0, str(order["id"]))
+    updated_time = _int_from_mapping(order_extra, ("updated_time",))
+    native_id = str(
+        order_extra.get(
+            "native_order_id",
+            order_extra.get(
+                "root_algo_order_id",
+                order_extra.get("algo_order_id", order_extra.get("client_order_id", order["id"])),
+            ),
+        ),
+    )
+    return (updated_time, native_id)

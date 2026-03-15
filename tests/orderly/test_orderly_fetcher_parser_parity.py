@@ -136,6 +136,38 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert orders[0]["order_type"].order_family == "tp_sl"
         assert orders[0]["order_type"] is PerpsTradeType.TRIGGER_SL
 
+    async def test_fetch_all_orders_uses_client_order_id_when_native_regular_id_is_missing(
+        self,
+    ) -> None:
+        """Keep same-pair regular orders distinct even if native order_id is absent."""
+        # Arrange
+        payloads = _load_payloads()
+        first_order = payloads["regular_order"] | {
+            "order_id": "",
+            "client_order_id": "plutus_regular_a",
+            "price": "97500.5",
+        }
+        second_order = payloads["regular_order"] | {
+            "order_id": "",
+            "client_order_id": "plutus_regular_b",
+            "price": "97600.5",
+            "updated_time": 1710000000001,
+        }
+        self.request_private.side_effect = [
+            {"data": {"rows": [first_order, second_order]}},
+            {"data": {"rows": []}},
+        ]
+
+        # Act
+        orders = await self.fetcher.fetch_all_orders()
+
+        # Assert
+        assert [order["id"] for order in orders] == ["plutus_regular_b", "plutus_regular_a"]
+        first_extra = cast("dict[str, str]", orders[0].get("extra", {}))
+        second_extra = cast("dict[str, str]", orders[1].get("extra", {}))
+        assert first_extra["client_order_id"] == "plutus_regular_b"
+        assert second_extra["client_order_id"] == "plutus_regular_a"
+
     async def test_fetch_all_positions_prefers_native_liquidation_and_fee_fields(self) -> None:
         """Keep native liquidation and fee fields when parsing positions."""
         # Arrange
@@ -201,21 +233,65 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         assert self.fetcher.fetch_funding_fee(partial_position) == Decimal("0.375")
 
-    async def test_fetch_opening_fee_uses_cost_position_delta_and_scales_for_partial_close(
+    async def test_fetch_opening_fee_uses_cached_trade_history_fee_and_scales_for_partial_close(
         self,
     ) -> None:
-        """Use the same cost-position delta formula as the React SDK."""
+        """Use reconstructed current-leg fees for open positions when trade history is available."""
         # Arrange
         payloads = _load_payloads()
-        position_payload = payloads["position"] | {"cost_position": "970.582"}
-        self.request_private.return_value = {"data": {"rows": [position_payload]}}
+        self.request_private.side_effect = [
+            {"data": {"rows": [payloads["position"]]}},
+            {
+                "data": {
+                    "rows": [
+                        {
+                            "side": "BUY",
+                            "executed_quantity": "0.01",
+                            "executed_price": "97000",
+                            "fee": "0.582",
+                            "fee_asset": "USDC",
+                            "executed_timestamp": 1710000000100,
+                        },
+                    ],
+                    "meta": {"total": 1, "records_per_page": 500, "current_page": 1},
+                },
+            },
+        ]
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
         partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
 
         # Assert
-        assert self.fetcher.fetch_opening_fee(partial_position) == Decimal("0.291")
+        assert self.fetcher.fetch_opening_fee(partial_position) == Decimal("0.2910")
+
+    def test_fetch_opening_fee_falls_back_to_margin_estimate_without_cached_trade_history(
+        self,
+    ) -> None:
+        """Fallback opening fees should match the entry-notional fee preview when no cache exists."""
+        # Arrange
+        position = {
+            "pair": "Crypto.BTC/USDC",
+            "id": 77,
+            "position_size_stable": Decimal("970"),
+            "collateral_stable": Decimal("97"),
+            "open_price": Decimal("97000"),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "leverage": Decimal("10"),
+            "liquidation_price": Decimal("87456.12"),
+            "extra": {
+                "symbol": "PERP_BTC_USDC",
+                "raw_cost_position": "970.582",
+                "native_notional": "970",
+                "base_size": "0.01",
+            },
+        }
+
+        # Act
+        opening_fee = self.fetcher.fetch_opening_fee(cast("Any", position))
+
+        # Assert
+        assert opening_fee == Decimal("0.582")
 
     async def test_fetch_all_positions_preserves_small_absolute_collateral_values(self) -> None:
         """Do not reinterpret sub-1 collateral fields as IMR ratios."""

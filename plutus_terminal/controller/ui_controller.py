@@ -368,9 +368,19 @@ class UIController(QObject):
             )
             return
 
-        await asyncio.gather(fetcher.fetch_all_orders(), fetcher.fetch_all_positions())
-        self.message_bus.orders_fetched.emit(fetcher._cached_orders)  # noqa: SLF001
-        self.message_bus.positions_fetched.emit(fetcher._cached_positions)  # noqa: SLF001
+        try:
+            await asyncio.gather(fetcher.fetch_all_orders(), fetcher.fetch_all_positions())
+            self.message_bus.orders_fetched.emit(fetcher._cached_orders)  # noqa: SLF001
+            self.message_bus.positions_fetched.emit(fetcher._cached_positions)  # noqa: SLF001
+        except Exception as error:
+            LOGGER.exception("Failed to refresh Orderly state after submitting position TP/SL")
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Created TP/SL order, but failed to refresh Orderly data: {error}",
+                    level=MessageLevel.WARNING,
+                    timeout_ms=5000,
+                ),
+            )
 
     def _tp_sl_submission_message(
         self,

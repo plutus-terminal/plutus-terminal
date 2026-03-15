@@ -598,6 +598,13 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
                         ],
                     },
                 }
+            if path == "/v1/trades":
+                return {
+                    "data": {
+                        "rows": [],
+                        "meta": {"total": 0, "records_per_page": 500, "current_page": 1},
+                    }
+                }
 
             raise AssertionError(path)
 

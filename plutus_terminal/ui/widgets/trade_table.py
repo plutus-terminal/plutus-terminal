@@ -44,8 +44,12 @@ class TradeTable(QtWidgets.QWidget):
         self._orders_model = OrdersTableModel(self._exchange.format_simple_pair_from_pair)
         self._orders_table = OrdersTableView(self._exchange)
         self._liquidation_refresh_timer = QTimer(self)
+        self._orders_refresh_timer = QTimer(self)
         self._liquidation_refresh_timer.setSingleShot(True)
         self._liquidation_refresh_timer.setInterval(100)
+        self._orders_refresh_timer.setSingleShot(True)
+        self._orders_refresh_timer.setInterval(75)
+        self._pending_orders: list[OrderData] | None = None
 
         self._setup_widgets()
         self._connect_signals()
@@ -67,10 +71,11 @@ class TradeTable(QtWidgets.QWidget):
         self._positions_table.row_clicked.connect(self._ui_controller.change_current_pair)
 
         self._ui_controller.message_bus.positions_fetched.connect(self.update_positions)
-        self._ui_controller.message_bus.orders_fetched.connect(self.update_orders)
+        self._ui_controller.message_bus.orders_fetched.connect(self._schedule_order_refresh)
         self._ui_controller.message_bus.subscribed_prices_fetched.connect(self.update_prices)
         self._ui_controller.message_bus.balance_fetched.connect(self._schedule_liquidation_refresh)
         self._liquidation_refresh_timer.timeout.connect(self._refresh_liquidation_column)
+        self._orders_refresh_timer.timeout.connect(self._flush_order_refresh)
 
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
 
@@ -88,6 +93,21 @@ class TradeTable(QtWidgets.QWidget):
         """Update orders."""
         self._tab_widget.setTabText(1, f"Orders ({len(orders)})")
         self._orders_model.update_orders(orders)
+
+    def _schedule_order_refresh(self, orders: list[OrderData]) -> None:
+        """Coalesce bursty order updates before resetting the orders table."""
+        self._pending_orders = orders
+        if self._orders_refresh_timer.isActive():
+            return
+        self._orders_refresh_timer.start()
+
+    def _flush_order_refresh(self) -> None:
+        """Apply the latest pending order snapshot after coalescing."""
+        if self._pending_orders is None:
+            return
+        orders = self._pending_orders
+        self._pending_orders = None
+        self.update_orders(orders)
 
     def update_prices(self, cached_prices: dict) -> None:
         """Update prices."""

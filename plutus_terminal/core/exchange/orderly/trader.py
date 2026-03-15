@@ -6,6 +6,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from httpx import HTTPStatusError, RequestError
+
 from plutus_terminal.core.exceptions import TransactionFailedError
 from plutus_terminal.core.exchange.orderly.constraints import (
     quantize_base_size,
@@ -19,10 +21,9 @@ from plutus_terminal.core.exchange.orderly.models import (
     OrderlyRegularOrderPayload,
     OrderlySide,
     OrderlyStopOrderPayload,
-    OrderlyTpSlChildOrderPayload,
     OrderlyTpSlChildType,
-    OrderlyTpSlOrderPayload,
 )
+from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRequestError
 from plutus_terminal.core.exchange.types import (
     PerpsTradeDirection,
     PerpsTradeType,
@@ -56,7 +57,7 @@ class OrderlyTrader:
         try:
             primary_result = await self._submit_order_request(request)
         except Exception as error:
-            raise TransactionFailedError from error
+            raise TransactionFailedError(_transaction_error_message(error)) from error
 
         result: TradeResults = primary_result
         if request.trade_type.is_regular_order and request.has_any_tp_sl:
@@ -64,10 +65,10 @@ class OrderlyTrader:
                 tp_sl_result = await self._rest_client.request_private(
                     "POST",
                     "/v1/algo/order",
-                    json_body=_build_tp_sl_order_payload(request),
+                    json_body=_build_attached_tp_sl_order_payload(request),
                 )
                 result = {"primary": primary_result, "tp_sl": tp_sl_result}
-            except Exception as error:
+            except (HTTPStatusError, OrderlyRequestError, RequestError, TransactionFailedError) as error:
                 result = {
                     "primary": primary_result,
                     "tp_sl": None,
@@ -86,10 +87,10 @@ class OrderlyTrader:
                 return await self._rest_client.request_private(
                     "POST",
                     "/v1/algo/order",
-                    json_body=_build_tp_sl_order_payload(trigger_request),
+                    json_body=_build_reduce_tp_sl_order_payload(trigger_request),
                 )
             except Exception as error:
-                raise TransactionFailedError from error
+                raise TransactionFailedError(_transaction_error_message(error)) from error
         return await self.create_order(order_args)
 
     async def close_position(self, trade_arguments: dict) -> TradeResults:
@@ -110,13 +111,14 @@ class OrderlyTrader:
         try:
             return await self._rest_client.request_private("DELETE", path, params=params)
         except Exception as error:
-            raise TransactionFailedError from error
+            raise TransactionFailedError(_transaction_error_message(error)) from error
 
     async def edit_order(self, trade_arguments: dict) -> TradeResults:
         """Edit one order through Orderly native PUT endpoints."""
         trade_type = PerpsTradeType(trade_arguments["trade_type"])
         request = _build_order_request(trade_arguments, self._market_registry)
         order_id = str(trade_arguments["order_id"])
+        payload: dict[str, object]
 
         if trade_type.is_regular_order:
             path = "/v1/order"
@@ -126,12 +128,16 @@ class OrderlyTrader:
             payload = _build_stop_edit_payload(order_id, request)
         else:
             path = "/v1/algo/order"
-            payload = _build_tp_sl_edit_payload(order_id, request)
+            payload = _build_tp_sl_edit_payload(
+                order_id,
+                request,
+                root_algo_type=str(trade_arguments.get("root_algo_type", "")),
+            )
 
         try:
             return await self._rest_client.request_private("PUT", path, json_body=payload)
         except Exception as error:
-            raise TransactionFailedError from error
+            raise TransactionFailedError(_transaction_error_message(error)) from error
 
     async def set_leverage(self, symbol: str, leverage: int) -> dict:
         """Set leverage for one symbol."""
@@ -143,7 +149,7 @@ class OrderlyTrader:
                 json_body=body,
             )
         except Exception as error:
-            raise TransactionFailedError from error
+            raise TransactionFailedError(_transaction_error_message(error)) from error
 
     async def _submit_order_request(self, request: OrderlyOrderRequest) -> TradeResults:
         """Send one native Orderly order request."""
@@ -214,9 +220,9 @@ def _build_regular_order_payload(request: OrderlyOrderRequest) -> OrderlyRegular
 
 def _build_regular_edit_payload(
     order_id: str, request: OrderlyOrderRequest
-) -> dict[str, str | bool]:
+) -> dict[str, object]:
     """Build `/v1/order` edit payload for a pending regular order."""
-    body: dict[str, str | bool] = {
+    body: dict[str, object] = {
         "order_id": order_id,
         "symbol": request.symbol,
         "side": request.side.value,
@@ -257,15 +263,16 @@ def _build_stop_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dic
     return body
 
 
-def _build_tp_sl_order_payload(request: OrderlyOrderRequest) -> OrderlyTpSlOrderPayload:
-    """Build native Orderly `TP_SL` payload for one or two child orders."""
-    child_orders: list[OrderlyTpSlChildOrderPayload] = []
+def _build_attached_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[str, object]:
+    """Build native Orderly `TP_SL` payload for attached regular-order exits."""
+    child_orders: list[dict[str, object]] = []
     if request.has_take_profit:
         child_orders.append(
             _build_tp_sl_child_order(
                 request,
                 OrderlyTpSlChildType.TAKE_PROFIT,
                 request.take_profit,
+                child_order_type=OrderlyOrderType.MARKET,
             ),
         )
     if request.has_stop_loss:
@@ -274,28 +281,68 @@ def _build_tp_sl_order_payload(request: OrderlyOrderRequest) -> OrderlyTpSlOrder
                 request,
                 OrderlyTpSlChildType.STOP_LOSS,
                 request.stop_loss,
+                child_order_type=OrderlyOrderType.MARKET,
             ),
         )
     if not child_orders:
         msg = "TP/SL algo orders require at least one trigger target."
         raise ValueError(msg)
 
-    side = request.side
-    if not request.reduce_only:
-        side = OrderlySide.SELL if request.side is OrderlySide.BUY else OrderlySide.BUY
-
     return {
         "symbol": request.symbol,
-        "side": side.value,
         "algo_type": OrderlyAlgoType.TP_SL.value,
         "quantity": str(request.quantity),
+        "trigger_price_type": request.trigger_price_type.value,
         "child_orders": child_orders,
     }
 
 
-def _build_tp_sl_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dict[str, object]:
+def _build_reduce_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[str, object]:
+    """Build native Orderly `POSITIONAL_TP_SL` payload for existing positions."""
+    child_orders: list[dict[str, object]] = []
+    if request.has_take_profit:
+        child_orders.append(
+            _build_tp_sl_child_order(
+                request,
+                OrderlyTpSlChildType.TAKE_PROFIT,
+                request.take_profit,
+                child_order_type=OrderlyOrderType.CLOSE_POSITION,
+            ),
+        )
+    if request.has_stop_loss:
+        child_orders.append(
+            _build_tp_sl_child_order(
+                request,
+                OrderlyTpSlChildType.STOP_LOSS,
+                request.stop_loss,
+                child_order_type=OrderlyOrderType.CLOSE_POSITION,
+            ),
+        )
+    if not child_orders:
+        msg = "TP/SL algo orders require at least one trigger target."
+        raise ValueError(msg)
+
+    return {
+        "symbol": request.symbol,
+        "algo_type": OrderlyAlgoType.POSITIONAL_TP_SL.value,
+        "trigger_price_type": request.trigger_price_type.value,
+        "child_orders": child_orders,
+    }
+
+
+def _build_tp_sl_edit_payload(
+    order_id: str,
+    request: OrderlyOrderRequest,
+    *,
+    root_algo_type: str,
+) -> dict[str, object]:
     """Build `/v1/algo/order` edit payload for an existing TP/SL root order."""
-    body = dict(_build_tp_sl_order_payload(request))
+    body = (
+        _build_reduce_tp_sl_order_payload(request)
+        if root_algo_type == OrderlyAlgoType.POSITIONAL_TP_SL.value
+        else _build_attached_tp_sl_order_payload(request)
+    )
+    body = dict(body)
     body["order_id"] = order_id
     return body
 
@@ -304,11 +351,16 @@ def _build_tp_sl_child_order(
     request: OrderlyOrderRequest,
     child_type: OrderlyTpSlChildType,
     trigger_price: Decimal,
-) -> OrderlyTpSlChildOrderPayload:
+    *,
+    child_order_type: OrderlyOrderType,
+) -> dict[str, object]:
     """Build a child order for native Orderly TP/SL algo requests."""
+    side = _tp_sl_child_side(request)
     return {
+        "symbol": request.symbol,
         "algo_type": child_type.value,
-        "type": OrderlyOrderType.MARKET.value,
+        "side": side.value,
+        "type": child_order_type.value,
         "trigger_price": str(trigger_price),
         "trigger_price_type": request.trigger_price_type.value,
         "reduce_only": True,
@@ -339,6 +391,13 @@ def _opposite_direction(direction: PerpsTradeDirection) -> PerpsTradeDirection:
     if direction is PerpsTradeDirection.LONG:
         return PerpsTradeDirection.SHORT
     return PerpsTradeDirection.LONG
+
+
+def _tp_sl_child_side(request: OrderlyOrderRequest) -> OrderlySide:
+    """Return the exit side used by Orderly TP/SL child orders."""
+    if request.reduce_only:
+        return request.side
+    return OrderlySide.SELL if request.side is OrderlySide.BUY else OrderlySide.BUY
 
 
 def _resolve_price(
@@ -378,3 +437,33 @@ def _resolve_base_size(
 
     size_stable = Decimal(str(trade_arguments["size_stable"]))
     return quantize_base_size(size_stable / order_price, market_rule)
+
+
+def _transaction_error_message(error: Exception) -> str:
+    """Return the most useful user-facing message for a failed Orderly request."""
+    if isinstance(error, HTTPStatusError):
+        payload = _http_status_payload_message(error)
+        if payload is not None:
+            return payload
+    return str(error) or error.__class__.__name__
+
+
+def _http_status_payload_message(error: HTTPStatusError) -> str | None:
+    """Extract Orderly API details from an HTTP status error response when available."""
+    try:
+        payload = error.response.json()
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, dict):
+        code = payload.get("code")
+        message = payload.get("message")
+        if code is not None and message is not None:
+            return f"[{code}] {message}"
+        if message is not None:
+            return str(message)
+
+    response_text = error.response.text.strip()
+    if response_text:
+        return response_text
+    return None

@@ -1,5 +1,6 @@
 """Useful log utilities."""
 
+from asyncio import AbstractEventLoop
 from collections.abc import Callable
 from datetime import datetime, timezone
 import logging.config
@@ -34,6 +35,21 @@ def setup_logging() -> None:
     )
 
     sys.excepthook = log_uncaught_exceptions
+
+
+def install_asyncio_exception_logging(event_loop: AbstractEventLoop) -> None:
+    """Log unhandled asyncio task exceptions through the app logger."""
+
+    def _handle_async_exception(_loop: AbstractEventLoop, context: dict[str, object]) -> None:
+        logger = logging.getLogger("plutus_terminal")
+        exception = context.get("exception")
+        message = str(context.get("message", "Unhandled asyncio exception"))
+        if not isinstance(exception, BaseException):
+            logger.error("%s", message)
+            return
+        logger.exception(message, exc_info=(type(exception), exception, exception.__traceback__))
+
+    event_loop.set_exception_handler(_handle_async_exception)
 
 
 def create_default_config() -> None:

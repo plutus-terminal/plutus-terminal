@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QTimer, Signal
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableView, QWidget
 
 from plutus_terminal.ui.widgets.orders_table_action_cell import OrderActionsCell
@@ -32,6 +32,11 @@ class OrdersTableView(QTableView):
         self._cell_widgets: dict[str, dict[OrderRowKey, QWidget]] = {
             column_id: {} for column_id in ORDER_WIDGET_COLUMN_IDS
         }
+        self._pending_row_keys: list[OrderRowKey] = []
+        self._sync_pending = False
+        self._sync_timer = QTimer(self)
+        self._sync_timer.setSingleShot(True)
+        self._sync_timer.timeout.connect(self._run_pending_sync)
         self.clicked.connect(self.on_row_click)
         self._setup_style()
 
@@ -50,8 +55,8 @@ class OrdersTableView(QTableView):
         if model is None:
             return
         orders_model = cast("OrdersTableModel", model)
-        orders_model.modelReset.connect(self._sync_all_cells)
-        orders_model.rows_updated.connect(self._sync_rows)
+        orders_model.modelReset.connect(self._queue_full_sync)
+        orders_model.rows_updated.connect(self._queue_row_sync)
 
     def _model(self) -> OrdersTableModel:
         return cast("OrdersTableModel", self.model())
@@ -60,6 +65,39 @@ class OrdersTableView(QTableView):
         row_keys = self._model().row_keys()
         self._prune_stale_widgets(set(row_keys))
         self._sync_rows(row_keys)
+
+    def _queue_full_sync(self) -> None:
+        """Defer full widget sync until the current reset stack unwinds."""
+        self._pending_row_keys = self._model().row_keys()
+        self._schedule_sync()
+
+    def _queue_row_sync(self, row_keys: list[OrderRowKey]) -> None:
+        """Coalesce row-widget sync work onto the next event-loop turn."""
+        if not row_keys:
+            return
+        pending = set(self._pending_row_keys)
+        pending.update(row_keys)
+        self._pending_row_keys = [row_key for row_key in self._model().row_keys() if row_key in pending]
+        self._schedule_sync()
+
+    def _schedule_sync(self) -> None:
+        """Schedule one deferred sync if none is pending."""
+        if self._sync_pending:
+            return
+        self._sync_pending = True
+        self._sync_timer.start(0)
+
+    def _run_pending_sync(self) -> None:
+        """Apply any deferred row-widget sync work."""
+        self._sync_pending = False
+        current_row_keys = self._model().row_keys()
+        self._prune_stale_widgets(set(current_row_keys))
+        if not self._pending_row_keys:
+            self._sync_rows(current_row_keys)
+            return
+        pending = set(self._pending_row_keys)
+        self._pending_row_keys = []
+        self._sync_rows([row_key for row_key in current_row_keys if row_key in pending])
 
     def _sync_rows(self, row_keys: list[OrderRowKey]) -> None:
         for row_key in row_keys:
@@ -77,13 +115,21 @@ class OrdersTableView(QTableView):
             stale_keys = set(registry) - current_row_keys
             for stale_key in stale_keys:
                 widget = registry.pop(stale_key)
+                if not _is_live_widget(widget):
+                    continue
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
 
     def _sync_action_cell(self, row_key: OrderRowKey, row: int, order: OrderData) -> None:
         action_cell = self._cell_widgets["buttons"].get(row_key)
-        if action_cell is None:
+        if not _is_live_widget(action_cell):
+            if action_cell is not None:
+                self._cell_widgets["buttons"].pop(row_key, None)
             action_cell = OrderActionsCell(order_data=order, exchange=self._exchange, parent=self)
             self._cell_widgets["buttons"][row_key] = action_cell
+        if action_cell is None:
+            return
 
         if isinstance(action_cell, OrderActionsCell):
             action_cell.set_order_data(order)
@@ -115,3 +161,14 @@ class OrdersTableView(QTableView):
             for widget in registry.values():
                 if isinstance(widget, OrderActionsCell):
                     widget.set_exchange(new_exchange)
+
+
+def _is_live_widget(widget: QWidget | None) -> bool:
+    """Return whether a cached Qt widget still has a live C++ object."""
+    if widget is None:
+        return False
+    try:
+        widget.parent()
+    except RuntimeError:
+        return False
+    return True

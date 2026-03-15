@@ -110,14 +110,21 @@ class OrderlyRestClient:
             response = await self._client.request(request_method, path, **kwargs)
             response.raise_for_status()
         except HTTPStatusError as error:
+            response_text = error.response.text.strip()
             if error.response.status_code == _HTTP_TOO_MANY_REQUESTS:
                 LOGGER.warning(
-                    "Orderly rate-limited request: %s %s",
+                    "Orderly rate-limited request: %s %s - %s",
                     request_method,
                     path,
+                    response_text or str(error),
                 )
             else:
-                LOGGER.exception("Orderly HTTP request failed: %s %s", request_method, path)
+                LOGGER.exception(
+                    "Orderly HTTP request failed: %s %s - %s",
+                    request_method,
+                    path,
+                    response_text or str(error),
+                )
             raise
 
         payload = response.json()

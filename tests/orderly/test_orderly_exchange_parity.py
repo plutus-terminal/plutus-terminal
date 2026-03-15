@@ -466,6 +466,72 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         fetcher.fetch_all_orders.assert_awaited_once()
         fetcher.fetch_all_positions.assert_awaited_once()
 
+    async def test_create_order_warns_when_refresh_fails_after_successful_submission(self) -> None:
+        """Preserve a successful order submission even if the follow-up refresh crashes."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(create_order=AsyncMock(return_value={"success": True}))
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(side_effect=RuntimeError("refresh exploded")),
+            fetch_all_positions=AsyncMock(),
+            fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
+            _cached_orders=[],
+            _cached_positions=[],
+            _cached_prices={},
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.create_order(
+            pair="Crypto.BTC/USDC",
+            amount=Decimal("10"),
+            trade_direction=PerpsTradeDirection.LONG,
+            trade_type=PerpsTradeType.LIMIT,
+            execution_price=Decimal("97500.5"),
+        )
+
+        # Assert
+        assert message_bus.send_message.emit.call_count == 2
+        refresh_message = message_bus.send_message.emit.call_args_list[-1].args[0]
+        assert refresh_message.level is MessageLevel.WARNING
+        assert "failed to refresh Orderly data" in refresh_message.text
+        message_bus.orders_fetched.emit.assert_not_called()
+
+    async def test_cancel_order_warns_when_refresh_fails_after_successful_cancel(self) -> None:
+        """Preserve successful cancels even if the order refresh fails afterward."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(cancel_order=AsyncMock(return_value={"success": True}))
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(side_effect=RuntimeError("cancel refresh exploded")),
+            _cached_orders=[],
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+        order_data = {
+            "id": "ui-fallback-id",
+            "pair": "Crypto.BTC/USDC",
+            "trigger_price": Decimal("97500.5"),
+            "size_stable": Decimal("50"),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.LIMIT,
+            "reduce_only": False,
+            "extra": {"symbol": "PERP_BTC_USDC", "native_order_id": "70001"},
+        }
+
+        # Act
+        await exchange.cancel_order(order_data)
+
+        # Assert
+        trader.cancel_order.assert_awaited_once_with(
+            {"order_id": "70001", "symbol": "PERP_BTC_USDC", "trade_type": PerpsTradeType.LIMIT},
+        )
+        assert message_bus.send_message.emit.call_count == 1
+        refresh_message = message_bus.send_message.emit.call_args.args[0]
+        assert refresh_message.level is MessageLevel.WARNING
+        assert "failed to refresh Orderly data" in refresh_message.text
+        message_bus.orders_fetched.emit.assert_not_called()
+
     async def test_edit_order_refreshes_open_orders_after_successful_native_edit(self) -> None:
         """Refresh open orders after Orderly accepts a native edit request."""
         # Arrange
