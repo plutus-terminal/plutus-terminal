@@ -20,6 +20,16 @@ if TYPE_CHECKING:
 class PerpsConfig(QtWidgets.QWidget):
     """Widget to control perps configuration."""
 
+    _LEVERAGE_PRESET_SIGNAL_NAMES = (
+        "leverage_button_1_changed",
+        "leverage_button_2_changed",
+        "leverage_button_3_changed",
+        "leverage_button_4_changed",
+        "leverage_button_5_changed",
+        "leverage_button_6_changed",
+        "leverage_button_7_changed",
+    )
+
     def __init__(
         self,
         ui_controller: UIController,
@@ -57,8 +67,13 @@ class PerpsConfig(QtWidgets.QWidget):
         self._leverage_box_layout = QtWidgets.QGridLayout()
         self._leverage_label = QtWidgets.QLabel("Leverage:")
         self._leverage_spin = QtWidgets.QSpinBox()
+        self._pair_leverage_hint = QtWidgets.QLabel()
+        self._leverage_button_values_box = QtWidgets.QGroupBox("Leverage Buttons")
+        self._leverage_button_values_layout = QtWidgets.QGridLayout()
         self._leverage_group = QtWidgets.QButtonGroup()
         self._leverage_layout = QtWidgets.QHBoxLayout()
+        self._leverage_button_spins = [QtWidgets.QSpinBox() for _ in range(7)]
+        self._leverage_button_update = QtWidgets.QPushButton("Update Leverage Buttons")
         self._leverage_set_button = QtWidgets.QPushButton("Set Leverage for All Pairs")
 
         self._spin_config_map: dict[
@@ -113,29 +128,46 @@ class PerpsConfig(QtWidgets.QWidget):
 
         self._trade_values_update.setMinimumHeight(35)
 
-        for value in (2, 5, 10, 20, 25, 50):
-            button = QtWidgets.QRadioButton(str(value))
-            self._leverage_group.addButton(button)
-            self._leverage_group.setId(button, value)
-            self._leverage_layout.addWidget(button)
+        self._rebuild_leverage_buttons()
 
         self._leverage_spin.setMinimum(1)
         self._leverage_spin.setMaximum(self._ui_controller.current_exchange.max_leverage)
         self._leverage_spin.setValue(self._app_config.leverage)
+        self._pair_leverage_hint.setWordWrap(True)
+        self._update_pair_leverage_hint()
+        for spin_box, leverage_value in zip(
+            self._leverage_button_spins,
+            self._app_config.leverage_button_values,
+            strict=False,
+        ):
+            spin_box.setMinimum(1)
+            spin_box.setMaximum(1000)
+            spin_box.setValue(leverage_value)
 
         self._leverage_set_button.setMinimumHeight(35)
+        self._leverage_set_button.setToolTip(
+            "Stores the default leverage. Each pair still uses its own exchange limit.",
+        )
+        self._leverage_button_update.setMinimumHeight(35)
+        self._leverage_button_update.setToolTip(
+            "Preset buttons keep your custom values and always append the live exchange max.",
+        )
 
     def _connect_signals(self) -> None:
         """Connect signals."""
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
+        self._ui_controller.pair_changed.connect(self._on_pair_changed)
         self._tp_sl_update.clicked.connect(self._update_tp_sl)
         self._trade_values_update.clicked.connect(self._update_trade_values)
         self._leverage_group.buttonClicked.connect(self._set_leverage_button)
         self._leverage_spin.valueChanged.connect(self._update_leverage_buttons)
+        self._leverage_button_update.clicked.connect(self._update_leverage_button_values)
         self._leverage_set_button.clicked.connect(self._set_leverage)
 
         self._app_config.leverage_changed.connect(self._set_leverage_spin)
         self._app_config.leverage_changed.connect(self._update_leverage_buttons)
+        for signal_name in self._LEVERAGE_PRESET_SIGNAL_NAMES:
+            getattr(self._app_config, signal_name).connect(self._refresh_leverage_button_controls)
 
     def _setup_layout(self) -> None:
         """Configure layout."""
@@ -160,10 +192,19 @@ class PerpsConfig(QtWidgets.QWidget):
         self._trade_values_layout.addWidget(self._trade_values_update, 4, 0, 1, 2)
         self._trade_values_box.setLayout(self._trade_values_layout)
         self._advanced_box_layout.addWidget(self._trade_values_box)
+        for index, spin_box in enumerate(self._leverage_button_spins, start=1):
+            self._leverage_button_values_layout.addWidget(
+                QtWidgets.QLabel(f"Button {index}:"), index - 1, 0
+            )
+            self._leverage_button_values_layout.addWidget(spin_box, index - 1, 1)
+        self._leverage_button_values_layout.addWidget(self._leverage_button_update, 7, 0, 1, 2)
+        self._leverage_button_values_box.setLayout(self._leverage_button_values_layout)
+        self._advanced_box_layout.addWidget(self._leverage_button_values_box)
         self._leverage_box_layout.addWidget(self._leverage_label, 0, 0)
         self._leverage_box_layout.addWidget(self._leverage_spin, 0, 1)
-        self._leverage_box_layout.addLayout(self._leverage_layout, 1, 0, 1, 2)
-        self._leverage_box_layout.addWidget(self._leverage_set_button, 2, 0, 1, 2)
+        self._leverage_box_layout.addWidget(self._pair_leverage_hint, 1, 0, 1, 2)
+        self._leverage_box_layout.addLayout(self._leverage_layout, 2, 0, 1, 2)
+        self._leverage_box_layout.addWidget(self._leverage_set_button, 3, 0, 1, 2)
         self._leverage_box.setLayout(self._leverage_box_layout)
         self._advanced_box_layout.addWidget(self._leverage_box)
         self._advanced_bar.main_layout.addLayout(self._advanced_box_layout)
@@ -185,8 +226,9 @@ class PerpsConfig(QtWidgets.QWidget):
 
     def _update_leverage_buttons(self, leverage_value: int) -> None:
         """Update leverage buttons state based on leverage value."""
-        if leverage_value in {2, 5, 10, 20, 25, 50}:
-            self._leverage_group.button(int(leverage_value)).setChecked(True)
+        leverage_button = self._leverage_group.button(int(leverage_value))
+        if leverage_button is not None:
+            leverage_button.setChecked(True)
         else:
             button = self._leverage_group.checkedButton()
             if button:
@@ -201,6 +243,64 @@ class PerpsConfig(QtWidgets.QWidget):
             button (QtWidgets.QRadioButton): Leverage button clicked.
         """
         self._set_leverage_spin(self._leverage_group.id(button))
+
+    def _leverage_button_values(self) -> list[int]:
+        """Return normalized leverage button values including the live exchange max."""
+        button_values: list[int] = []
+        exchange_max_leverage = self._ui_controller.current_exchange.max_leverage
+        for leverage_value in [*self._app_config.leverage_button_values, exchange_max_leverage]:
+            bounded = max(
+                self._ui_controller.current_exchange.min_leverage,
+                min(exchange_max_leverage, int(leverage_value)),
+            )
+            if bounded not in button_values:
+                button_values.append(bounded)
+        return button_values
+
+    def _rebuild_leverage_buttons(self) -> None:
+        """Rebuild leverage preset buttons from config and exchange metadata."""
+        checked_id = self._leverage_group.checkedId()
+        self._leverage_group.setExclusive(False)
+        for button in list(self._leverage_group.buttons()):
+            self._leverage_group.removeButton(button)
+            self._leverage_layout.removeWidget(button)
+            button.deleteLater()
+        self._leverage_group.setExclusive(True)
+
+        for value in self._leverage_button_values():
+            button = QtWidgets.QRadioButton(str(value))
+            self._leverage_group.addButton(button)
+            self._leverage_group.setId(button, value)
+            self._leverage_layout.addWidget(button)
+
+        fallback_value = (
+            self._leverage_spin.value() if self._leverage_spin.value() > 0 else checked_id
+        )
+        if fallback_value > 0:
+            self._update_leverage_buttons(fallback_value)
+
+    def _refresh_leverage_button_controls(self, *_args: object) -> None:
+        """Refresh button controls after preset changes."""
+        for spin_box, leverage_value in zip(
+            self._leverage_button_spins,
+            self._app_config.leverage_button_values,
+            strict=False,
+        ):
+            spin_box.blockSignals(True)
+            spin_box.setValue(leverage_value)
+            spin_box.blockSignals(False)
+        self._rebuild_leverage_buttons()
+
+    def _update_leverage_button_values(self) -> None:
+        """Persist leverage preset button values."""
+        for field_name, spin_box in zip(
+            self._app_config.LEVERAGE_BUTTON_FIELDS,
+            self._leverage_button_spins,
+            strict=False,
+        ):
+            setattr(self._app_config, field_name, spin_box.value())
+        self._refresh_leverage_button_controls()
+        Toast.show_message("Leverage buttons updated", type_=ToastType.SUCCESS)
 
     @asyncSlot()
     async def _set_leverage(self) -> None:
@@ -230,6 +330,21 @@ class PerpsConfig(QtWidgets.QWidget):
         self._app_config.stop_loss = self._sl_spin.value()
         Toast.show_message("TP/SL values updated", type_=ToastType.SUCCESS)
 
+    def _update_pair_leverage_hint(self) -> None:
+        """Render the selected pair leverage cap for exchanges with per-pair limits."""
+        current_pair = self._ui_controller.current_pair
+        simple_pair = self._ui_controller.current_exchange.format_simple_pair_from_pair(
+            current_pair
+        )
+        max_leverage = self._ui_controller.current_exchange.max_leverage_for_pair(current_pair)
+        self._pair_leverage_hint.setText(
+            f"Current pair max: {simple_pair} {max_leverage}x. Each pair may use a different cap.",
+        )
+
+    def _on_pair_changed(self, _pair: str) -> None:
+        """Refresh the leverage hint after the selected pair changes."""
+        self._update_pair_leverage_hint()
+
     def _on_new_exchange(self) -> None:
         """Update widget on new exchange.
 
@@ -238,6 +353,7 @@ class PerpsConfig(QtWidgets.QWidget):
         """
         self.blockSignals(True)
         self._leverage_spin.setMaximum(self._ui_controller.current_exchange.max_leverage)
+        self._rebuild_leverage_buttons()
         # Update spin box values
         for spin, attr in self._spin_config_map.items():
             spin.blockSignals(True)
@@ -245,4 +361,6 @@ class PerpsConfig(QtWidgets.QWidget):
             spin.blockSignals(False)
 
         self._set_leverage_spin(self._app_config.leverage)
+        self._update_pair_leverage_hint()
+        self._refresh_leverage_button_controls()
         self.blockSignals(False)

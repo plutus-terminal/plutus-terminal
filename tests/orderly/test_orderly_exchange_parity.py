@@ -47,6 +47,7 @@ def _build_market_registry(
         pairs={"Crypto.BTC/USDC"},
         get_symbol_for_pair=Mock(return_value="PERP_BTC_USDC"),
         get_rule_by_pair=Mock(return_value=market_rule),
+        update_pair_max_leverage=Mock(),
     )
 
 
@@ -300,6 +301,20 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         trader.set_leverage.assert_awaited_once_with("PERP_BTC_USDC", 20)
         assert app_config.leverage == 20
 
+    async def test_set_leverage_uses_pair_limit_when_global_limit_is_lower(self) -> None:
+        """Honor Orderly market leverage metadata instead of a stale lower global cap."""
+        # Arrange
+        app_config = _build_app_config()
+        trader = SimpleNamespace(set_leverage=AsyncMock())
+        exchange = _build_exchange(app_config=app_config, trader=trader, max_leverage=10)
+
+        # Act
+        await exchange.set_leverage("BTC", 100)
+
+        # Assert
+        trader.set_leverage.assert_awaited_once_with("PERP_BTC_USDC", 20)
+        assert app_config.leverage == 20
+
     async def test_set_leverage_keeps_existing_config_when_the_request_fails(self) -> None:
         """Do not mutate local leverage config when Orderly rejects the update."""
         # Arrange
@@ -314,6 +329,35 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             await exchange.set_leverage("BTC", 100)
 
         assert app_config.leverage == 5
+
+    async def test_set_leverage_retries_with_server_reported_pair_maximum(self) -> None:
+        """Retry with the server limit when Orderly rejects stale market metadata."""
+        # Arrange
+        app_config = _build_app_config()
+        market_registry = _build_market_registry(max_leverage=100)
+        trader = SimpleNamespace(
+            set_leverage=AsyncMock(
+                side_effect=[
+                    TransactionFailedError("[-1005] Leverage must be between 1x and 50x."),
+                    None,
+                ],
+            ),
+        )
+        exchange = _build_exchange(
+            app_config=app_config,
+            market_registry=market_registry,
+            trader=trader,
+            max_leverage=100,
+        )
+
+        # Act
+        await exchange.set_leverage("BTC", 100)
+
+        # Assert
+        assert trader.set_leverage.await_args_list[0].args == ("PERP_BTC_USDC", 100)
+        assert trader.set_leverage.await_args_list[1].args == ("PERP_BTC_USDC", 50)
+        market_registry.update_pair_max_leverage.assert_called_once_with("Crypto.BTC/USDC", 50)
+        assert app_config.leverage == 50
 
     async def test_create_order_refreshes_orders_positions_and_emits_info_message(self) -> None:
         """Refresh caches after successful order creation and notify the user."""

@@ -225,15 +225,16 @@ class UIController(QObject):
             )
             return
         pair = self.current_exchange.format_pair_from_coin(coin)
+        pair_max_leverage = self.current_exchange.max_leverage_for_pair(pair)
         applied_leverage = self.app_config.leverage
         if leverage < self.current_exchange.min_leverage:
             Toast.show_message(
                 f"Leverage of {pair} is too low. Set minimum leverage: {self.current_exchange.min_leverage}x",
                 type_=ToastType.WARNING,
             )
-        elif leverage > self.current_exchange.max_leverage:
+        elif leverage > pair_max_leverage:
             Toast.show_message(
-                f"Leverage of {pair} is too high. Set maximum leverage: {self.current_exchange.max_leverage}x",
+                f"Leverage of {pair} is too high. Set maximum leverage: {pair_max_leverage}x",
                 type_=ToastType.WARNING,
             )
         elif applied_leverage != leverage:

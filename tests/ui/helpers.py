@@ -67,6 +67,16 @@ class MessageBusStub(QtCore.QObject):
 class AppConfigStub(QtCore.QObject):
     """App-config stub with the signals and settings used by widgets."""
 
+    LEVERAGE_BUTTON_FIELDS = (
+        "leverage_button_1",
+        "leverage_button_2",
+        "leverage_button_3",
+        "leverage_button_4",
+        "leverage_button_5",
+        "leverage_button_6",
+        "leverage_button_7",
+    )
+
     leverage_changed = QtCore.Signal(int)
     stop_loss_changed = QtCore.Signal(float)
     take_profit_changed = QtCore.Signal(float)
@@ -74,6 +84,13 @@ class AppConfigStub(QtCore.QObject):
     trade_value_low_changed = QtCore.Signal(int)
     trade_value_medium_changed = QtCore.Signal(int)
     trade_value_high_changed = QtCore.Signal(int)
+    leverage_button_1_changed = QtCore.Signal(int)
+    leverage_button_2_changed = QtCore.Signal(int)
+    leverage_button_3_changed = QtCore.Signal(int)
+    leverage_button_4_changed = QtCore.Signal(int)
+    leverage_button_5_changed = QtCore.Signal(int)
+    leverage_button_6_changed = QtCore.Signal(int)
+    leverage_button_7_changed = QtCore.Signal(int)
     current_account_id_changed = QtCore.Signal(int)
     news_show_images_changed = QtCore.Signal(bool)
     news_desktop_notifications_changed = QtCore.Signal(bool)
@@ -92,6 +109,13 @@ class AppConfigStub(QtCore.QObject):
         self.trade_value_low = 25
         self.trade_value_medium = 50
         self.trade_value_high = 100
+        self.leverage_button_1 = 2
+        self.leverage_button_2 = 5
+        self.leverage_button_3 = 10
+        self.leverage_button_4 = 20
+        self.leverage_button_5 = 25
+        self.leverage_button_6 = 50
+        self.leverage_button_7 = 100
         self.leverage = 5
         self.current_account_id = 1
         self._settings = {
@@ -152,6 +176,11 @@ class AppConfigStub(QtCore.QObject):
 
     def load_all_configs(self) -> None:
         """Match the production config API."""
+
+    @property
+    def leverage_button_values(self) -> list[int]:
+        """Return configured leverage preset button values."""
+        return [getattr(self, field_name) for field_name in self.LEVERAGE_BUTTON_FIELDS]
 
 
 class PassGuardStub:
@@ -232,8 +261,12 @@ class ExchangeStub(QtCore.QObject):
         self.available_pairs = {pair, "Crypto.ETH/USDC"}
         self.default_pair = pair
         self.quote_symbol = "USDC"
-        self.max_leverage = 50
+        self.max_leverage = 100
         self.min_leverage = 1
+        self._pair_max_leverage = {
+            "Crypto.BTC/USDC": 25,
+            "Crypto.ETH/USDC": 50,
+        }
         self.pair_prefix = "Crypto."
         self.pair_separator = "/"
         self.pair_suffix = ""
@@ -270,6 +303,10 @@ class ExchangeStub(QtCore.QObject):
     def format_pair_from_coin(self, coin: str) -> str:
         """Build one exchange pair from a coin."""
         return f"Crypto.{coin}/USDC"
+
+    def max_leverage_for_pair(self, pair: str) -> int:
+        """Return the configured leverage cap for one pair."""
+        return self._pair_max_leverage.get(pair, self.max_leverage)
 
     def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
         """Return a deterministic fee preview."""

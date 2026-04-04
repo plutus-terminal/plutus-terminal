@@ -212,6 +212,7 @@ class AppConfig(QObject):
            trade_value_low (int)
            trade_value_medium (int)
            trade_value_high (int)
+           leverage_button_1..leverage_button_7 (int): leverage preset buttons
     """
 
     _instance: Self | None = None
@@ -224,7 +225,24 @@ class AppConfig(QObject):
     trade_value_low: int
     trade_value_medium: int
     trade_value_high: int
+    leverage_button_1: int
+    leverage_button_2: int
+    leverage_button_3: int
+    leverage_button_4: int
+    leverage_button_5: int
+    leverage_button_6: int
+    leverage_button_7: int
     current_account_id: int
+
+    LEVERAGE_BUTTON_FIELDS = (
+        "leverage_button_1",
+        "leverage_button_2",
+        "leverage_button_3",
+        "leverage_button_4",
+        "leverage_button_5",
+        "leverage_button_6",
+        "leverage_button_7",
+    )
 
     SERVICE_NAME = "plutus-terminal"
 
@@ -236,6 +254,13 @@ class AppConfig(QObject):
     trade_value_low_changed = Signal(int)
     trade_value_medium_changed = Signal(int)
     trade_value_high_changed = Signal(int)
+    leverage_button_1_changed = Signal(int)
+    leverage_button_2_changed = Signal(int)
+    leverage_button_3_changed = Signal(int)
+    leverage_button_4_changed = Signal(int)
+    leverage_button_5_changed = Signal(int)
+    leverage_button_6_changed = Signal(int)
+    leverage_button_7_changed = Signal(int)
     current_account_id_changed = Signal(int)
 
     # GUI Settings Signals
@@ -270,6 +295,7 @@ class AppConfig(QObject):
         "trade_value_low",
         "trade_value_medium",
         "trade_value_high",
+        *LEVERAGE_BUTTON_FIELDS,
     ]
 
     # Attach descriptors dynamically
@@ -303,6 +329,10 @@ class AppConfig(QObject):
     def _ensure_database(self) -> None:
         if not DATABASE_PATH.exists():
             create_database()
+            return
+        from plutus_terminal.core.db.models import ensure_trade_config_columns
+
+        ensure_trade_config_columns()
 
     def _load_services_for_account(self) -> None:
         current_id = self.gui_settings_service.get("current_account_id")
@@ -315,6 +345,11 @@ class AppConfig(QObject):
         trade = self._trade_service.load()
         for f in self._trade_fields:
             setattr(self, f"_{f}", getattr(trade, f))
+
+    @property
+    def leverage_button_values(self) -> list[int]:
+        """Return configured leverage preset button values."""
+        return [getattr(self, field_name) for field_name in self.LEVERAGE_BUTTON_FIELDS]
 
     @property
     def current_keyring_account(self) -> KeyringAccount:
