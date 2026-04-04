@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import os
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import os
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pandas
 from PySide6 import QtCore, QtWidgets
@@ -96,9 +96,40 @@ class AppConfigStub(QtCore.QObject):
     news_desktop_notifications_changed = QtCore.Signal(bool)
     minimize_to_tray_changed = QtCore.Signal(bool)
     window_geometry_changed = QtCore.Signal(str)
-    toast_position_changed = QtCore.Signal(str)
+    toast_message_position_changed = QtCore.Signal(str)
+    toast_widget_position_changed = QtCore.Signal(str)
+    toast_message_duration_changed = QtCore.Signal(int)
+    toast_widget_duration_changed = QtCore.Signal(int)
     account_deleted = QtCore.Signal()
     account_created = QtCore.Signal()
+
+    DEFAULT_GUI_SETTINGS: ClassVar[dict[str, object]] = {
+        "news_show_images": True,
+        "news_desktop_notifications": True,
+        "minimize_to_tray": True,
+        "toast_message_position": "bottom_left",
+        "toast_widget_position": "bottom_left",
+        "toast_message_duration": 10,
+        "toast_widget_duration": 35,
+        "window_geometry": "",
+    }
+
+    TRADE_DEFAULTS: ClassVar[dict[str, object]] = {
+        "take_profit": 0.0,
+        "stop_loss": 0.0,
+        "trade_value_lowest": 100,
+        "trade_value_low": 250,
+        "trade_value_medium": 500,
+        "trade_value_high": 1000,
+        "leverage": 10,
+        "leverage_button_1": 2,
+        "leverage_button_2": 5,
+        "leverage_button_3": 10,
+        "leverage_button_4": 20,
+        "leverage_button_5": 25,
+        "leverage_button_6": 50,
+        "leverage_button_7": 100,
+    }
 
     def __init__(self) -> None:
         """Initialize mutable config state."""
@@ -122,9 +153,13 @@ class AppConfigStub(QtCore.QObject):
             "news_show_images": True,
             "news_desktop_notifications": False,
             "minimize_to_tray": True,
-            "toast_position": "top_right",
+            "toast_message_position": "top_right",
+            "toast_widget_position": "bottom_left",
+            "toast_message_duration": 12,
+            "toast_widget_duration": 33,
             "window_geometry": "",
         }
+        self._settings_imports: list[dict[str, object]] = []
         self._accounts = [
             SimpleNamespace(
                 id=1,
@@ -176,6 +211,77 @@ class AppConfigStub(QtCore.QObject):
 
     def load_all_configs(self) -> None:
         """Match the production config API."""
+
+    def reset_current_trade_config(self) -> None:
+        """Reset the in-memory trade settings to defaults."""
+        for field_name, value in self.TRADE_DEFAULTS.items():
+            setattr(self, field_name, value)
+
+    def reset_terminal_gui_settings(self) -> None:
+        """Reset the terminal-facing GUI settings to defaults."""
+        for key in (
+            "news_show_images",
+            "news_desktop_notifications",
+            "minimize_to_tray",
+        ):
+            value = self.DEFAULT_GUI_SETTINGS[key]
+            self.set_gui_settings(key, value)
+
+    def reset_toast_gui_settings(self) -> None:
+        """Reset the toast settings to defaults."""
+        for key in (
+            "toast_message_position",
+            "toast_widget_position",
+            "toast_message_duration",
+            "toast_widget_duration",
+        ):
+            value = self.DEFAULT_GUI_SETTINGS[key]
+            self.set_gui_settings(key, value)
+
+    def export_settings_snapshot(self) -> dict[str, object]:
+        """Return a stable settings snapshot."""
+        return {
+            "version": 1,
+            "gui_settings": {
+                key: self._settings[key]
+                for key in (
+                    "news_show_images",
+                    "news_desktop_notifications",
+                    "minimize_to_tray",
+                    "toast_message_position",
+                    "toast_widget_position",
+                    "toast_message_duration",
+                    "toast_widget_duration",
+                )
+            },
+            "trade_config": {
+                field_name: getattr(self, field_name)
+                for field_name in (
+                    "leverage",
+                    "take_profit",
+                    "stop_loss",
+                    "trade_value_lowest",
+                    "trade_value_low",
+                    "trade_value_medium",
+                    "trade_value_high",
+                    *self.LEVERAGE_BUTTON_FIELDS,
+                )
+            },
+            "user_filters": [],
+        }
+
+    def import_settings_snapshot(self, snapshot: dict[str, object]) -> list[str]:
+        """Record and apply an imported settings snapshot."""
+        self._settings_imports.append(deepcopy(snapshot))
+        gui_settings = snapshot.get("gui_settings", {})
+        if isinstance(gui_settings, dict):
+            for key, value in gui_settings.items():
+                self.set_gui_settings(key, value)
+        trade_config = snapshot.get("trade_config", {})
+        if isinstance(trade_config, dict):
+            for key, value in trade_config.items():
+                setattr(self, key, value)
+        return []
 
     @property
     def leverage_button_values(self) -> list[int]:

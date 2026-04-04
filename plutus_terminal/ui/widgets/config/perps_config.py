@@ -42,16 +42,18 @@ class PerpsConfig(QtWidgets.QWidget):
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
 
-        self.top_bar = TopBar("Perps Config")
+        self.top_bar = TopBar("Trade Settings")
         self._auto_tp_sl_box = QtWidgets.QGroupBox("Auto TP/SL")
         self._auto_tp_sl_box_layout = QtWidgets.QGridLayout()
         self._tp_label = QtWidgets.QLabel("Take Profit:")
         self._tp_spin = DoubleSpinBoxWithButton(button_text="%")
         self._sl_label = QtWidgets.QLabel("Stop Loss:")
         self._sl_spin = DoubleSpinBoxWithButton(button_text="%")
+        self._reset_defaults_button = QtWidgets.QPushButton("Reset to Defaults")
         self._tp_sl_update = QtWidgets.QPushButton("Update TP/SL")
         self._advanced_bar = TopBar("Advanced Config")
         self._advanced_box_layout = QtWidgets.QVBoxLayout()
+        self._reset_actions_layout = QtWidgets.QHBoxLayout()
         self._trade_values_box = QtWidgets.QGroupBox("Quick Buy Values")
         self._trade_values_layout = QtWidgets.QGridLayout()
         self._trade_lowest_label = QtWidgets.QLabel("Lowest:")
@@ -108,7 +110,13 @@ class PerpsConfig(QtWidgets.QWidget):
         self._sl_spin.setMaximum(100)
         self._sl_spin.setDecimals(2)
 
-        self._tp_sl_update.setMinimumHeight(35)
+        self._reset_defaults_button.setMinimumSize(150, 32)
+        self._reset_defaults_button.setProperty("class", "WARNING")
+        self._reset_defaults_button.setToolTip(
+            "Restore the current account trade settings to the built-in defaults.",
+        )
+        self._tp_sl_update.setMinimumSize(150, 32)
+        self._tp_sl_update.setProperty("class", "APPROVED")
 
         self._trade_lowest_spin.setMinimum(1)
         self._trade_lowest_spin.setMaximum(100_000_000)
@@ -126,7 +134,8 @@ class PerpsConfig(QtWidgets.QWidget):
         self._trade_high_spin.setMaximum(100_000_000)
         self._trade_high_spin.setValue(self._app_config.trade_value_high)
 
-        self._trade_values_update.setMinimumHeight(35)
+        self._trade_values_update.setMinimumSize(150, 32)
+        self._trade_values_update.setProperty("class", "APPROVED")
 
         self._rebuild_leverage_buttons()
 
@@ -144,11 +153,13 @@ class PerpsConfig(QtWidgets.QWidget):
             spin_box.setMaximum(1000)
             spin_box.setValue(leverage_value)
 
-        self._leverage_set_button.setMinimumHeight(35)
+        self._leverage_set_button.setMinimumSize(150, 32)
+        self._leverage_set_button.setProperty("class", "APPROVED")
         self._leverage_set_button.setToolTip(
             "Stores the default leverage. Each pair still uses its own exchange limit.",
         )
-        self._leverage_button_update.setMinimumHeight(35)
+        self._leverage_button_update.setMinimumSize(150, 32)
+        self._leverage_button_update.setProperty("class", "APPROVED")
         self._leverage_button_update.setToolTip(
             "Preset buttons keep your custom values and always append the live exchange max.",
         )
@@ -157,6 +168,7 @@ class PerpsConfig(QtWidgets.QWidget):
         """Connect signals."""
         self._ui_controller.exchange_changed.connect(self._on_new_exchange)
         self._ui_controller.pair_changed.connect(self._on_pair_changed)
+        self._reset_defaults_button.clicked.connect(self._reset_defaults)
         self._tp_sl_update.clicked.connect(self._update_tp_sl)
         self._trade_values_update.clicked.connect(self._update_trade_values)
         self._leverage_group.buttonClicked.connect(self._set_leverage_button)
@@ -177,7 +189,10 @@ class PerpsConfig(QtWidgets.QWidget):
         self._auto_tp_sl_box_layout.addWidget(self._tp_spin, 0, 1)
         self._auto_tp_sl_box_layout.addWidget(self._sl_label, 1, 0)
         self._auto_tp_sl_box_layout.addWidget(self._sl_spin, 1, 1)
-        self._auto_tp_sl_box_layout.addWidget(self._tp_sl_update, 2, 0, 1, 2)
+        tp_sl_action_layout = QtWidgets.QHBoxLayout()
+        tp_sl_action_layout.addStretch()
+        tp_sl_action_layout.addWidget(self._tp_sl_update)
+        self._auto_tp_sl_box_layout.addLayout(tp_sl_action_layout, 2, 0, 1, 2)
         self._auto_tp_sl_box.setLayout(self._auto_tp_sl_box_layout)
         self.main_layout.addWidget(self._auto_tp_sl_box)
 
@@ -189,7 +204,10 @@ class PerpsConfig(QtWidgets.QWidget):
         self._trade_values_layout.addWidget(self._trade_med_spin, 2, 1)
         self._trade_values_layout.addWidget(self._trade_high_label, 3, 0)
         self._trade_values_layout.addWidget(self._trade_high_spin, 3, 1)
-        self._trade_values_layout.addWidget(self._trade_values_update, 4, 0, 1, 2)
+        trade_values_action_layout = QtWidgets.QHBoxLayout()
+        trade_values_action_layout.addStretch()
+        trade_values_action_layout.addWidget(self._trade_values_update)
+        self._trade_values_layout.addLayout(trade_values_action_layout, 4, 0, 1, 2)
         self._trade_values_box.setLayout(self._trade_values_layout)
         self._advanced_box_layout.addWidget(self._trade_values_box)
         for index, spin_box in enumerate(self._leverage_button_spins, start=1):
@@ -197,20 +215,33 @@ class PerpsConfig(QtWidgets.QWidget):
                 QtWidgets.QLabel(f"Button {index}:"), index - 1, 0
             )
             self._leverage_button_values_layout.addWidget(spin_box, index - 1, 1)
-        self._leverage_button_values_layout.addWidget(self._leverage_button_update, 7, 0, 1, 2)
+        leverage_buttons_action_layout = QtWidgets.QHBoxLayout()
+        leverage_buttons_action_layout.addStretch()
+        leverage_buttons_action_layout.addWidget(self._leverage_button_update)
+        self._leverage_button_values_layout.addLayout(leverage_buttons_action_layout, 7, 0, 1, 2)
         self._leverage_button_values_box.setLayout(self._leverage_button_values_layout)
         self._advanced_box_layout.addWidget(self._leverage_button_values_box)
         self._leverage_box_layout.addWidget(self._leverage_label, 0, 0)
         self._leverage_box_layout.addWidget(self._leverage_spin, 0, 1)
         self._leverage_box_layout.addWidget(self._pair_leverage_hint, 1, 0, 1, 2)
         self._leverage_box_layout.addLayout(self._leverage_layout, 2, 0, 1, 2)
-        self._leverage_box_layout.addWidget(self._leverage_set_button, 3, 0, 1, 2)
+        leverage_action_layout = QtWidgets.QHBoxLayout()
+        leverage_action_layout.addStretch()
+        leverage_action_layout.addWidget(self._leverage_set_button)
+        self._leverage_box_layout.addLayout(leverage_action_layout, 3, 0, 1, 2)
         self._leverage_box.setLayout(self._leverage_box_layout)
         self._advanced_box_layout.addWidget(self._leverage_box)
         self._advanced_bar.main_layout.addLayout(self._advanced_box_layout)
 
         self.main_layout.addWidget(self._advanced_bar)
+        self._reset_actions_layout.addStretch()
+        self._reset_actions_layout.addWidget(self._reset_defaults_button)
+        self.main_layout.addLayout(self._reset_actions_layout)
         self.main_layout.addStretch()
+
+    def refresh_from_config(self) -> None:
+        """Reload trade settings from the active saved configuration."""
+        self._on_new_exchange()
 
     def _set_leverage_spin(self, leverage_value: int) -> None:
         """Set leverage when spin is changed.
@@ -329,6 +360,12 @@ class PerpsConfig(QtWidgets.QWidget):
         self._app_config.take_profit = self._tp_spin.value()
         self._app_config.stop_loss = self._sl_spin.value()
         Toast.show_message("TP/SL values updated", type_=ToastType.SUCCESS)
+
+    def _reset_defaults(self) -> None:
+        """Reset the current account trade settings to defaults."""
+        self._app_config.reset_current_trade_config()
+        self._on_new_exchange()
+        Toast.show_message("Trade settings reset to defaults", type_=ToastType.SUCCESS)
 
     def _update_pair_leverage_hint(self) -> None:
         """Render the selected pair leverage cap for exchanges with per-pair limits."""

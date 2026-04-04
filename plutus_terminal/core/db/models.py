@@ -74,17 +74,6 @@ class GUISettings(BaseModel):
     value = TextField()
 
 
-class Web3RPC(BaseModel):
-    """Model for Web3 RPC settings.
-
-    Expected keys:
-        rpc_url
-    """
-
-    chain_name = CharField(unique=True)
-    rpc_urls = TextField()
-
-
 def create_database() -> None:
     """Create database tables."""
     if DATABASE_PATH.exists():
@@ -97,7 +86,6 @@ def create_database() -> None:
                 TradeConfig,
                 GUISettings,
                 UserFilter,
-                Web3RPC,
             ],
         )
     ensure_trade_config_columns()

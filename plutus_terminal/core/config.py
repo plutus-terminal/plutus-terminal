@@ -13,7 +13,6 @@ from plutus_terminal.core.db.models import (
     KeyringAccount,
     TradeConfig,
     UserFilter,
-    Web3RPC,
     create_database,
 )
 from plutus_terminal.core.types_ import ExchangeType
@@ -90,49 +89,6 @@ class AccountService:
             keyring.delete_password(AppConfig.SERVICE_NAME, str(account.username))
             TradeConfig.delete().where(TradeConfig.account == account_id).execute()
             KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()
-
-
-class RPCService:
-    """Manages Web3RPC defaults and queries."""
-
-    DEFAULT_RPCS: dict[str, list[str]] = {  # noqa: RUF012
-        "Arbitrum One Fetcher": [
-            "https://arbitrum-one-rpc.publicnode.com",
-            "https://arbitrum.blockpi.network/v1/rpc/public",
-            "https://arbitrum-one.public.blastapi.io/",
-        ],
-        "Arbitrum One Trader": ["https://arb1.arbitrum.io/rpc"],
-    }
-
-    def initialize_defaults(self) -> None:
-        """Initialize Web3RPC with default values."""
-        with DATABASE.atomic():
-            for name, urls in self.DEFAULT_RPCS.items():
-                Web3RPC.get_or_create(
-                    chain_name=name,
-                    defaults={"rpc_urls": orjson.dumps(urls)},
-                )
-
-    @staticmethod
-    def get_by_name(chain_name: str) -> Web3RPC:
-        """Get Web3RPC by chain name.
-
-        Args:
-            chain_name (str): Web3RPC chain name.
-
-        Returns:
-            Web3RPC: Web3RPC object.
-        """
-        return Web3RPC.get(Web3RPC.chain_name == chain_name)
-
-    @staticmethod
-    def get_all() -> list[Web3RPC]:
-        """Get all Web3RPCs.
-
-        Returns:
-            list[Web3RPC]: List of Web3RPC objects.
-        """
-        return list(Web3RPC.select())
 
 
 class TradeConfigService:
@@ -270,7 +226,10 @@ class AppConfig(QObject):
     news_desktop_notifications_changed = Signal(bool)
     minimize_to_tray_changed = Signal(bool)
     window_geometry_changed = Signal(dict)
-    toast_position_changed = Signal(str)
+    toast_message_position_changed = Signal(str)
+    toast_widget_position_changed = Signal(str)
+    toast_message_duration_changed = Signal(int)
+    toast_widget_duration_changed = Signal(int)
 
     # Other Signals
     account_deleted = Signal()
@@ -284,8 +243,46 @@ class AppConfig(QObject):
         "news_desktop_notifications": True,
         "minimize_to_tray": True,
         "window_geometry": {},
-        "toast_position": "bottom_left",
+        "toast_message_position": "bottom_left",
+        "toast_widget_position": "bottom_left",
+        "toast_message_duration": 10,
+        "toast_widget_duration": 35,
     }
+
+    TERMINAL_GUI_SETTINGS: tuple[str, ...] = (
+        "news_show_images",
+        "news_desktop_notifications",
+        "minimize_to_tray",
+    )
+
+    TOAST_GUI_SETTINGS: tuple[str, ...] = (
+        "toast_message_position",
+        "toast_widget_position",
+        "toast_message_duration",
+        "toast_widget_duration",
+    )
+
+    TRADE_CONFIG_DEFAULTS: dict[str, Any] = {  # noqa: RUF012
+        "leverage": 10,
+        "stop_loss": 0.0,
+        "take_profit": 0.0,
+        "trade_value_lowest": 100,
+        "trade_value_low": 250,
+        "trade_value_medium": 500,
+        "trade_value_high": 1000,
+        "leverage_button_1": 2,
+        "leverage_button_2": 5,
+        "leverage_button_3": 10,
+        "leverage_button_4": 20,
+        "leverage_button_5": 25,
+        "leverage_button_6": 50,
+        "leverage_button_7": 100,
+    }
+
+    EXPORTABLE_GUI_SETTINGS: tuple[str, ...] = (
+        *TERMINAL_GUI_SETTINGS,
+        *TOAST_GUI_SETTINGS,
+    )
 
     _trade_fields = [  # noqa: RUF012
         "leverage",
@@ -319,12 +316,10 @@ class AppConfig(QObject):
         # Services
         self.gui_settings_service = GUISettingsService()
         self.account_service = AccountService()
-        self.rpc_service = RPCService()
 
         # Database and defaults
         self._ensure_database()
         self.gui_settings_service.initialize_defaults(self.DEFAULT_GUI_SETTINGS)
-        self.rpc_service.initialize_defaults()
 
     def _ensure_database(self) -> None:
         if not DATABASE_PATH.exists():
@@ -419,12 +414,121 @@ class AppConfig(QObject):
         self.account_created.emit()
         return account
 
+    def reset_current_trade_config(self) -> None:
+        """Reset the current account trade configuration to defaults."""
+        for field_name, default_value in self.TRADE_CONFIG_DEFAULTS.items():
+            setattr(self, field_name, default_value)
+
+    def reset_terminal_gui_settings(self) -> None:
+        """Reset the terminal-facing GUI settings to defaults."""
+        for key in self.TERMINAL_GUI_SETTINGS:
+            self.set_gui_settings(key, self.DEFAULT_GUI_SETTINGS[key])
+
+    def reset_toast_gui_settings(self) -> None:
+        """Reset the toast-facing GUI settings to defaults."""
+        for key in self.TOAST_GUI_SETTINGS:
+            self.set_gui_settings(key, self.DEFAULT_GUI_SETTINGS[key])
+
+    def export_settings_snapshot(self) -> dict[str, Any]:
+        """Export the current local settings snapshot.
+
+        Secret-bearing data such as account credentials and API keys are excluded.
+        """
+        return {
+            "version": 1,
+            "gui_settings": {
+                key: self.get_gui_settings(key) for key in self.EXPORTABLE_GUI_SETTINGS
+            },
+            "trade_config": {
+                field_name: getattr(self, field_name) for field_name in self._trade_fields
+            },
+            "user_filters": [
+                {
+                    "filter_type": int(user_filter.filter_type),
+                    "match_pattern": str(user_filter.match_pattern),
+                    "action_type": int(user_filter.action_type),
+                    "action_args": str(user_filter.action_args),
+                }
+                for user_filter in UserFilter.select()
+            ],
+        }
+
+    def _import_gui_settings(
+        self,
+        gui_settings: Any,  # noqa: ANN401
+        warnings: list[str],
+    ) -> None:
+        """Import GUI settings from a snapshot payload."""
+        if not isinstance(gui_settings, dict):
+            warnings.append("GUI settings were skipped because the payload format is invalid.")
+            return
+
+        for key in self.EXPORTABLE_GUI_SETTINGS:
+            if key in gui_settings:
+                self.set_gui_settings(key, gui_settings[key])
+
+    def _import_trade_config(
+        self,
+        trade_config: Any,  # noqa: ANN401
+        warnings: list[str],
+    ) -> None:
+        """Import trade settings from a snapshot payload."""
+        if not isinstance(trade_config, dict):
+            warnings.append("Trade settings were skipped because the payload format is invalid.")
+            return
+
+        for field_name in self._trade_fields:
+            if field_name in trade_config:
+                setattr(self, field_name, trade_config[field_name])
+
+    def _create_imported_user_filter(self, raw_filter: Any) -> str | None:  # noqa: ANN401
+        """Create one imported user filter and return an optional warning."""
+        if not isinstance(raw_filter, dict):
+            return "One imported filter entry was skipped because it is invalid."
+
+        try:
+            UserFilter.create(
+                filter_type=int(raw_filter["filter_type"]),
+                match_pattern=str(raw_filter["match_pattern"]),
+                action_type=int(raw_filter["action_type"]),
+                action_args=str(raw_filter["action_args"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return "One imported filter entry was skipped because it is incomplete."
+        return None
+
+    def _import_user_filters(
+        self,
+        user_filters: Any,  # noqa: ANN401
+        warnings: list[str],
+    ) -> None:
+        """Import news filters from a snapshot payload."""
+        if not isinstance(user_filters, list):
+            warnings.append("News filters were skipped because the payload format is invalid.")
+            return
+
+        with DATABASE.atomic():
+            UserFilter.delete().execute()
+            for raw_filter in user_filters:
+                warning = self._create_imported_user_filter(raw_filter)
+                if warning is not None:
+                    warnings.append(warning)
+
+    def import_settings_snapshot(self, snapshot: dict[str, Any]) -> list[str]:
+        """Import a previously exported local settings snapshot."""
+        warnings: list[str] = []
+
+        self._import_gui_settings(snapshot.get("gui_settings", {}), warnings)
+        self._import_trade_config(snapshot.get("trade_config", {}), warnings)
+        self._import_user_filters(snapshot.get("user_filters", []), warnings)
+
+        return warnings
+
     # Static wrappers
     get_all_accounts = staticmethod(AccountService.get_all)
     get_all_user_filters = staticmethod(lambda: list(UserFilter.select()))
     delete_user_filter = staticmethod(
         lambda uid: UserFilter.delete().where(UserFilter.id == uid).execute()  # type: ignore
     )
-    get_web3_rpc_by_name = staticmethod(RPCService.get_by_name)
-    get_all_web3_rpc = staticmethod(RPCService.get_all)
+    delete_all_user_filters = staticmethod(lambda: UserFilter.delete().execute())
     write_model_to_db = staticmethod(lambda model: model.save())

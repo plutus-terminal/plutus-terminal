@@ -1,11 +1,13 @@
-"""Widget to control news configuration."""
+"""Widgets to control news configuration."""
 
 from __future__ import annotations
 
 from functools import partial
+import logging
 from typing import TYPE_CHECKING, Optional
 
 import keyring
+from keyring.errors import PasswordDeleteError
 import orjson
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtMultimedia import QSoundEffect
@@ -27,9 +29,11 @@ from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 if TYPE_CHECKING:
     from plutus_terminal.controller.ui_controller import UIController
 
+LOGGER = logging.getLogger(__name__)
 
-class NewsConfig(QtWidgets.QWidget):
-    """Widget to control news configuration."""
+
+class NewsSourceConfig(QtWidgets.QWidget):
+    """Widget to control news API configuration."""
 
     def __init__(
         self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
@@ -39,15 +43,17 @@ class NewsConfig(QtWidgets.QWidget):
         self._ui_controller = ui_controller
         self._pass_guard = self._ui_controller.pass_guard
 
-        self._main_layout = QtWidgets.QVBoxLayout()
+        self._main_layout = QtWidgets.QVBoxLayout(self)
 
         self._news_source_bar = TopBar("News Source API Keys")
+
         self._tree_box = QtWidgets.QGroupBox("TreeOfAlpha API Key")
         self._tree_box_layout = QtWidgets.QVBoxLayout()
         self._tree_text_label = QtWidgets.QLabel()
         self._tree_input = QtWidgets.QLineEdit()
         self._tree_button = QtWidgets.QPushButton("Update API Key")
         self._tree_password_button = QtWidgets.QPushButton()
+        self._tree_validation_label = QtWidgets.QLabel()
 
         self._phoenix_box = QtWidgets.QGroupBox("Phoenix API Key")
         self._phoenix_box_layout = QtWidgets.QVBoxLayout()
@@ -55,6 +61,7 @@ class NewsConfig(QtWidgets.QWidget):
         self._phoenix_input = QtWidgets.QLineEdit()
         self._phoenix_button = QtWidgets.QPushButton("Update API Key")
         self._phoenix_password_button = QtWidgets.QPushButton()
+        self._phoenix_validation_label = QtWidgets.QLabel()
 
         self._synoptic_box = QtWidgets.QGroupBox("Synoptic API Key")
         self._synoptic_box_layout = QtWidgets.QVBoxLayout()
@@ -62,182 +69,419 @@ class NewsConfig(QtWidgets.QWidget):
         self._synoptic_input = QtWidgets.QLineEdit()
         self._synoptic_button = QtWidgets.QPushButton("Update API Key")
         self._synoptic_password_button = QtWidgets.QPushButton()
+        self._synoptic_validation_label = QtWidgets.QLabel()
 
-        self._news_filters = TopBar("News Filters")
-        self._news_scroll_area = QtWidgets.QScrollArea()
-        self._news_scroll_wdiget = QtWidgets.QWidget()
-        self._news_scroll_layout = QtWidgets.QVBoxLayout()
-
-        self._keyword_matching_layout = QtWidgets.QVBoxLayout()
-        self._keyword_matching_box = QtWidgets.QGroupBox("Keyword Matching - Filter")
-        self._keyword_matching_add_btn = QtWidgets.QPushButton("Add filter")
-
-        self._data_matching_layout = QtWidgets.QVBoxLayout()
-        self._data_matching_box = QtWidgets.QGroupBox("Data Matching - Filter")
-        self._data_matching_add_btn = QtWidgets.QPushButton("Add filter")
-
-        self._reset_filters_btn = QtWidgets.QPushButton("Reset Filters")
-        self._save_filters_btn = QtWidgets.QPushButton("Save Filters")
+        self._reset_defaults_button = QtWidgets.QPushButton("Reset to Defaults")
 
         self._setup_widgets()
         self._setup_layout()
 
-    def _setup_widgets(self) -> None:  # noqa: PLR0915
-        """Config widgets."""
+    def _setup_widgets(self) -> None:
+        """Configure widgets."""
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+
         self._tree_text_label.setWordWrap(True)
         self._tree_text_label.setText(
             """Add your TreeOfAlpha API key below if you are a paid subscriber.<br>"""
             """To get your API key, go to """
-            """<a href="https://news.treeofalpha.com/api/api_key"""
+            """<a href="https://news.treeofalpha.com/api/api_key" """
             """style="color:rgb(80, 210, 180)">"""
             """https://news.treeofalpha.com/api/api_key</a>""",
         )
         self._tree_text_label.setOpenExternalLinks(True)
-        self._tree_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self._tree_password_button.setCheckable(True)
-        self._tree_password_button.setObjectName("frameless")
-        self._tree_password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
-        self._tree_password_button.toggled.connect(self._toggle_password_visibility)
-        self._tree_button.setProperty("class", "LONG")
-        self._tree_button.setMinimumSize(120, 30)
-        try:
-            current_tree_key = keyring_manager.get_news_source_api_key(
-                TreeNews.NEWS_SERVICE_NAME,
-                self._pass_guard,
-            )
-            self._tree_input.setText(current_tree_key)
-        except KeyringPasswordNotFoundError:
-            self._tree_input.setPlaceholderText(
-                "Enter your TreeOfAlpha API key here...",
-            )
+        self._setup_api_widgets(
+            line_edit=self._tree_input,
+            button=self._tree_button,
+            password_button=self._tree_password_button,
+            validation_label=self._tree_validation_label,
+            service_name=TreeNews.NEWS_SERVICE_NAME,
+        )
 
         self._phoenix_text_label.setWordWrap(True)
         self._phoenix_text_label.setText(
             """Add your PhoenixNews API key below if you are a paid subscriber.<br>"""
             """To get your API key, go to """
-            """<a href="https://phoenixnews.io", style="color:rgb(80, 210, 180)">"""
+            """<a href="https://phoenixnews.io" style="color:rgb(80, 210, 180)">"""
             """https://phoenixnews.io</a>""",
         )
         self._phoenix_text_label.setOpenExternalLinks(True)
-        self._phoenix_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self._phoenix_password_button.setCheckable(True)
-        self._phoenix_password_button.setObjectName("frameless")
-        self._phoenix_password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
-        self._phoenix_password_button.toggled.connect(self._toggle_password_visibility)
-        self._phoenix_button.setProperty("class", "LONG")
-        self._phoenix_button.setMinimumSize(120, 30)
-        try:
-            current_phoenix_key = keyring_manager.get_news_source_api_key(
-                PhoenixNews.NEWS_SERVICE_NAME,
-                self._pass_guard,
-            )
-            self._phoenix_input.setText(current_phoenix_key)
-        except KeyringPasswordNotFoundError:
-            self._phoenix_input.setPlaceholderText("Enter your Phoenix API key here...")
+        self._setup_api_widgets(
+            line_edit=self._phoenix_input,
+            button=self._phoenix_button,
+            password_button=self._phoenix_password_button,
+            validation_label=self._phoenix_validation_label,
+            service_name=PhoenixNews.NEWS_SERVICE_NAME,
+        )
 
         self._synoptic_text_label.setWordWrap(True)
         self._synoptic_text_label.setText(
             """Add your Synoptic API key below.<br>"""
             """To get your API key, go to """
-            """<a href="https://synoptic.com/p/settings/api-keys", style="color:rgb(80, 210, 180)">"""
+            """<a href="https://synoptic.com/p/settings/api-keys" """
+            """style="color:rgb(80, 210, 180)">"""
             """https://synoptic.com/p/settings/api-keys</a>""",
         )
         self._synoptic_text_label.setOpenExternalLinks(True)
-        self._synoptic_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self._synoptic_password_button.setCheckable(True)
-        self._synoptic_password_button.setObjectName("frameless")
-        self._synoptic_password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
-        self._synoptic_password_button.toggled.connect(self._toggle_password_visibility)
-        self._synoptic_button.setProperty("class", "LONG")
-        self._synoptic_button.setMinimumSize(120, 30)
+        self._setup_api_widgets(
+            line_edit=self._synoptic_input,
+            button=self._synoptic_button,
+            password_button=self._synoptic_password_button,
+            validation_label=self._synoptic_validation_label,
+            service_name=SynopticNews.NEWS_SERVICE_NAME,
+        )
+
+        self._load_saved_api_key(
+            TreeNews.NEWS_SERVICE_NAME,
+            self._tree_input,
+            "Enter your TreeOfAlpha API key here...",
+        )
+        self._load_saved_api_key(
+            PhoenixNews.NEWS_SERVICE_NAME,
+            self._phoenix_input,
+            "Enter your Phoenix API key here...",
+        )
+        self._load_saved_api_key(
+            SynopticNews.NEWS_SERVICE_NAME,
+            self._synoptic_input,
+            "Enter your Synoptic API key here...",
+        )
+
+        self._reset_defaults_button.setMinimumSize(150, 32)
+        self._reset_defaults_button.setProperty("class", "WARNING")
+        self._reset_defaults_button.clicked.connect(self._reset_to_defaults)
+
+    def refresh_from_config(self) -> None:
+        """Reload saved API keys and discard unsaved edits."""
+        self._refresh_api_input(
+            TreeNews.NEWS_SERVICE_NAME,
+            self._tree_input,
+            self._tree_password_button,
+            self._tree_validation_label,
+            "Enter your TreeOfAlpha API key here...",
+        )
+        self._refresh_api_input(
+            PhoenixNews.NEWS_SERVICE_NAME,
+            self._phoenix_input,
+            self._phoenix_password_button,
+            self._phoenix_validation_label,
+            "Enter your Phoenix API key here...",
+        )
+        self._refresh_api_input(
+            SynopticNews.NEWS_SERVICE_NAME,
+            self._synoptic_input,
+            self._synoptic_password_button,
+            self._synoptic_validation_label,
+            "Enter your Synoptic API key here...",
+        )
+
+    def _setup_api_widgets(
+        self,
+        *,
+        line_edit: QtWidgets.QLineEdit,
+        button: QtWidgets.QPushButton,
+        password_button: QtWidgets.QPushButton,
+        validation_label: QtWidgets.QLabel,
+        service_name: str,
+    ) -> None:
+        """Configure one API-key input row."""
+        line_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+
+        password_button.setCheckable(True)
+        password_button.setObjectName("frameless")
+        password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
+        password_button.toggled.connect(self._toggle_password_visibility)
+
+        button.setProperty("class", "APPROVED")
+        button.setMinimumSize(120, 30)
+        button.clicked.connect(partial(self.record_news_source_key, service_name))
+
+        validation_label.setWordWrap(True)
+        validation_label.setObjectName("subText")
+        validation_label.hide()
+
+        line_edit.textChanged.connect(
+            lambda _text, field=line_edit, action=button, label=validation_label: (
+                self._validate_api_input(field, action, label)
+            ),
+        )
+
+    def _load_saved_api_key(
+        self,
+        service_name: str,
+        line_edit: QtWidgets.QLineEdit,
+        placeholder: str,
+    ) -> None:
+        """Load one saved API key into its field."""
         try:
-            current_synoptic_key = keyring_manager.get_news_source_api_key(
-                SynopticNews.NEWS_SERVICE_NAME,
-                self._pass_guard,
-            )
-            self._synoptic_input.setText(current_synoptic_key)
+            current_key = keyring_manager.get_news_source_api_key(service_name, self._pass_guard)
+            line_edit.setText(current_key)
         except KeyringPasswordNotFoundError:
-            self._synoptic_input.setPlaceholderText("Enter your Synoptic API key here...")
+            line_edit.clear()
+            line_edit.setPlaceholderText(placeholder)
 
-        self._tree_button.clicked.connect(
-            partial(self.record_news_source_key, TreeNews.NEWS_SERVICE_NAME),
+    def _refresh_api_input(
+        self,
+        service_name: str,
+        line_edit: QtWidgets.QLineEdit,
+        password_button: QtWidgets.QPushButton,
+        validation_label: QtWidgets.QLabel,
+        placeholder: str,
+    ) -> None:
+        """Reset one API input back to the saved state."""
+        line_edit.blockSignals(True)
+        self._load_saved_api_key(service_name, line_edit, placeholder)
+        line_edit.blockSignals(False)
+        line_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        password_button.blockSignals(True)
+        password_button.setChecked(False)
+        password_button.setIcon(QtGui.QPixmap(":/icons/eye_open"))
+        password_button.blockSignals(False)
+        validation_label.hide()
+
+    def _setup_layout(self) -> None:
+        """Configure layout."""
+        self._main_layout.addWidget(self._news_source_bar)
+
+        self._add_api_box(
+            box=self._tree_box,
+            box_layout=self._tree_box_layout,
+            text_label=self._tree_text_label,
+            line_edit=self._tree_input,
+            password_button=self._tree_password_button,
+            action_button=self._tree_button,
+            validation_label=self._tree_validation_label,
         )
-        self._phoenix_button.clicked.connect(
-            partial(self.record_news_source_key, PhoenixNews.NEWS_SERVICE_NAME),
+        self._add_api_box(
+            box=self._phoenix_box,
+            box_layout=self._phoenix_box_layout,
+            text_label=self._phoenix_text_label,
+            line_edit=self._phoenix_input,
+            password_button=self._phoenix_password_button,
+            action_button=self._phoenix_button,
+            validation_label=self._phoenix_validation_label,
         )
-        self._synoptic_button.clicked.connect(
-            partial(self.record_news_source_key, SynopticNews.NEWS_SERVICE_NAME),
+        self._add_api_box(
+            box=self._synoptic_box,
+            box_layout=self._synoptic_box_layout,
+            text_label=self._synoptic_text_label,
+            line_edit=self._synoptic_input,
+            password_button=self._synoptic_password_button,
+            action_button=self._synoptic_button,
+            validation_label=self._synoptic_validation_label,
         )
 
+        reset_layout = QtWidgets.QHBoxLayout()
+        reset_layout.addStretch()
+        reset_layout.addWidget(self._reset_defaults_button)
+        self._main_layout.addLayout(reset_layout)
+        self._main_layout.addStretch()
+
+    def _add_api_box(
+        self,
+        *,
+        box: QtWidgets.QGroupBox,
+        box_layout: QtWidgets.QVBoxLayout,
+        text_label: QtWidgets.QLabel,
+        line_edit: QtWidgets.QLineEdit,
+        password_button: QtWidgets.QPushButton,
+        action_button: QtWidgets.QPushButton,
+        validation_label: QtWidgets.QLabel,
+    ) -> None:
+        """Add a configured API box to the main layout."""
+        box_layout.addWidget(text_label)
+        input_layout = QtWidgets.QHBoxLayout()
+        input_layout.addWidget(line_edit)
+        input_layout.addWidget(password_button)
+        box_layout.addLayout(input_layout)
+        box_layout.addWidget(validation_label)
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(action_button)
+        box_layout.addLayout(button_layout)
+        box.setLayout(box_layout)
+        self._main_layout.addWidget(box)
+
+    def _validate_api_input(
+        self,
+        line_edit: QtWidgets.QLineEdit,
+        button: QtWidgets.QPushButton,
+        validation_label: QtWidgets.QLabel,
+    ) -> bool:
+        """Validate one API input field inline."""
+        value = line_edit.text()
+        stripped_value = value.strip()
+        has_internal_whitespace = any(character.isspace() for character in stripped_value)
+        if stripped_value and has_internal_whitespace:
+            validation_label.setText("API keys cannot contain spaces or line breaks.")
+            validation_label.show()
+            button.setEnabled(False)
+            return False
+
+        validation_label.hide()
+        button.setEnabled(True)
+        return True
+
+    @asyncSlot()
+    async def record_news_source_key(self, news_source: str) -> None:
+        """Record the news source API key in keyring."""
+        text_source = {
+            TreeNews.NEWS_SERVICE_NAME: (
+                self._tree_input,
+                self._tree_button,
+                self._tree_validation_label,
+            ),
+            PhoenixNews.NEWS_SERVICE_NAME: (
+                self._phoenix_input,
+                self._phoenix_button,
+                self._phoenix_validation_label,
+            ),
+            SynopticNews.NEWS_SERVICE_NAME: (
+                self._synoptic_input,
+                self._synoptic_button,
+                self._synoptic_validation_label,
+            ),
+        }
+
+        line_edit, button, validation_label = text_source[news_source]
+        if not self._validate_api_input(line_edit, button, validation_label):
+            Toast.show_message(
+                "Fix the API key format before saving.",
+                type_=ToastType.WARNING,
+            )
+            return
+
+        new_key = line_edit.text().strip()
+        try:
+            old_key = keyring_manager.get_news_source_api_key(news_source, self._pass_guard)
+        except KeyringPasswordNotFoundError:
+            old_key = ""
+
+        if new_key == old_key:
+            Toast.show_message(
+                "API key is equal to the old one.",
+                type_=ToastType.WARNING,
+            )
+            return
+
+        if not new_key:
+            self._delete_news_source_key(news_source)
+            await self._ui_controller.restart_news_manager()
+            Toast.show_message("API key deleted.", type_=ToastType.WARNING)
+            return
+
+        keyring_manager.set_news_source_api_key(news_source, new_key, self._pass_guard)
+        await self._ui_controller.restart_news_manager()
+        Toast.show_message(
+            "News source API key saved successfully!",
+            type_=ToastType.SUCCESS,
+        )
+
+    def _delete_news_source_key(self, news_source: str) -> None:
+        """Delete one stored news source key if it exists."""
+        try:
+            keyring.delete_password(f"{AppConfig.SERVICE_NAME}:news-source", news_source)
+        except PasswordDeleteError:
+            return
+
+    @asyncSlot()
+    async def _reset_to_defaults(self) -> None:
+        """Clear all stored API keys and reset the section to defaults."""
+        for service_name in (
+            TreeNews.NEWS_SERVICE_NAME,
+            PhoenixNews.NEWS_SERVICE_NAME,
+            SynopticNews.NEWS_SERVICE_NAME,
+        ):
+            self._delete_news_source_key(service_name)
+
+        for line_edit in (self._tree_input, self._phoenix_input, self._synoptic_input):
+            line_edit.clear()
+
+        await self._ui_controller.restart_news_manager()
+        Toast.show_message("News API keys reset to defaults", type_=ToastType.SUCCESS)
+
+    def _toggle_password_visibility(self, checked: bool) -> None:
+        """Toggle the password visibility."""
+        sender = self.sender()
+        field_map = {
+            self._tree_password_button: self._tree_input,
+            self._phoenix_password_button: self._phoenix_input,
+            self._synoptic_password_button: self._synoptic_input,
+        }
+        line_input = field_map.get(sender)
+        if line_input is None or not isinstance(sender, QtWidgets.QPushButton):
+            return
+
+        line_input.setEchoMode(
+            QtWidgets.QLineEdit.EchoMode.Normal
+            if checked
+            else QtWidgets.QLineEdit.EchoMode.Password,
+        )
+        sender.setIcon(
+            QtGui.QPixmap(":/icons/eye_closed") if checked else QtGui.QPixmap(":/icons/eye_open"),
+        )
+
+
+class NewsFiltersConfig(QtWidgets.QWidget):
+    """Widget to control news filter configuration."""
+
+    def __init__(
+        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+    ) -> None:
+        """Initialize shared attributes."""
+        super().__init__(parent=parent)
+        self._ui_controller = ui_controller
+
+        self._main_layout = QtWidgets.QVBoxLayout(self)
+        self._news_filters = TopBar("News Filters")
+        self._news_scroll_area = QtWidgets.QScrollArea()
+        self._news_scroll_widget = QtWidgets.QWidget()
+        self._news_scroll_layout = QtWidgets.QVBoxLayout()
+
+        self._keyword_matching_layout = QtWidgets.QVBoxLayout()
+        self._keyword_matching_box = QtWidgets.QGroupBox("Keyword Matching - Filter")
+        self._keyword_matching_add_btn = QtWidgets.QPushButton("Add Filter")
+
+        self._data_matching_layout = QtWidgets.QVBoxLayout()
+        self._data_matching_box = QtWidgets.QGroupBox("Data Matching - Filter")
+        self._data_matching_add_btn = QtWidgets.QPushButton("Add Filter")
+
+        self._reload_filters_btn = QtWidgets.QPushButton("Reload Saved Filters")
+        self._reset_defaults_btn = QtWidgets.QPushButton("Reset to Defaults")
+        self._save_filters_btn = QtWidgets.QPushButton("Save Filters")
+
+        self._setup_widgets()
+        self._setup_layout()
+        self._populate_filters_from_db()
+
+    def _setup_widgets(self) -> None:
+        """Configure widgets."""
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
         self._news_scroll_area.setWidgetResizable(True)
 
         self._keyword_matching_add_btn.setMinimumSize(80, 30)
-        self._keyword_matching_add_btn.setProperty("class", "LONG")
+        self._keyword_matching_add_btn.setProperty("class", "APPROVED")
         self._keyword_matching_add_btn.clicked.connect(self._add_keyword_filter)
 
         self._data_matching_add_btn.setMinimumSize(80, 30)
-        self._data_matching_add_btn.setProperty("class", "LONG")
+        self._data_matching_add_btn.setProperty("class", "APPROVED")
         self._data_matching_add_btn.clicked.connect(self._add_data_filter)
 
-        self._reset_filters_btn.setMinimumSize(80, 30)
-        self._reset_filters_btn.clicked.connect(self._reset_filters)
+        self._reload_filters_btn.setMinimumSize(150, 32)
+        self._reload_filters_btn.clicked.connect(self._reload_saved_filters)
 
-        self._save_filters_btn.setMinimumSize(80, 30)
-        self._save_filters_btn.setProperty("class", "LONG")
+        self._reset_defaults_btn.setMinimumSize(150, 32)
+        self._reset_defaults_btn.setProperty("class", "WARNING")
+        self._reset_defaults_btn.clicked.connect(self._reset_to_defaults)
+
+        self._save_filters_btn.setMinimumSize(150, 32)
+        self._save_filters_btn.setProperty("class", "APPROVED")
         self._save_filters_btn.clicked.connect(self._save_filters)
 
-        user_filters = AppConfig.get_all_user_filters()
-        for user_filter in user_filters:
-            if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:
-                self._keyword_matching_layout.addWidget(KeywordMatchingWidget(user_filter))
-            if int(user_filter.filter_type) == FilterType.DATA_MATCHING:
-                self._data_matching_layout.addWidget(DataMatchingWidget(user_filter))
-
-    def _setup_layout(self) -> None:  # noqa: PLR0915
-        """Config layout."""
-        self._main_layout.addWidget(self._news_source_bar)
-        self._tree_box_layout.addWidget(self._tree_text_label)
-        tree_input_layout = QtWidgets.QHBoxLayout()
-        tree_input_layout.addWidget(self._tree_input)
-        tree_input_layout.addWidget(self._tree_password_button)
-
-        self._tree_box_layout.addLayout(tree_input_layout)
-        tree_button_layout = QtWidgets.QHBoxLayout()
-        tree_button_layout.addStretch()
-        tree_button_layout.addWidget(self._tree_button)
-        self._tree_box_layout.addLayout(tree_button_layout)
-        self._tree_box.setLayout(self._tree_box_layout)
-        self._main_layout.addWidget(self._tree_box)
-
-        self._phoenix_box_layout.addWidget(self._phoenix_text_label)
-        phoenix_input_layout = QtWidgets.QHBoxLayout()
-        phoenix_input_layout.addWidget(self._phoenix_input)
-        phoenix_input_layout.addWidget(self._phoenix_password_button)
-
-        self._phoenix_box_layout.addLayout(phoenix_input_layout)
-        phoenix_button_layout = QtWidgets.QHBoxLayout()
-        phoenix_button_layout.addStretch()
-        phoenix_button_layout.addWidget(self._phoenix_button)
-        self._phoenix_box_layout.addLayout(phoenix_button_layout)
-        self._phoenix_box.setLayout(self._phoenix_box_layout)
-        self._main_layout.addWidget(self._phoenix_box)
-
-        self._synoptic_box_layout.addWidget(self._synoptic_text_label)
-        synoptic_input_layout = QtWidgets.QHBoxLayout()
-        synoptic_input_layout.addWidget(self._synoptic_input)
-        synoptic_input_layout.addWidget(self._synoptic_password_button)
-        self._synoptic_box_layout.addLayout(synoptic_input_layout)
-        synoptic_button_layout = QtWidgets.QHBoxLayout()
-        synoptic_button_layout.addStretch()
-        synoptic_button_layout.addWidget(self._synoptic_button)
-        self._synoptic_box_layout.addLayout(synoptic_button_layout)
-        self._synoptic_box.setLayout(self._synoptic_box_layout)
-        self._main_layout.addWidget(self._synoptic_box)
-
+    def _setup_layout(self) -> None:
+        """Configure layout."""
         self._main_layout.addWidget(self._news_filters)
-
-        self._news_scroll_wdiget.setLayout(self._news_scroll_layout)
-        self._news_scroll_area.setWidget(self._news_scroll_wdiget)
+        self._news_scroll_widget.setLayout(self._news_scroll_layout)
+        self._news_scroll_area.setWidget(self._news_scroll_widget)
 
         self._keyword_matching_layout.addWidget(
             self._keyword_matching_add_btn,
@@ -253,159 +497,22 @@ class NewsConfig(QtWidgets.QWidget):
 
         self._news_scroll_layout.addWidget(self._keyword_matching_box)
         self._news_scroll_layout.addWidget(self._data_matching_box)
+
         filter_buttons_layout = QtWidgets.QHBoxLayout()
         filter_buttons_layout.addStretch()
-        filter_buttons_layout.addWidget(self._reset_filters_btn)
+        filter_buttons_layout.addWidget(self._reload_filters_btn)
+        filter_buttons_layout.addWidget(self._reset_defaults_btn)
         filter_buttons_layout.addWidget(self._save_filters_btn)
         self._news_scroll_layout.addLayout(filter_buttons_layout)
         self._news_scroll_layout.addStretch()
         self._main_layout.addWidget(self._news_scroll_area)
 
-        self.setLayout(self._main_layout)
+    def _populate_filters_from_db(self) -> None:
+        """Rebuild the current filter widgets from the database."""
+        self._clear_filter_layout(self._keyword_matching_layout, KeywordMatchingWidget)
+        self._clear_filter_layout(self._data_matching_layout, DataMatchingWidget)
 
-    @asyncSlot()
-    async def record_news_source_key(self, news_source: str) -> None:
-        """Record the news source API key in keyring.
-
-        Args:
-            news_source: name of the news source,
-        """
-        text_source = {
-            TreeNews.NEWS_SERVICE_NAME: self._tree_input.text(),
-            PhoenixNews.NEWS_SERVICE_NAME: self._phoenix_input.text(),
-            SynopticNews.NEWS_SERVICE_NAME: self._synoptic_input.text(),
-        }
-
-        new_key = text_source[news_source].strip()
-        try:
-            old_key = keyring_manager.get_news_source_api_key(
-                news_source,
-                self._pass_guard,
-            )
-        except KeyringPasswordNotFoundError:
-            old_key = ""
-
-        if new_key == old_key:
-            Toast.show_message(
-                "API key is equal to the old one.",
-                type_=ToastType.WARNING,
-            )
-            return
-
-        if not new_key:
-            keyring.delete_password(
-                f"{AppConfig.SERVICE_NAME}:news-source",
-                news_source,
-            )
-            Toast.show_message(
-                "API key deleted.",
-                type_=ToastType.WARNING,
-            )
-            return
-
-        keyring_manager.set_news_source_api_key(
-            news_source,
-            new_key,
-            self._pass_guard,
-        )
-
-        await self._ui_controller.restart_news_manager()
-        Toast.show_message(
-            "News source API key saved successfully!",
-            type_=ToastType.SUCCESS,
-        )
-
-    def _toggle_password_visibility(self, checked: bool) -> None:
-        """Toggle the password visibility.
-
-        Args:
-            checked: True if the button is checked.
-        """
-        sender = self.sender()
-        line_input = None
-        password_button = None
-        if sender == self._tree_password_button:
-            line_input = self._tree_input
-            password_button = self._tree_password_button
-        if sender == self._phoenix_password_button:
-            line_input = self._phoenix_input
-            password_button = self._phoenix_password_button
-        if sender == self._synoptic_password_button:
-            line_input = self._synoptic_input
-            password_button = self._synoptic_password_button
-
-        if line_input is None or password_button is None:
-            return
-
-        line_input.setEchoMode(
-            QtWidgets.QLineEdit.EchoMode.Normal
-            if checked
-            else QtWidgets.QLineEdit.EchoMode.Password
-        )
-        password_button.setIcon(
-            QtGui.QPixmap(":/icons/eye_closed") if checked else QtGui.QPixmap(":/icons/eye_open")
-        )
-
-    def _add_keyword_filter(self) -> None:
-        """Add a new keyword filter."""
-        user_filter = UserFilter(
-            filter_type=FilterType.KEYWORD_MATCHING,
-            match_pattern=orjson.dumps({"keyword": ""}).decode("utf-8"),
-            action_type=ActionType.COIN_ASSOCIATION,
-            action_args=orjson.dumps({"coin": "BTC", "color": [255, 0, 0]}).decode(
-                "utf-8",
-            ),
-        )
-        self._keyword_matching_layout.insertWidget(
-            self._keyword_matching_layout.count() - 1,
-            KeywordMatchingWidget(user_filter),
-        )
-
-    def _add_data_filter(self) -> None:
-        """Add a new data filter."""
-        user_filter = UserFilter(
-            filter_type=FilterType.DATA_MATCHING,
-            match_pattern=orjson.dumps({"keyword": "", "data_key": "coin"}).decode(
-                "utf-8",
-            ),
-            action_type=ActionType.COIN_ASSOCIATION,
-            action_args=orjson.dumps({"coin": "BTC"}).decode("utf-8"),
-        )
-        self._data_matching_layout.insertWidget(
-            self._data_matching_layout.count() - 1,
-            DataMatchingWidget(user_filter),
-        )
-
-    def _reset_filters(self) -> None:
-        """Reset filters to match database."""
-        # Delete all current filters widgets
-        keyword_matching_widgets = [
-            self._keyword_matching_layout.itemAt(index).widget()
-            for index in range(self._keyword_matching_layout.count())
-            if isinstance(
-                self._keyword_matching_layout.itemAt(index).widget(),
-                KeywordMatchingWidget,
-            )
-        ]
-        for widget in keyword_matching_widgets:
-            self._keyword_matching_layout.removeWidget(widget)
-            widget.deleteLater()
-
-        data_matching_widgets = [
-            self._data_matching_layout.itemAt(index).widget()
-            for index in range(self._data_matching_layout.count())
-            if isinstance(
-                self._data_matching_layout.itemAt(index).widget(),
-                DataMatchingWidget,
-            )
-        ]
-        for widget in data_matching_widgets:
-            self._data_matching_layout.removeWidget(widget)
-            widget.deleteLater()
-
-        # Create new filters widget matching database
-        user_filters = AppConfig.get_all_user_filters()
-        for user_filter in user_filters:
+        for user_filter in AppConfig.get_all_user_filters():
             if int(user_filter.filter_type) == FilterType.KEYWORD_MATCHING:
                 self._keyword_matching_layout.insertWidget(
                     self._keyword_matching_layout.count() - 1,
@@ -417,45 +524,113 @@ class NewsConfig(QtWidgets.QWidget):
                     DataMatchingWidget(user_filter),
                 )
 
-    def _save_filters(self) -> None:
-        """Save filters to database."""
-        for index in range(self._keyword_matching_layout.count()):
-            widget = self._keyword_matching_layout.itemAt(index).widget()
-            if isinstance(widget, KeywordMatchingWidget):
-                widget.write_to_db()
+    def refresh_from_config(self) -> None:
+        """Reload saved filters and discard unsaved edits."""
+        self._populate_filters_from_db()
 
-        for index in range(self._data_matching_layout.count()):
-            widget = self._data_matching_layout.itemAt(index).widget()
-            if isinstance(widget, DataMatchingWidget):
-                widget.write_to_db()
+    def _clear_filter_layout(
+        self,
+        layout: QtWidgets.QVBoxLayout,
+        widget_type: type[BaseFilterWidget],
+    ) -> None:
+        """Delete all filter widgets of one layout type."""
+        widgets = [
+            layout.itemAt(index).widget()
+            for index in range(layout.count())
+            if isinstance(layout.itemAt(index).widget(), widget_type)
+        ]
+        for widget in widgets:
+            layout.removeWidget(widget)
+            widget.deleteLater()
+
+    def _iter_filter_widgets(self) -> list[BaseFilterWidget]:
+        """Return all visible filter widgets."""
+        widgets: list[BaseFilterWidget] = []
+        for layout in (self._keyword_matching_layout, self._data_matching_layout):
+            for index in range(layout.count()):
+                widget = layout.itemAt(index).widget()
+                if isinstance(widget, BaseFilterWidget):
+                    widgets.append(widget)
+        return widgets
+
+    def _add_keyword_filter(self) -> None:
+        """Add a new keyword filter."""
+        user_filter = UserFilter(
+            filter_type=FilterType.KEYWORD_MATCHING,
+            match_pattern=orjson.dumps({"keyword": ""}).decode("utf-8"),
+            action_type=ActionType.COIN_ASSOCIATION,
+            action_args=orjson.dumps({"coin": "BTC", "color": [255, 0, 0]}).decode("utf-8"),
+        )
+        self._keyword_matching_layout.insertWidget(
+            self._keyword_matching_layout.count() - 1,
+            KeywordMatchingWidget(user_filter),
+        )
+
+    def _add_data_filter(self) -> None:
+        """Add a new data filter."""
+        user_filter = UserFilter(
+            filter_type=FilterType.DATA_MATCHING,
+            match_pattern=orjson.dumps({"keyword": "", "data_key": "coin"}).decode("utf-8"),
+            action_type=ActionType.COIN_ASSOCIATION,
+            action_args=orjson.dumps({"coin": "BTC"}).decode("utf-8"),
+        )
+        self._data_matching_layout.insertWidget(
+            self._data_matching_layout.count() - 1,
+            DataMatchingWidget(user_filter),
+        )
+
+    def _reload_saved_filters(self) -> None:
+        """Reload filters from the database."""
+        self._populate_filters_from_db()
+        Toast.show_message("Reloaded saved filters", type_=ToastType.SUCCESS)
+
+    def _reset_to_defaults(self) -> None:
+        """Reset filters to the default empty state."""
+        AppConfig.delete_all_user_filters()
+        self._populate_filters_from_db()
+        self._ui_controller.update_news_filters()
+        Toast.show_message("News filters reset to defaults", type_=ToastType.SUCCESS)
+
+    def _save_filters(self) -> None:
+        """Save filters to the database."""
+        validation_errors = [
+            error
+            for widget in self._iter_filter_widgets()
+            if (error := widget.validation_error()) is not None
+        ]
+        if validation_errors:
+            for error in validation_errors:
+                LOGGER.warning("News filter validation warning: %s", error)
+            Toast.show_message(
+                "Resolve filter warnings before saving.",
+                type_=ToastType.WARNING,
+            )
+            return
+
+        for widget in self._iter_filter_widgets():
+            widget.write_to_db()
 
         self._ui_controller.update_news_filters()
         Toast.show_message("News Filters updated", type_=ToastType.SUCCESS)
 
 
 class ColorButton(QtWidgets.QPushButton):
-    """Custom Qt Widget to show a chosen color."""
+    """Custom Qt widget to show a chosen color."""
 
     color_changed = QtCore.Signal(object)
 
     def __init__(self, *args: object, color: QtGui.QColor, **kwargs: dict) -> None:
         """Initialize ColorButton."""
-        super().__init__(*args, **kwargs)  # type: ignore
+        super().__init__(*args, **kwargs)  # type: ignore[misc]
         self.setObjectName("buttonColor")
 
         self._color: QtGui.QColor = color if color else QtGui.QColor(255, 0, 0)
         self.pressed.connect(self.on_color_picker)
-
-        # Set the initial/default state.
         self.set_color(color)
 
     @property
     def color(self) -> QtGui.QColor:
-        """Returns current color.
-
-        Returns:
-            QtGui.QColor: Color of the button.
-        """
+        """Return current color."""
         return self._color
 
     def set_color(self, color: QtGui.QColor) -> None:
@@ -488,7 +663,7 @@ class ColorButton(QtWidgets.QPushButton):
 
 
 class BaseFilterWidget(QtWidgets.QFrame):
-    """Base Widget to control filter."""
+    """Base widget to control one filter."""
 
     def __init__(
         self,
@@ -505,10 +680,14 @@ class BaseFilterWidget(QtWidgets.QFrame):
         self.hide()
         self._to_delete = True
 
+    def validation_error(self) -> str | None:
+        """Return an optional validation error for the current filter state."""
+        return None
+
     def write_to_db(self) -> None:
         """Write user_filter to database."""
         if self._to_delete:
-            AppConfig.delete_user_filter(self._user_filter.id)  # type: ignore
+            AppConfig.delete_user_filter(self._user_filter.id)  # type: ignore[arg-type]
             self.deleteLater()
             return
 
@@ -544,9 +723,8 @@ class KeywordMatchingWidget(BaseFilterWidget):
         self.setMinimumHeight(self.sizeHint().height())
 
     def _setup_widgets(self) -> None:
-        """Configure Widgets."""
+        """Configure widgets."""
         self.setObjectName("config_item")
-
         self._if_label.setObjectName("title")
 
         self._match_pattern.setPlaceholderText("Pattern to Match...")
@@ -560,17 +738,13 @@ class KeywordMatchingWidget(BaseFilterWidget):
         self._action_combo.currentIndexChanged.connect(self.on_action_change)
 
         self._then_label.setObjectName("title")
-
         self._coin_line.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Minimum,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
 
         for path in list_resources_from_prefix("sfx"):
-            self._sound_combo.addItem(
-                path,
-                userData=f":/sfx/{path}",
-            )
+            self._sound_combo.addItem(path, userData=f":/sfx/{path}")
         self._sound_button.setIcon(QtGui.QPixmap(":/icons/music"))
         self._sound_button.setProperty("class", "borderless")
         self._sound_button.setToolTip("Play Sound")
@@ -627,50 +801,54 @@ class KeywordMatchingWidget(BaseFilterWidget):
         self._main_layout.addWidget(self._color_picker)
         self._main_layout.addWidget(self._delete_btn)
 
-        self.setLayout(self._main_layout)
-
     def reset_to_current(self) -> None:
         """Reset values to current filter."""
         match_pattern = orjson.loads(str(self._user_filter.match_pattern))
         if keyword := match_pattern.get("keyword", ""):
             self._match_pattern.setText(keyword)
-        action_index = self._action_combo.findData(
-            ActionType(int(self._user_filter.action_type)),  # type: ignore
-        )
+
+        action_index = self._action_combo.findData(ActionType(int(self._user_filter.action_type)))
         self._action_combo.setCurrentIndex(action_index)
 
         action_args = orjson.loads(str(self._user_filter.action_args))
-
         if sound_path := action_args.get("sound_path", ""):
             sound_index = self._sound_combo.findData(sound_path)
             self._sound_combo.setCurrentIndex(sound_index)
-
         if coin := action_args.get("coin", ""):
             self._coin_line.setText(coin)
-
         if color := action_args.get("color", ""):
             self._color_picker.set_color(QtGui.QColor(*color))
 
         self.on_action_change(action_index)
         self._to_delete = False
 
+    def validation_error(self) -> str | None:
+        """Return a validation error for invalid keyword filters."""
+        if self._to_delete:
+            return None
+        if not self._match_pattern.text().strip():
+            return "Keyword filter requires a match pattern."
+        if self._coin_line.isVisible() and not self._coin_line.text().strip():
+            return "Keyword filter coin-association requires a target coin."
+        return None
+
     def write_to_db(self) -> None:
         """Write user_filter to database."""
         super().write_to_db()
 
-        self._user_filter.match_pattern = orjson.dumps(  # type: ignore
+        self._user_filter.match_pattern = orjson.dumps(  # type: ignore[assignment]
             {"keyword": self._match_pattern.text()},
         ).decode("utf-8")
-        self._user_filter.action_type = self._action_combo.currentData()  # type: ignore
-        action_args = {}
+        self._user_filter.action_type = self._action_combo.currentData()  # type: ignore[assignment]
+        action_args: dict[str, object] = {}
         if self._sound_combo.isVisible():
-            action_args["sound_path"] = self._sound_combo.currentData()  # type: ignore
+            action_args["sound_path"] = self._sound_combo.currentData()
         if self._coin_line.isVisible():
             action_args["coin"] = self._coin_line.text()
         if self._color_picker.isVisible():
-            action_args["color"] = self._color_picker.color.toTuple()[0:3]  # type: ignore
+            action_args["color"] = self._color_picker.color.toTuple()[0:3]
 
-        self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore
+        self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore[assignment]
         AppConfig.write_model_to_db(self._user_filter)
 
 
@@ -705,9 +883,8 @@ class DataMatchingWidget(BaseFilterWidget):
         self.setMinimumHeight(self.sizeHint().height())
 
     def _setup_widgets(self) -> None:
-        """Configure Widgets."""
+        """Configure widgets."""
         self.setObjectName("config_item")
-
         self._if_label.setObjectName("title")
 
         self._match_pattern.setPlaceholderText("Pattern to Match...")
@@ -717,8 +894,7 @@ class DataMatchingWidget(BaseFilterWidget):
         )
 
         self._in_label.setObjectName("title")
-        valid_fields = ["title", "quoter", "coin", "source", "feed"]
-        for field in valid_fields:
+        for field in ["title", "quoter", "coin", "source", "feed"]:
             self._data_field.addItem(field.capitalize(), userData=field)
 
         for action in FILTER_ACTIONS_MAP:
@@ -726,17 +902,13 @@ class DataMatchingWidget(BaseFilterWidget):
         self._action_combo.currentIndexChanged.connect(self.on_action_change)
 
         self._then_label.setObjectName("title")
-
         self._coin_line.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Minimum,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
 
         for path in list_resources_from_prefix("sfx"):
-            self._sound_combo.addItem(
-                path,
-                userData=f":/sfx/{path}",
-            )
+            self._sound_combo.addItem(path, userData=f":/sfx/{path}")
         self._sound_button.setIcon(QtGui.QPixmap(":/icons/music"))
         self._sound_button.setProperty("class", "borderless")
         self._sound_button.setToolTip("Play Sound")
@@ -794,8 +966,6 @@ class DataMatchingWidget(BaseFilterWidget):
         self._main_layout.addWidget(self._coin_line)
         self._main_layout.addWidget(self._delete_btn)
 
-        self.setLayout(self._main_layout)
-
     def reset_to_current(self) -> None:
         """Reset values to current filter."""
         match_pattern = orjson.loads(str(self._user_filter.match_pattern))
@@ -805,39 +975,48 @@ class DataMatchingWidget(BaseFilterWidget):
             data_index = self._data_field.findData(data_key)
             self._data_field.setCurrentIndex(data_index)
 
-        action_index = self._action_combo.findData(
-            ActionType(int(self._user_filter.action_type)),  # type: ignore
-        )
+        action_index = self._action_combo.findData(ActionType(int(self._user_filter.action_type)))
         self._action_combo.setCurrentIndex(action_index)
 
         action_args = orjson.loads(str(self._user_filter.action_args))
-
         if sound_path := action_args.get("sound_path", ""):
             sound_index = self._sound_combo.findData(sound_path)
             self._sound_combo.setCurrentIndex(sound_index)
-
         if coin := action_args.get("coin", ""):
             self._coin_line.setText(coin)
 
         self.on_action_change(action_index)
         self._to_delete = False
 
+    def validation_error(self) -> str | None:
+        """Return a validation error for invalid data filters."""
+        if self._to_delete:
+            return None
+        if not self._match_pattern.text().strip():
+            return "Data filter requires a match pattern."
+        if self._coin_line.isVisible() and not self._coin_line.text().strip():
+            return "Data filter coin-association requires a target coin."
+        return None
+
     def write_to_db(self) -> None:
         """Write user_filter to database."""
         super().write_to_db()
 
-        self._user_filter.match_pattern = orjson.dumps(  # type: ignore
+        self._user_filter.match_pattern = orjson.dumps(  # type: ignore[assignment]
             {
                 "keyword": self._match_pattern.text(),
                 "data_key": self._data_field.currentData(),
             },
         ).decode("utf-8")
-        self._user_filter.action_type = self._action_combo.currentData()  # type: ignore
-        action_args = {}
+        self._user_filter.action_type = self._action_combo.currentData()  # type: ignore[assignment]
+        action_args: dict[str, object] = {}
         if self._sound_combo.isVisible():
-            action_args["sound_path"] = self._sound_combo.currentData()  # type: ignore
+            action_args["sound_path"] = self._sound_combo.currentData()
         if self._coin_line.isVisible():
             action_args["coin"] = self._coin_line.text()
 
-        self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore
+        self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore[assignment]
         AppConfig.write_model_to_db(self._user_filter)
+
+
+NewsConfig = NewsSourceConfig

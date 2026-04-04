@@ -289,6 +289,25 @@ QPushButton.LONG:disabled {
     background-color: rgba(100, 100, 100, 130);
 }
 
+QPushButton.APPROVED {
+    border-color: rgba(100, 255, 100, 180);
+    background-color: rgba(100, 200, 100, 130);
+    padding: 0 12px;
+}
+
+QPushButton.APPROVED:hover {
+    background-color: rgba(100, 255, 100, 180);
+}
+
+QPushButton.APPROVED:pressed {
+    background-color: rgba(100, 255, 100, 255);
+}
+
+QPushButton.APPROVED:disabled {
+    border-color: rgba(100, 100, 100, 180);
+    background-color: rgba(100, 100, 100, 130);
+}
+
 QPushButton.SHORT {
     border-color: rgba(255, 100, 100, 180);
     background-color: rgba(200, 100, 100, 130);
@@ -305,6 +324,26 @@ QPushButton.SHORT:pressed {
 QPushButton.SHORT:disabled {
     border-color: rgba(100, 100, 100, 180);
     background-color: rgba(100, 100, 100, 130);
+}
+
+QPushButton.WARNING {
+    border-color: rgba(214, 180, 71, 220);
+    background-color: rgba(214, 180, 71, 110);
+    color: #F5E7B0;
+}
+
+QPushButton.WARNING:hover {
+    background-color: rgba(214, 180, 71, 150);
+}
+
+QPushButton.WARNING:pressed {
+    background-color: rgba(214, 180, 71, 210);
+}
+
+QPushButton.WARNING:disabled {
+    border-color: rgba(100, 100, 100, 180);
+    background-color: rgba(100, 100, 100, 130);
+    color: rgba(230, 230, 230, 140);
 }
 
 QPushButton.gray{
