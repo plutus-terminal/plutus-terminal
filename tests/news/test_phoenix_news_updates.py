@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Self
 from unittest.mock import patch
 
+from httpx import HTTPStatusError, Request, Response
+
 from plutus_terminal.core.exceptions import KeyringPasswordNotFoundError
 from plutus_terminal.core.news.phoenix_news import PhoenixNews
 
@@ -99,6 +101,73 @@ class TestPhoenixNewsUpdates:
             assert asyncio.run(phoenix_news.fetch_old_news(25)) == []
 
         assert captured_requests == [("https://api.phoenixnews.io/getLastNews?limit=25", {})]
+
+    def test_fetch_old_news_falls_back_to_public_endpoint_when_subscriber_request_fails(
+        self,
+    ) -> None:
+        """Historical Phoenix fetches should fall back to the public endpoint on subscriber errors."""
+        phoenix_news = PhoenixNews(object())
+        captured_requests: list[tuple[str, dict[str, str]]] = []
+
+        class _ErrorResponseStub:
+            def __init__(self, url: str) -> None:
+                """Store the failing URL."""
+                self._url = url
+
+            def raise_for_status(self) -> None:
+                """Raise a client error for the subscriber endpoint."""
+                message = "Client error '400 Bad Request'"
+                request = Request("GET", self._url)
+                raise HTTPStatusError(
+                    message,
+                    request=request,
+                    response=Response(400, request=request),
+                )
+
+        class _SuccessResponseStub:
+            def raise_for_status(self) -> None:
+                """Pretend the fallback HTTP response succeeded."""
+
+            def json(self) -> list[dict[str, object]]:
+                """Return an empty news payload."""
+                return []
+
+        class _AsyncClientStub:
+            async def __aenter__(self) -> Self:
+                """Enter the async client context."""
+                return self
+
+            async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+                """Exit the async client context."""
+
+            async def get(
+                self, url: str, headers: dict[str, str]
+            ) -> _ErrorResponseStub | _SuccessResponseStub:
+                """Fail on subscriber endpoint and succeed on public fallback."""
+                captured_requests.append((url, headers))
+                if "getAllNews" in url:
+                    return _ErrorResponseStub(url)
+                return _SuccessResponseStub()
+
+        with (
+            patch(
+                "plutus_terminal.core.news.phoenix_news.keyring_manager.get_news_source_api_key",
+                return_value="phoenix-api-key",
+            ),
+            patch(
+                "plutus_terminal.core.news.phoenix_news.AsyncClient",
+                return_value=_AsyncClientStub(),
+            ),
+        ):
+            assert asyncio.run(phoenix_news.fetch_old_news(25)) == []
+
+        assert captured_requests == [
+            (
+                "https://api.phoenixnews.io/getAllNews?limit=25",
+                {"x-api-key": "phoenix-api-key"},
+            ),
+            ("https://api.phoenixnews.io/getLastNews?limit=25", {}),
+        ]
 
     def test_format_news_keeps_inline_ai_fields_on_historical_news(self) -> None:
         """Historical Phoenix news should keep inline AI summary and important fields."""

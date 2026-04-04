@@ -42,11 +42,11 @@ class DecimalSpinBox(QtWidgets.QDoubleSpinBox):
         Args:
             value (Decimal): Value to set.
         """
-        self._current_decimal = value
-        self.decimalValueChanged.emit(value)
         self.blockSignals(True)
         super().setValue(float(value))
         self.blockSignals(False)
+        self._current_decimal = Decimal(str(super().value()))
+        self.decimalValueChanged.emit(self._current_decimal)
 
     def setMaximum(self, max_value: Decimal) -> None:  # type: ignore
         """Set maximum.
@@ -95,7 +95,7 @@ class DecimalSpinBox(QtWidgets.QDoubleSpinBox):
 
     def _on_value_changed(self, value: float) -> None:
         """On value changed."""
-        self._current_decimal = Decimal(value)
+        self._current_decimal = Decimal(str(value))
         self._current_decimal = min(self._current_decimal, self._maximum_decimal)
         self._current_decimal = max(self._current_decimal, self._minimum_decimal)
         self.decimalValueChanged.emit(self._current_decimal)

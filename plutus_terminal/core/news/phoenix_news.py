@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import logging
 from typing import TYPE_CHECKING
 
-from httpx import AsyncClient
+from httpx import AsyncClient, HTTPStatusError, Response
 import orjson as json
 import re2
 from tenacity import (
@@ -142,15 +142,45 @@ class PhoenixNews(NewsFetcher):
         """
         request_url, request_headers = self._get_historical_news_request(limit)
         async with AsyncClient() as client:
-            response = await client.get(request_url, headers=request_headers)
-        response.raise_for_status()
+            response = await self._fetch_historical_news_response(
+                client,
+                request_url,
+                request_headers,
+                limit,
+            )
         data = response.json()
         list_news = [self.format_news(news) for news in data]
         return list_news[::-1]
 
+    async def _fetch_historical_news_response(
+        self,
+        client: AsyncClient,
+        request_url: str,
+        request_headers: dict[str, str],
+        limit: int,
+    ) -> Response:
+        """Fetch historical news, falling back to the public endpoint if needed."""
+        try:
+            response = await client.get(request_url, headers=request_headers)
+            response.raise_for_status()
+        except HTTPStatusError as error:
+            if not request_headers:
+                raise
+
+            fallback_url = self._get_public_historical_news_request(limit)
+            LOGGER.warning(
+                "%s historical subscriber endpoint failed with status %s. Falling back to public news endpoint.",
+                self.NEWS_SERVICE_NAME,
+                error.response.status_code,
+            )
+            response = await client.get(fallback_url, headers={})
+            response.raise_for_status()
+
+        return response
+
     def _get_historical_news_request(self, limit: int) -> tuple[str, dict[str, str]]:
         """Build the Phoenix historical news request URL and headers."""
-        request_url = f"https://api.phoenixnews.io/getLastNews?limit={limit}"
+        request_url = self._get_public_historical_news_request(limit)
 
         try:
             phoenix_api_key = keyring_manager.get_news_source_api_key(
@@ -167,6 +197,10 @@ class PhoenixNews(NewsFetcher):
             f"https://api.phoenixnews.io/getAllNews?limit={limit}",
             {"x-api-key": phoenix_api_key},
         )
+
+    def _get_public_historical_news_request(self, limit: int) -> str:
+        """Build the Phoenix public historical news request URL."""
+        return f"https://api.phoenixnews.io/getLastNews?limit={limit}"
 
     def format_news(self, news_message: dict) -> NewsData:  # noqa: C901, PLR0915
         """Format given news.
