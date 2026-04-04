@@ -68,7 +68,12 @@ class OrderlyTrader:
                     json_body=_build_attached_tp_sl_order_payload(request),
                 )
                 result = {"primary": primary_result, "tp_sl": tp_sl_result}
-            except (HTTPStatusError, OrderlyRequestError, RequestError, TransactionFailedError) as error:
+            except (
+                HTTPStatusError,
+                OrderlyRequestError,
+                RequestError,
+                TransactionFailedError,
+            ) as error:
                 result = {
                     "primary": primary_result,
                     "tp_sl": None,
@@ -218,9 +223,7 @@ def _build_regular_order_payload(request: OrderlyOrderRequest) -> OrderlyRegular
     return body
 
 
-def _build_regular_edit_payload(
-    order_id: str, request: OrderlyOrderRequest
-) -> dict[str, object]:
+def _build_regular_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dict[str, object]:
     """Build `/v1/order` edit payload for a pending regular order."""
     body: dict[str, object] = {
         "order_id": order_id,

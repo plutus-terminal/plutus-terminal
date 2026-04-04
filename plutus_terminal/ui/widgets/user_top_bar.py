@@ -37,7 +37,7 @@ class UserTopBar(QtWidgets.QWidget):
         self._config_button.setIcon(QPixmap(":/icons/config_icon"))
         self._config_button.setMinimumSize(30, 30)
         self._config_button.setProperty("class", "borderless")
-        self._config_button.clicked.connect(self._config_dialog.show)
+        self._config_button.clicked.connect(self._config_dialog.open_dialog)
         self._line = QtWidgets.QFrame()
         self._line.setObjectName("divisor")
         self._line.setFrameShape(QtWidgets.QFrame.Shape.HLine)

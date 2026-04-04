@@ -37,6 +37,10 @@ if TYPE_CHECKING:
 
 ensure_app()
 
+_LOG_VIEWER_BUTTON_HEIGHT = 35
+_TOAST_TIMEOUT_SECONDS = 7
+_TOAST_TIMEOUT_MILLISECONDS = 7000
+
 
 class _PasswordGuard:
     """Password guard double for password dialog tests."""
@@ -165,8 +169,8 @@ def test_unlock_password_dialog_rejects_invalid_password() -> None:
     assert dialog._status_label.text() == "Invalid password"
 
 
-def test_log_viewer_loads_and_copies_log_content(tmp_path: Path) -> None:
-    """Log viewer should display and copy the active session log."""
+def test_log_viewer_loads_tails_and_copies_log_content(tmp_path: Path) -> None:
+    """Log viewer should display, tail, and copy the active session log."""
     log_path = tmp_path / "session.log"
     log_path.write_text("line-1\nline-2", encoding="utf-8")
     viewer = LogViewer()
@@ -175,10 +179,14 @@ def test_log_viewer_loads_and_copies_log_content(tmp_path: Path) -> None:
     with patch("plutus_terminal.ui.widgets.log_viewer.Toast.show_message") as show_message:
         viewer.show()
         process_events()
+        log_path.write_text("line-1\nline-2\nline-3", encoding="utf-8")
+        viewer._poll_log_file()
         viewer._copy_log_content()
 
-    assert "line-1" in viewer._log_view.toPlainText()
-    assert QtWidgets.QApplication.clipboard().text() == "line-1\nline-2"
+    assert "line-3" in viewer._log_view.toPlainText()
+    assert QtWidgets.QApplication.clipboard().text() == "line-1\nline-2\nline-3"
+    assert viewer.windowIcon().isNull() is False
+    assert viewer._toggle_tail_button.minimumHeight() == _LOG_VIEWER_BUTTON_HEIGHT
     show_message.assert_called()
 
 
@@ -250,3 +258,67 @@ def test_toast_show_message_updates_existing_message() -> None:
     assert first == second == message_id
     show_widget.assert_called_once()
     update_message.assert_called_once()
+
+
+def test_toast_show_widget_converts_seconds_to_milliseconds() -> None:
+    """Toast widgets should store timeout values in seconds but start the timer in ms."""
+    app_config = AppConfigStub()
+
+    class _FakeTimer:
+        def __init__(self) -> None:
+            self.interval = None
+
+        def setInterval(self, interval: int) -> None:
+            self.interval = interval
+
+        def start(self) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+    fake_timer = _FakeTimer()
+
+    def _fake_init(
+        self: Toast,
+        _parent: QtWidgets.QWidget | None = None,
+        desktop: bool = False,
+        message_id: bytes | None = None,
+        toast_kind: object = None,
+    ) -> None:
+        self._timer = fake_timer  # type: ignore[assignment]
+        self._desktop = desktop  # type: ignore[assignment]
+        self._toast_kind = toast_kind  # type: ignore[assignment]
+        self._app_config = app_config  # type: ignore[assignment]
+        self._id = message_id or b"toast-id"  # type: ignore[assignment]
+
+    def _fake_add_message_widget(_self: Toast, _message_widget: QtWidgets.QWidget) -> None:
+        return None
+
+    def _fake_set_property(_self: Toast, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def _fake_show(_self: Toast) -> None:
+        return None
+
+    def _fake_resize(_self: Toast, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    fake_window = QtWidgets.QMainWindow()
+    fake_window.resize(400, 300)
+
+    with (
+        patch("plutus_terminal.ui.widgets.toast.AppConfig", return_value=app_config),
+        patch.object(Toast, "__init__", _fake_init),
+        patch.object(Toast, "add_message_widget", _fake_add_message_widget),
+        patch.object(Toast, "setProperty", _fake_set_property),
+        patch.object(Toast, "show", _fake_show),
+        patch.object(Toast, "resize", _fake_resize),
+        patch(
+            "plutus_terminal.ui.widgets.toast.QApplication.topLevelWidgets",
+            return_value=[fake_window],
+        ),
+    ):
+        Toast.show_widget(QtWidgets.QLabel("toast"), timeout=_TOAST_TIMEOUT_SECONDS)
+
+    assert fake_timer.interval == _TOAST_TIMEOUT_MILLISECONDS

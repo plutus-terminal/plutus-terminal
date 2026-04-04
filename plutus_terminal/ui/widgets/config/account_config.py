@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 class AccountConfig(QtWidgets.QWidget):
     """Widget to control account configs."""
 
+    _CARD_MIN_WIDTH = 320
+
     def __init__(
         self,
         pass_guard: PasswordGuard,
@@ -30,13 +32,16 @@ class AccountConfig(QtWidgets.QWidget):
         self._pass_guard = pass_guard
         self._app_config = app_config
 
-        self._main_layout = QtWidgets.QVBoxLayout()
-
+        self._main_layout = QtWidgets.QVBoxLayout(self)
         self._account_bar = TopBar("Manage Accounts")
+        self._account_hint = QtWidgets.QLabel(
+            "Accounts stay local to this device. Add or remove exchange profiles here.",
+        )
         self._account_scroll_area = QtWidgets.QScrollArea()
         self._account_scroll_widget = QtWidgets.QWidget()
-        self._account_box_layout = QtWidgets.QVBoxLayout()
-        self._add_account_btn = QtWidgets.QPushButton("Add new Account")
+        self._account_grid_layout = QtWidgets.QGridLayout()
+        self._add_account_btn = QtWidgets.QPushButton("Add New Account")
+        self._account_widgets: list[AccountWidget] = []
 
         self._setup_widgets()
         self._connect_signals()
@@ -44,12 +49,25 @@ class AccountConfig(QtWidgets.QWidget):
         self.populate_accounts()
 
     def _setup_widgets(self) -> None:
-        """Config widgets."""
+        """Configure widgets."""
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._account_hint.setWordWrap(True)
+        self._account_hint.setObjectName("subText")
+
         self._account_scroll_area.setWidgetResizable(True)
+        self._account_scroll_area.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self._account_scroll_widget.setLayout(self._account_grid_layout)
+
+        self._account_grid_layout.setContentsMargins(0, 0, 0, 0)
+        self._account_grid_layout.setHorizontalSpacing(12)
+        self._account_grid_layout.setVerticalSpacing(12)
 
         self._add_account_btn.setIcon(QtGui.QPixmap(":/icons/user_add"))
-        self._add_account_btn.setProperty("class", "LONG")
-        self._add_account_btn.setMinimumSize(80, 30)
+        self._add_account_btn.setProperty("class", "APPROVED")
+        self._add_account_btn.setMinimumSize(150, 34)
+        self._account_bar.add_widget(self._add_account_btn)
 
     def _connect_signals(self) -> None:
         """Connect signals."""
@@ -59,42 +77,53 @@ class AccountConfig(QtWidgets.QWidget):
         self._app_config.account_deleted.connect(self.populate_accounts)
 
     def _setup_layout(self) -> None:
-        """Config layout."""
+        """Configure layout."""
         self._main_layout.addWidget(self._account_bar)
-
+        self._main_layout.addWidget(self._account_hint)
         self._account_scroll_area.setWidget(self._account_scroll_widget)
-        self._account_scroll_widget.setLayout(self._account_box_layout)
         self._main_layout.addWidget(self._account_scroll_area)
-        account_btn_layout = QtWidgets.QHBoxLayout()
-        account_btn_layout.addStretch()
-        account_btn_layout.addWidget(self._add_account_btn)
-        self._account_box_layout.addStretch()
-        self._main_layout.addLayout(account_btn_layout)
-        self._main_layout.addStretch()
 
-        self.setLayout(self._main_layout)
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        """Refresh the card grid when the widget is resized."""
+        super().resizeEvent(event)
+        self._relayout_accounts()
 
     def populate_accounts(self) -> None:
         """Populate accounts."""
-        # delete all account widgets from account_box_layout
-        account_widgets = [
-            self._account_box_layout.itemAt(index).widget()
-            for index in range(self._account_box_layout.count())
-            if isinstance(
-                self._account_box_layout.itemAt(index).widget(),
-                AccountWidget,
-            )
-        ]
-        for widget in account_widgets:
-            self._account_box_layout.removeWidget(widget)
+        for widget in self._account_widgets:
+            self._account_grid_layout.removeWidget(widget)
             widget.deleteLater()
 
-        all_accounts = AppConfig.get_all_accounts()
-        for account in all_accounts:
-            account_widget = AccountWidget(keyring_account=account, app_config=self._app_config)
-            self._account_box_layout.insertWidget(
-                self._account_box_layout.count() - 1, account_widget
-            )
+        self._account_widgets = [
+            AccountWidget(keyring_account=account, app_config=self._app_config)
+            for account in AppConfig.get_all_accounts()
+        ]
+        self._relayout_accounts()
+
+    def refresh_from_config(self) -> None:
+        """Reload account cards from the current saved config state."""
+        self.populate_accounts()
+
+    def _relayout_accounts(self) -> None:
+        """Arrange account cards based on the available width."""
+        while self._account_grid_layout.count():
+            item = self._account_grid_layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().setParent(self._account_scroll_widget)
+
+        viewport_width = max(self._account_scroll_area.viewport().width(), self.width())
+        columns = max(1, viewport_width // self._CARD_MIN_WIDTH)
+        for index, widget in enumerate(self._account_widgets):
+            row = index // columns
+            column = index % columns
+            self._account_grid_layout.addWidget(widget, row, column)
+
+        for column in range(columns):
+            self._account_grid_layout.setColumnStretch(column, 1)
+        self._account_grid_layout.setRowStretch(
+            (len(self._account_widgets) + columns - 1) // columns,
+            1,
+        )
 
     def _add_account(self) -> None:
         """Add account."""
@@ -120,40 +149,60 @@ class AccountWidget(QtWidgets.QFrame):
         self._keyring_account = keyring_account
         self._app_config = app_config
 
-        self._main_layout = QtWidgets.QHBoxLayout()
+        self._main_layout = QtWidgets.QVBoxLayout(self)
+        self._top_layout = QtWidgets.QHBoxLayout()
+        self._meta_layout = QtWidgets.QVBoxLayout()
         self._account_icon = QtWidgets.QLabel()
         self._name_label = QtWidgets.QLabel(str(self._keyring_account.username))
+        self._exchange_label = QtWidgets.QLabel(str(self._keyring_account.exchange_name).title())
         self._delete_btn = QtWidgets.QPushButton()
 
         self._setup_widgets()
         self._setup_layout()
-        self.resize(self.sizeHint())
 
     def _setup_widgets(self) -> None:
-        """Config widgets."""
+        """Configure widgets."""
         self.setObjectName("config_item")
+        self.setMinimumWidth(260)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+
         self._account_icon.setPixmap(
             QtGui.QPixmap(f":/exchanges/{self._keyring_account.exchange_name}"),
         )
         self._account_icon.setScaledContents(True)
-        self._account_icon.setMaximumSize(24, 24)
+        self._account_icon.setFixedSize(28, 28)
+
+        self._name_label.setObjectName("title")
+        self._name_label.setWordWrap(True)
+        self._exchange_label.setObjectName("subText")
 
         self._delete_btn.setIcon(QtGui.QPixmap(":/icons/delete_icon"))
-        self._delete_btn.setIconSize(QtCore.QSize(24, 24))
+        self._delete_btn.setIconSize(QtCore.QSize(22, 22))
         self._delete_btn.setProperty("class", "borderless")
+        self._delete_btn.setToolTip("Delete Account")
         self._delete_btn.clicked.connect(self._delete_account)
 
     def _setup_layout(self) -> None:
-        """Config layout."""
-        self._main_layout.addWidget(self._account_icon)
-        self._main_layout.addWidget(self._name_label)
-        self._main_layout.addStretch()
-        self._main_layout.addWidget(self._delete_btn)
-        self.setLayout(self._main_layout)
+        """Configure layout."""
+        self._meta_layout.addWidget(self._name_label)
+        self._meta_layout.addWidget(self._exchange_label)
+
+        self._top_layout.addWidget(self._account_icon, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
+        self._top_layout.addLayout(self._meta_layout)
+        self._top_layout.addStretch()
+        self._top_layout.addWidget(
+            self._delete_btn,
+            alignment=QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
+        )
+
+        self._main_layout.addLayout(self._top_layout)
 
     def _delete_account(self) -> None:
         """Delete account."""
-        self._app_config.delete_account(self._keyring_account.id)  # type: ignore
+        self._app_config.delete_account(self._keyring_account.id)  # type: ignore[arg-type]
         Toast.show_message(
             f"Account '{self._keyring_account.username}' deleted",
             type_=ToastType.SUCCESS,

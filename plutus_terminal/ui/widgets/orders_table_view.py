@@ -77,7 +77,9 @@ class OrdersTableView(QTableView):
             return
         pending = set(self._pending_row_keys)
         pending.update(row_keys)
-        self._pending_row_keys = [row_key for row_key in self._model().row_keys() if row_key in pending]
+        self._pending_row_keys = [
+            row_key for row_key in self._model().row_keys() if row_key in pending
+        ]
         self._schedule_sync()
 
     def _schedule_sync(self) -> None:

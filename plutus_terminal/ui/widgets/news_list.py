@@ -281,7 +281,6 @@ class NewsList(QtWidgets.QWidget):
             desktop_news = self._create_news_widget(news_data, display_delay=True)
             Toast.show_widget(
                 desktop_news,
-                timeout=35000,
                 desktop=True,
             )
 
