@@ -94,10 +94,12 @@ class TradingChartController(QObject):
         if view is None:
             return
         self._ui_controller.message_bus.blockSignals(True)
-        history_dataframe, minimal_digits = await self._ui_controller.fetch_price_history()
-        view.set_start_data(history_dataframe)
-        view.main_chart.precision(minimal_digits)
-        self._ui_controller.message_bus.blockSignals(False)
+        try:
+            history_dataframe, minimal_digits = await self._ui_controller.fetch_price_history()
+            view.set_start_data(history_dataframe)
+            view.main_chart.precision(minimal_digits)
+        finally:
+            self._ui_controller.message_bus.blockSignals(False)
 
         view.set_pair_text(pair)
         view.chart_storage.tag = f"{pair}_{view.current_timeframe}"
@@ -152,11 +154,13 @@ class TradingChartController(QObject):
             chart.candle_data["time"].iloc[0]
         )
         view.chart_scroll_polling = True
-        history = await self._ui_controller.current_exchange.fetch_price_history(
-            self._ui_controller.current_pair,
-            self._ui_controller.current_timeframe,
-            bars_num=ui_utils.DEFAULT_BAR_NUMBERS * 3,
-            to_timestamp=int(candle_timestamp.timestamp()),
-        )
-        view.update_data(pandas.DataFrame(history))
-        view.chart_scroll_polling = False
+        try:
+            history = await self._ui_controller.current_exchange.fetch_price_history(
+                self._ui_controller.current_pair,
+                self._ui_controller.current_timeframe,
+                bars_num=ui_utils.DEFAULT_BAR_NUMBERS * 3,
+                to_timestamp=int(candle_timestamp.timestamp()),
+            )
+            view.update_data(pandas.DataFrame(history))
+        finally:
+            view.chart_scroll_polling = False

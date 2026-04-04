@@ -146,7 +146,9 @@ class PositionCloseAction(QWidgetAction):
     def _set_amount_from_button(self, button: QRadioButton) -> None:
         """Set amount from button."""
         self._set_amount_spinbox(
-            Decimal(self._amount_group.id(button) / 100) * self._position["position_size_stable"],
+            Decimal(self._amount_group.id(button))
+            / Decimal("100")
+            * self._position["position_size_stable"],
         )
 
     def _reduce_position(self) -> None:

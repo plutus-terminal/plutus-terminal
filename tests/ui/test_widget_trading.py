@@ -285,7 +285,9 @@ def test_perps_trade_widget_refreshes_liquidation_labels_from_market_data() -> N
         widget._liq_price_long_value.setText("--")
         widget._liq_price_short_value.setText("--")
 
-        controller.message_bus.subscribed_prices_fetched.emit(controller.current_exchange.cached_prices)
+        controller.message_bus.subscribed_prices_fetched.emit(
+            controller.current_exchange.cached_prices
+        )
 
         assert widget._liq_price_long_value.text() == "--"
         assert widget._liq_price_short_value.text() == "--"
@@ -829,6 +831,45 @@ def test_trading_chart_batches_bursty_ticks_to_latest_value() -> None:
 
     assert "$100,123.5" in chart._price_label.text()
     chart.main_chart.update_from_tick.assert_called_once()
+
+
+def test_news_updates_do_not_use_ui_batcher() -> None:
+    """News updates should stay off the UI batching path."""
+    controller = UIControllerStub()
+
+    def _build_stub_widget(
+        news_data: dict[str, object], display_delay: bool = False
+    ) -> QtWidgets.QWidget:
+        widget = QtWidgets.QWidget()
+        widget.news_data = news_data
+        widget.display_delay = display_delay
+        widget.set_unselected_style = Mock()
+        widget.set_selected_style = Mock()
+        return widget
+
+    with (
+        patch(
+            "plutus_terminal.controller.widgets.ui_update_batcher.UiUpdateBatcher.shared"
+        ) as shared_mock,
+        patch("plutus_terminal.ui.widgets.news_list.QSoundEffect.play", return_value=None),
+        patch("plutus_terminal.ui.widgets.news_list.Toast.show_widget", return_value=None),
+        patch.object(NewsList, "_create_news_widget", side_effect=_build_stub_widget),
+    ):
+        news_list = NewsList(controller)
+        news_data = build_news_data()
+        news_list._sfxs[news_data["sfx"]] = Mock()
+
+        controller.message_bus.formatted_news.emit(news_data)
+        controller.message_bus.formatted_news_updated.emit(
+            build_news_data(
+                news_id=news_data["news_id"],
+                title="BTC moves again",
+                is_update=True,
+            ),
+        )
+
+    assert shared_mock.call_count == 0
+    assert news_list._scroll_layout.count() == 1
 
 
 def test_trading_chart_handles_multi_order_refresh_after_chart_reset() -> None:

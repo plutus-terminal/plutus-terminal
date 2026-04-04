@@ -104,26 +104,30 @@ class UIController(QObject):
         """Change current exchange."""
         LOGGER.info("Changing current exchange...")
         self.message_bus.blockSignals(True)
-        await self.current_exchange.stop_async()
+        try:
+            await self.current_exchange.stop_async()
 
-        keyring_account = self.app_config.current_keyring_account
-        self.current_exchange = await VALID_EXCHANGES[str(keyring_account.exchange_name)].create(
-            self.message_bus,
-            self.pass_guard,
-            self.app_config,
-        )
+            keyring_account = self.app_config.current_keyring_account
+            self.current_exchange = await VALID_EXCHANGES[
+                str(keyring_account.exchange_name)
+            ].create(
+                self.message_bus,
+                self.pass_guard,
+                self.app_config,
+            )
 
-        # Init price fetching loops
-        await self.current_exchange.fetch_prices()
+            # Init price fetching loops
+            await self.current_exchange.fetch_prices()
 
-        self._is_current_pair_subscribed = False
-        if self.current_pair in self.current_exchange.available_pairs:
-            await self.change_current_pair(self.current_pair)
-        else:
-            await self.change_current_pair(self.current_exchange.default_pair)
+            self._is_current_pair_subscribed = False
+            if self.current_pair in self.current_exchange.available_pairs:
+                await self.change_current_pair(self.current_pair)
+            else:
+                await self.change_current_pair(self.current_exchange.default_pair)
 
-        self.exchange_changed.emit()
-        self.message_bus.blockSignals(False)
+            self.exchange_changed.emit()
+        finally:
+            self.message_bus.blockSignals(False)
 
     @asyncSlot(str)
     async def change_current_pair(self, pair: str) -> None:

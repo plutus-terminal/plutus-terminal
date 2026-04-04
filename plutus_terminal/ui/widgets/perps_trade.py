@@ -577,8 +577,8 @@ class MarketTradeWidget(QtWidgets.QWidget):
             button = QtWidgets.QRadioButton(value)
             self.percent_group.addButton(button)
             self.percent_group.setId(button, int(value[:-1]))
-            self.percent_group.buttonClicked.connect(self.percent_button_clicked)
             self.percent_group_layout.addWidget(button)
+        self.percent_group.buttonClicked.connect(self.percent_button_clicked)
 
         amount_layout = QtWidgets.QHBoxLayout()
         amount_layout.addWidget(self.amount_label)
@@ -625,11 +625,11 @@ class MarketTradeWidget(QtWidgets.QWidget):
         """Get amount."""
         return self.amount_box.value()
 
-    def get_take_profit(self) -> float:
+    def get_take_profit(self) -> Decimal:
         """Get take profit."""
         return self.take_profit_box.value()
 
-    def get_stop_loss(self) -> float:
+    def get_stop_loss(self) -> Decimal:
         """Get stop loss."""
         return self.stop_loss_box.value()
 
@@ -663,8 +663,8 @@ class LimitTradeWidget(QtWidgets.QWidget):
             button = QtWidgets.QRadioButton(value)
             self.percent_group.addButton(button)
             self.percent_group.setId(button, int(value[:-1]))
-            self.percent_group.buttonClicked.connect(self.percent_button_clicked)
             self.percent_group_layout.addWidget(button)
+        self.percent_group.buttonClicked.connect(self.percent_button_clicked)
 
         self.target_price_label = QtWidgets.QLabel("Price:")
         self.target_price_label.setFixedWidth(70)
@@ -728,11 +728,11 @@ class LimitTradeWidget(QtWidgets.QWidget):
         """Get price."""
         return self.target_price_box.value()
 
-    def get_take_profit(self) -> float:
+    def get_take_profit(self) -> Decimal:
         """Get take profit."""
         return self.take_profit_box.value()
 
-    def get_stop_loss(self) -> float:
+    def get_stop_loss(self) -> Decimal:
         """Get stop loss."""
         return self.stop_loss_box.value()
 
@@ -764,8 +764,8 @@ class StopTradeWidget(QtWidgets.QWidget):
             button = QtWidgets.QRadioButton(value)
             self.percent_group.addButton(button)
             self.percent_group.setId(button, int(value[:-1]))
-            self.percent_group.buttonClicked.connect(self.percent_button_clicked)
             self.percent_group_layout.addWidget(button)
+        self.percent_group.buttonClicked.connect(self.percent_button_clicked)
 
         self.trigger_price_label = QtWidgets.QLabel("Trigger:")
         self.trigger_price_label.setFixedWidth(70)

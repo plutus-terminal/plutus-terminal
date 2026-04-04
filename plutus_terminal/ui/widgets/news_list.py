@@ -132,8 +132,8 @@ class NewsList(QtWidgets.QWidget):
 
         self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
         self._app_config.trade_value_low_changed.connect(self.update_news_trade_buttons)
+        self._app_config.trade_value_medium_changed.connect(self.update_news_trade_buttons)
         self._app_config.trade_value_lowest_changed.connect(self.update_news_trade_buttons)
-        self._app_config.trade_value_high_changed.connect(self.update_news_trade_buttons)
 
         self._app_config.news_show_images_changed.connect(self.show_images_toggled)
         self._app_config.news_desktop_notifications_changed.connect(self.notifications_toggled)

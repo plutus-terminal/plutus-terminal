@@ -57,8 +57,8 @@ class PerpsTradeController(QObject):
 
         app_config.trade_value_high_changed.connect(view.update_trade_buttons)
         app_config.trade_value_low_changed.connect(view.update_trade_buttons)
+        app_config.trade_value_medium_changed.connect(view.update_trade_buttons)
         app_config.trade_value_lowest_changed.connect(view.update_trade_buttons)
-        app_config.trade_value_high_changed.connect(view.update_trade_buttons)
         app_config.leverage_changed.connect(self.sync_leverage_values)
 
         view.pair_combo_box.currentIndexChanged.connect(self.handle_pair_combo_index_changed)
@@ -91,7 +91,7 @@ class PerpsTradeController(QObject):
         if current_widget is None:
             return
         balance = view.exchange.stable_balance
-        percentage = Decimal(current_widget.percent_group.id(button) / 100)
+        percentage = Decimal(current_widget.percent_group.id(button)) / Decimal("100")
         current_widget.amount_box.setValue(balance * percentage)
 
     def refresh_trade_summary(self) -> None:
@@ -270,5 +270,8 @@ class PerpsTradeController(QObject):
         view = self._view()
         if view is None:
             return
-        cached_price = view.exchange.cached_prices[view.current_pair_data()]["price"]
+        cached_pair = view.exchange.cached_prices.get(view.current_pair_data())
+        if cached_pair is None or "price" not in cached_pair:
+            return
+        cached_price = cached_pair["price"]
         view.set_limit_price(cached_price)
