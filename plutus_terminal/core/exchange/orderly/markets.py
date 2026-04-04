@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 import logging
 from typing import TYPE_CHECKING
@@ -45,6 +45,11 @@ class OrderlyMarketRegistry:
         """Return all formatted terminal pairs available for trading."""
         return set(self._symbol_by_pair)
 
+    @property
+    def max_leverage(self) -> int:
+        """Return the highest leverage exposed by the current market metadata."""
+        return max((rule.max_leverage for rule in self._by_symbol.values()), default=100)
+
     def get_rule_by_pair(self, pair: str) -> OrderlyMarketRule:
         """Return rule for one terminal pair."""
         symbol = self._symbol_by_pair[pair]
@@ -57,6 +62,16 @@ class OrderlyMarketRegistry:
     def get_symbol_for_pair(self, pair: str) -> str:
         """Return orderly symbol for terminal pair."""
         return self._symbol_by_pair[pair]
+
+    def update_pair_max_leverage(self, pair: str, max_leverage: int) -> None:
+        """Override one pair max leverage using a server-confirmed limit."""
+        symbol = self._symbol_by_pair.get(pair)
+        if symbol is None:
+            return
+        market_rule = self._by_symbol.get(symbol)
+        if market_rule is None or market_rule.max_leverage == max_leverage:
+            return
+        self._by_symbol[symbol] = replace(market_rule, max_leverage=max_leverage)
 
     async def refresh(self, rest_client: OrderlyRestClient) -> None:
         """Refresh registry from `/v1/public/info` response."""
@@ -112,7 +127,7 @@ class OrderlyMarketRegistry:
                 quote_max=Decimal("999999999"),
                 quote_tick=Decimal("0.01"),
                 min_notional=Decimal("1"),
-                max_leverage=50,
+                max_leverage=100,
             )
             by_symbol[symbol] = rule
             symbol_by_pair[pair] = symbol
@@ -135,7 +150,7 @@ def _extract_max_leverage(row: dict[str, object]) -> int:
         return max_leverage
     if isinstance(max_leverage, str) and max_leverage:
         return int(max_leverage)
-    return 50
+    return 100
 
 
 def _build_market_rule(row: dict[str, object]) -> OrderlyMarketRule:

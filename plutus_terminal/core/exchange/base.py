@@ -338,6 +338,10 @@ class ExchangeBase(ABC):
     def max_leverage(self) -> int:
         """Return max leverage."""
 
+    def max_leverage_for_pair(self, _pair: str) -> int:
+        """Return the effective max leverage for one pair."""
+        return self.max_leverage
+
     @property
     def account_info(self) -> dict[str, object]:
         """Return info to be added to account info widget."""

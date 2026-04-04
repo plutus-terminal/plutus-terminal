@@ -26,6 +26,16 @@ if TYPE_CHECKING:
 class PerpsTradeWidget(QtWidgets.QWidget):
     """Widget for Trading Perpetuals."""
 
+    _LEVERAGE_PRESET_SIGNAL_NAMES = (
+        "leverage_button_1_changed",
+        "leverage_button_2_changed",
+        "leverage_button_3_changed",
+        "leverage_button_4_changed",
+        "leverage_button_5_changed",
+        "leverage_button_6_changed",
+        "leverage_button_7_changed",
+    )
+
     def __init__(
         self,
         ui_controller: UIController,
@@ -104,7 +114,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         self._setup_widgets()
         self._setup_layout()
 
-    def _setup_widgets(self) -> None:  # noqa: PLR0915
+    def _setup_widgets(self) -> None:
         """Configure widgets."""
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.top_bar.icon.setPixmap(
@@ -146,13 +156,11 @@ class PerpsTradeWidget(QtWidgets.QWidget):
         pair_layout.addWidget(self._pair_combo_box)
         self._pair_grp.setLayout(pair_layout)
 
-        for value in (2, 5, 10, 20, 25, 50):
-            button = QtWidgets.QRadioButton(str(value))
-            self._leverage_group.addButton(button)
-            self._leverage_group.setId(button, value)
-            self._leverage_btn_layout.addWidget(button)
+        self._rebuild_leverage_buttons()
         self._leverage_spin.setMinimum(1)
-        self._leverage_spin.setMaximum(self._exchange.max_leverage)
+        self._leverage_spin.setMaximum(
+            self._exchange.max_leverage_for_pair(self.current_pair_data())
+        )
         self._leverage_spin.setValue(self._app_config.leverage)
         self._leverage_spin.editingFinished.connect(
             lambda: self._controller.set_leverage_spin(
@@ -160,6 +168,8 @@ class PerpsTradeWidget(QtWidgets.QWidget):
             ),
         )
         self._update_leverage_buttons(self._leverage_spin.value())
+        for signal_name in self._LEVERAGE_PRESET_SIGNAL_NAMES:
+            getattr(self._app_config, signal_name).connect(self.refresh_leverage_buttons)
 
         self._trade_tab.setObjectName("tradeType")
         self._trade_tab.tabBar().setObjectName("tradeTypeTab")
@@ -367,7 +377,10 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
     def set_max_leverage(self, leverage_value: int) -> None:
         """Update the maximum allowed leverage."""
+        self._leverage_spin.blockSignals(True)
         self._leverage_spin.setMaximum(leverage_value)
+        self._leverage_spin.blockSignals(False)
+        self.refresh_leverage_buttons()
 
     def set_fee_value(self, text: str) -> None:
         """Render the fee summary text."""
@@ -404,8 +417,9 @@ class PerpsTradeWidget(QtWidgets.QWidget):
 
     def _update_leverage_buttons(self, leverage_value: int) -> None:
         """Update leverage buttons state based on leverage value."""
-        if leverage_value in {2, 5, 10, 20, 25, 50}:
-            self._leverage_group.button(int(leverage_value)).setChecked(True)
+        leverage_button = self._leverage_group.button(int(leverage_value))
+        if leverage_button is not None:
+            leverage_button.setChecked(True)
         else:
             button = self._leverage_group.checkedButton()
             if button:
@@ -416,6 +430,42 @@ class PerpsTradeWidget(QtWidgets.QWidget):
     def update_leverage_buttons(self, leverage_value: int) -> None:
         """Public wrapper for leverage button state updates."""
         self._update_leverage_buttons(leverage_value)
+
+    def _leverage_button_values(self) -> list[int]:
+        """Return normalized leverage button values including the live exchange max."""
+        button_values: list[int] = []
+        exchange_max_leverage = self._exchange.max_leverage
+        for leverage_value in [*self._app_config.leverage_button_values, exchange_max_leverage]:
+            bounded = max(
+                self._exchange.min_leverage, min(exchange_max_leverage, int(leverage_value))
+            )
+            if bounded not in button_values:
+                button_values.append(bounded)
+        return button_values
+
+    def _rebuild_leverage_buttons(self) -> None:
+        """Rebuild leverage preset buttons from config and exchange metadata."""
+        checked_id = self._leverage_group.checkedId()
+        self._leverage_group.setExclusive(False)
+        for button in list(self._leverage_group.buttons()):
+            self._leverage_group.removeButton(button)
+            self._leverage_btn_layout.removeWidget(button)
+            button.deleteLater()
+        self._leverage_group.setExclusive(True)
+
+        for value in self._leverage_button_values():
+            button = QtWidgets.QRadioButton(str(value))
+            self._leverage_group.addButton(button)
+            self._leverage_group.setId(button, value)
+            self._leverage_btn_layout.addWidget(button)
+
+        fallback_value = self.leverage_value() if self.leverage_value() > 0 else checked_id
+        if fallback_value > 0:
+            self._update_leverage_buttons(fallback_value)
+
+    def refresh_leverage_buttons(self) -> None:
+        """Refresh leverage buttons after config or exchange changes."""
+        self._rebuild_leverage_buttons()
 
     def _update_info(self) -> None:
         """Update frame info."""

@@ -4,18 +4,23 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 import unittest
+from unittest.mock import AsyncMock, Mock, patch
 
 from PySide6 import QtCore, QtWidgets
 
 from plutus_terminal.controller.ui_controller import UIController
 from plutus_terminal.ui.widgets.news_widget import NewsWidget
+from plutus_terminal.ui.widgets.toast import ToastType
 
 if TYPE_CHECKING:
     from plutus_terminal.core.news.types import NewsData
+
+
+_ETH_PAIR_MAX_LEVERAGE = 20
 
 
 class _MessageBus(QtCore.QObject):
@@ -132,15 +137,47 @@ class UIControllerPairSelectionTests(unittest.IsolatedAsyncioTestCase):
         ]
         assert self.controller.current_pair == "Crypto.ETH/USDC"
 
+    async def test_set_leverage_warns_when_pair_change_clamps_above_pair_limit(self) -> None:
+        """Warn when a requested leverage is reduced to the selected pair maximum."""
+        self.controller.app_config = cast("Any", QtCore.QObject())
+        self.controller.app_config.leverage = 50
+
+        async def _set_leverage(_coin: str, leverage: int) -> None:
+            self.controller.app_config.leverage = min(leverage, _ETH_PAIR_MAX_LEVERAGE)
+
+        self.controller.current_exchange = cast(
+            "Any",
+            QtCore.QObject(),
+        )
+        self.controller.current_exchange.set_leverage = AsyncMock(side_effect=_set_leverage)
+        self.controller.current_exchange.min_leverage = 1
+        self.controller.current_exchange.max_leverage = 100
+        self.controller.current_exchange.max_leverage_for_pair = Mock(
+            return_value=_ETH_PAIR_MAX_LEVERAGE
+        )
+        self.controller.current_exchange.format_pair_from_coin = Mock(
+            return_value="Crypto.ETH/USDC"
+        )
+
+        with patch("plutus_terminal.controller.ui_controller.Toast.show_message") as show_message:
+            await self.controller.set_leverage("ETH", 50)
+
+        self.controller.current_exchange.set_leverage.assert_awaited_once_with("ETH", 50)
+        show_message.assert_called_once_with(
+            "Leverage of Crypto.ETH/USDC is too high. Set maximum leverage: 20x",
+            type_=ToastType.WARNING,
+        )
+        assert self.controller.app_config.leverage == _ETH_PAIR_MAX_LEVERAGE
+
     def test_optional_decimal_treats_blank_inputs_as_missing(self) -> None:
         """Ignore blank TP/SL inputs instead of attempting Decimal conversion."""
-        assert self.controller._optional_decimal(None) is None  # noqa: SLF001
-        assert self.controller._optional_decimal("") is None  # noqa: SLF001
-        assert self.controller._optional_decimal("   ") is None  # noqa: SLF001
+        assert self.controller._optional_decimal(None) is None
+        assert self.controller._optional_decimal("") is None
+        assert self.controller._optional_decimal("   ") is None
 
     def test_optional_decimal_strips_whitespace_for_numeric_inputs(self) -> None:
         """Trim optional numeric strings before converting them to Decimal."""
-        assert self.controller._optional_decimal(" 1.25 ") == Decimal("1.25")  # noqa: SLF001
+        assert self.controller._optional_decimal(" 1.25 ") == Decimal("1.25")
 
 
 class NewsWidgetPairSelectionTests(unittest.TestCase):

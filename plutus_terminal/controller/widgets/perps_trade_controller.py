@@ -196,6 +196,9 @@ class PerpsTradeController(QObject):
         view = self._view()
         if view is None:
             return
+        view.set_max_leverage(
+            view.exchange.max_leverage_for_pair(self._ui_controller.current_pair),
+        )
         view.set_leverage_spin_value(self._ui_controller.app_config.leverage)
         self.refresh_trade_summary()
         view.update_leverage_buttons(self._ui_controller.app_config.leverage)
@@ -240,9 +243,15 @@ class PerpsTradeController(QObject):
         if view is None:
             return
         simplified_pair = view.exchange.format_simple_pair_from_pair(pair)
+        pair_max_leverage = view.exchange.max_leverage_for_pair(pair)
+        requested_leverage = self._ui_controller.app_config.leverage
         view.set_pair_text(simplified_pair)
+        view.set_max_leverage(pair_max_leverage)
         coin = view.exchange.format_coin_from_pair(pair)
-        await self._ui_controller.set_leverage(coin, self._ui_controller.app_config.leverage)
+        await self._ui_controller.set_leverage(coin, requested_leverage)
+        if self._ui_controller.app_config.leverage != requested_leverage:
+            view.set_leverage_spin_value(self._ui_controller.app_config.leverage)
+            view.update_leverage_buttons(self._ui_controller.app_config.leverage)
 
     def handle_exchange_changed(self) -> None:
         """Refresh widget state after exchange changes."""
@@ -252,7 +261,9 @@ class PerpsTradeController(QObject):
         view.set_exchange(self._ui_controller.current_exchange)
         view.populate_pairs_from_exchange()
         view.update_trade_buttons()
-        view.set_max_leverage(view.exchange.max_leverage)
+        current_pair = self._ui_controller.current_pair
+        view.set_pair_text(view.exchange.format_simple_pair_from_pair(current_pair))
+        view.set_max_leverage(view.exchange.max_leverage_for_pair(current_pair))
         view.set_leverage_spin_value(self._ui_controller.app_config.leverage)
         view.update_leverage_buttons(self._ui_controller.app_config.leverage)
         self.refresh_trade_summary()

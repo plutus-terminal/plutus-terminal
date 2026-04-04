@@ -30,6 +30,10 @@ from tests.ui.helpers import AppConfigStub, UIControllerStub, ensure_app, proces
 
 ensure_app()
 
+_CUSTOM_LEVERAGE_BUTTON_1 = 3
+_CUSTOM_LEVERAGE_BUTTON_2 = 7
+_CUSTOM_LEVERAGE_BUTTON_7 = 90
+
 
 def _user_filter(*, filter_type: FilterType, action_type: ActionType) -> SimpleNamespace:
     """Create a lightweight user filter record."""
@@ -85,6 +89,59 @@ def test_perps_config_updates_trade_values_and_tp_sl() -> None:
     assert controller.app_config.take_profit == take_profit
     assert controller.app_config.stop_loss == stop_loss
     assert show_message.call_count == expected_call_count
+
+
+def test_perps_config_shows_current_pair_leverage_hint() -> None:
+    """PerpsConfig should display and refresh the selected pair leverage cap."""
+    controller = UIControllerStub()
+    widget = PerpsConfig(controller)
+
+    assert widget._pair_leverage_hint.text() == (
+        "Current pair max: BTC/USDC 25x. Each pair may use a different cap."
+    )
+
+    run_async(controller.change_current_pair, "Crypto.ETH/USDC")
+    process_events()
+
+    assert widget._pair_leverage_hint.text() == (
+        "Current pair max: ETH/USDC 50x. Each pair may use a different cap."
+    )
+
+
+def test_perps_config_exposes_100x_leverage_shortcut() -> None:
+    """PerpsConfig should offer a 100x preset leverage button."""
+    controller = UIControllerStub()
+    widget = PerpsConfig(controller)
+
+    assert widget._leverage_group.button(100) is not None
+
+
+def test_perps_config_updates_custom_leverage_button_values() -> None:
+    """PerpsConfig should persist user-defined leverage preset button values."""
+    controller = UIControllerStub()
+    widget = PerpsConfig(controller)
+
+    widget._leverage_button_spins[0].setValue(3)
+    widget._leverage_button_spins[1].setValue(7)
+    widget._leverage_button_spins[6].setValue(90)
+
+    with patch("plutus_terminal.ui.widgets.config.perps_config.Toast.show_message") as show_message:
+        widget._update_leverage_button_values()
+
+    assert controller.app_config.leverage_button_1 == _CUSTOM_LEVERAGE_BUTTON_1
+    assert controller.app_config.leverage_button_2 == _CUSTOM_LEVERAGE_BUTTON_2
+    assert controller.app_config.leverage_button_7 == _CUSTOM_LEVERAGE_BUTTON_7
+    assert widget._leverage_group.button(_CUSTOM_LEVERAGE_BUTTON_7) is not None
+    show_message.assert_called_once()
+
+
+def test_perps_config_appends_live_exchange_maximum_button() -> None:
+    """PerpsConfig should add the exchange max leverage button from API metadata."""
+    controller = UIControllerStub()
+    controller.current_exchange.max_leverage = 125
+    widget = PerpsConfig(controller)
+
+    assert widget._leverage_group.button(125) is not None
 
 
 def test_rpc_config_add_remove_and_write() -> None:

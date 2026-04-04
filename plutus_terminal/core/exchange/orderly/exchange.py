@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal
 import logging
+import re
 from typing import TYPE_CHECKING, Optional, Self
 
 from httpx import HTTPStatusError, RequestError, TimeoutException
@@ -54,6 +55,7 @@ LOGGER = logging.getLogger(__name__)
 _REQUIRED_ORDERLY_SECRETS = 3
 _NETWORK_SECRET_INDEX = 3
 _ORDERLY_KEY_PREFIX = "ed25519:"
+_LEVERAGE_RANGE_PATTERN = re.compile(r"between\s+(\d+)x\s+and\s+(\d+)x", re.IGNORECASE)
 _FALLBACK_MARKET_SYMBOLS = (
     "PERP_BTC_USDC",
     "PERP_ETH_USDC",
@@ -132,7 +134,10 @@ class OrderlyExchange(ExchangeBase):
             message_bus=self.message_bus,
         )
         self._trader = OrderlyTrader(self._private_rest_client, self._market_registry)
-        self._max_leverage = await self._fetch_max_leverage()
+        self._max_leverage = max(
+            await self._fetch_max_leverage(),
+            getattr(self._market_registry, "max_leverage", 0),
+        )
 
     @retry(
         retry=retry_if_exception_type(
@@ -247,8 +252,13 @@ class OrderlyExchange(ExchangeBase):
 
     @property
     def max_leverage(self) -> int:
-        """Return maximum leverage for the account."""
+        """Return the highest leverage exposed by current Orderly metadata."""
         return self._max_leverage
+
+    def max_leverage_for_pair(self, pair: str) -> int:
+        """Return the current Orderly leverage cap for a specific pair."""
+        market_rule = self._market_registry.get_rule_by_pair(pair)
+        return market_rule.max_leverage
 
     @property
     def min_order_size(self) -> Decimal:
@@ -298,16 +308,26 @@ class OrderlyExchange(ExchangeBase):
     async def set_leverage(self, coin: str, leverage: int) -> None:
         """Set leverage for a specific coin pair."""
         pair = self.format_pair_from_coin(coin)
-        max_for_pair = self._max_leverage_for_pair(pair)
+        max_for_pair = self.max_leverage_for_pair(pair)
         bounded = max(self.min_leverage, min(max_for_pair, leverage))
         symbol = self._market_registry.get_symbol_for_pair(pair)
-        await self.trader.set_leverage(symbol, bounded)
-        self.app_config.leverage = bounded
+        try:
+            await self.trader.set_leverage(symbol, bounded)
+        except TransactionFailedError as error:
+            fallback_max_leverage = _extract_max_leverage_from_error(error)
+            if fallback_max_leverage is None or fallback_max_leverage >= bounded:
+                raise
 
-    def _max_leverage_for_pair(self, pair: str) -> int:
-        """Resolve effective max leverage for a pair from account and market limits."""
-        market_rule = self._market_registry.get_rule_by_pair(pair)
-        return min(self.max_leverage, market_rule.max_leverage)
+            LOGGER.warning(
+                "Orderly rejected %s leverage=%sx; retrying with server limit=%sx",
+                pair,
+                bounded,
+                fallback_max_leverage,
+            )
+            self._market_registry.update_pair_max_leverage(pair, fallback_max_leverage)
+            bounded = max(self.min_leverage, min(fallback_max_leverage, leverage))
+            await self.trader.set_leverage(symbol, bounded)
+        self.app_config.leverage = bounded
 
     @asyncSlot()
     async def create_order(
@@ -533,13 +553,13 @@ class OrderlyExchange(ExchangeBase):
             payload = await self._private_rest_client.request_private("GET", "/v1/client/info")
         except Exception:
             LOGGER.exception("Failed to fetch max leverage from Orderly client info")
-            return 50
+            return 100
         max_leverage = payload.get("data", {}).get("max_leverage")
         if isinstance(max_leverage, int):
             return max_leverage
         if isinstance(max_leverage, str) and max_leverage:
             return int(max_leverage)
-        return 50
+        return 100
 
     def _resolve_attached_tp_sl_targets(
         self,
@@ -751,3 +771,11 @@ def _normalize_orderly_key(orderly_key: str) -> str:
     if normalized_key.startswith(_ORDERLY_KEY_PREFIX):
         return normalized_key
     return f"{_ORDERLY_KEY_PREFIX}{normalized_key}"
+
+
+def _extract_max_leverage_from_error(error: TransactionFailedError) -> int | None:
+    """Extract the server-reported max leverage from an Orderly error message."""
+    match = _LEVERAGE_RANGE_PATTERN.search(str(error))
+    if match is None:
+        return None
+    return int(match.group(2))
