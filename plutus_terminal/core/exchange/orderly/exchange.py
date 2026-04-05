@@ -734,11 +734,18 @@ class OrderlyExchange(ExchangeBase):
         """Provide required secrets for account creation dialog."""
         return {
             "referral_link": None,
-            "secrets": [
-                "Orderly Account ID",
-                "Orderly API Key (orderly-key)",
-                "Orderly Secret",
-                "Network (mainnet|testnet)",
+            "fields": [
+                {"label": "Orderly Account ID"},
+                {"label": "Orderly API Key (orderly-key)"},
+                {"label": "Orderly Secret"},
+                {
+                    "label": "Network",
+                    "field_type": "select",
+                    "options": [
+                        {"label": "Mainnet", "value": OrderlyNetwork.MAINNET.value},
+                        {"label": "Testnet", "value": OrderlyNetwork.TESTNET.value},
+                    ],
+                },
             ],
         }
 

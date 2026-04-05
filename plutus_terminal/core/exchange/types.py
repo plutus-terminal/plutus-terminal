@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum, IntEnum
-from typing import TYPE_CHECKING, NotRequired, Optional, TypedDict
+from typing import TYPE_CHECKING, Literal, NotRequired, Optional, TypedDict
 
 from hexbytes import HexBytes
 
@@ -133,8 +133,26 @@ class OrderData(TypedDict):
     extra: NotRequired[dict]
 
 
+NewAccountFieldType = Literal["text", "select"]
+
+
+class NewAccountFieldOption(TypedDict):
+    """Selectable option for a new-account field."""
+
+    label: str
+    value: str
+
+
+class NewAccountField(TypedDict):
+    """Field definition for the new-account dialog."""
+
+    label: str
+    field_type: NotRequired[NewAccountFieldType]
+    options: NotRequired[list[NewAccountFieldOption]]
+
+
 class NewAccountInfo(TypedDict):
     """New account info."""
 
     referral_link: NotRequired[Optional[str]]
-    secrets: list[str]
+    fields: list[NewAccountField]

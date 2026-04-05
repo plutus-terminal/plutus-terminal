@@ -2,6 +2,8 @@
 
 from .exchange.types import (
     ExchangeType,
+    NewAccountField,
+    NewAccountFieldOption,
     NewAccountInfo,
     PerpsPosition,
     PerpsTradeDirection,
@@ -18,6 +20,8 @@ __all__ = [
     "ExchangeType",
     "FilterType",
     "MessageLevel",
+    "NewAccountField",
+    "NewAccountFieldOption",
     "NewAccountInfo",
     "NewsData",
     "PerpsPosition",

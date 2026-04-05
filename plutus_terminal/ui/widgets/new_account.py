@@ -10,7 +10,7 @@ from PySide6.QtGui import QPixmap, QRegularExpressionValidator
 
 from plutus_terminal.core import keyring_manager
 from plutus_terminal.core.exchange.valid_exchanges import VALID_EXCHANGES
-from plutus_terminal.core.types_ import ExchangeType
+from plutus_terminal.core.types_ import ExchangeType, NewAccountField
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
 
 if TYPE_CHECKING:
@@ -48,7 +48,9 @@ class NewAccountDialog(QtWidgets.QDialog):
 
         self._secrets_group = QtWidgets.QGroupBox("Secrets:")
         self._secrets_layout = QtWidgets.QGridLayout()
+        self._secret_fields: list[NewAccountField] = []
         self._secrets_labels: list[QtWidgets.QLabel] = []
+        self._secret_inputs: list[QtWidgets.QLineEdit | QtWidgets.QComboBox] = []
         self._secrets_line_edits: list[QtWidgets.QLineEdit] = []
 
         self._log_label = QtWidgets.QLabel()
@@ -148,19 +150,44 @@ class NewAccountDialog(QtWidgets.QDialog):
             old_widget.deleteLater()
 
         self._secrets_labels.clear()
+        self._secret_fields.clear()
+        self._secret_inputs.clear()
         self._secrets_line_edits.clear()
 
         selected_exchange = self._exchange_combo_box.currentData()
         exchange = VALID_EXCHANGES[selected_exchange]
         new_account_info = exchange.new_account_info()
+        self._secret_fields.extend(new_account_info["fields"])
 
-        for secret in new_account_info["secrets"]:
-            label = QtWidgets.QLabel(secret)
-            line_edit = QtWidgets.QLineEdit()
+        for field in self._secret_fields:
+            label = QtWidgets.QLabel(field["label"])
+            input_widget = self._create_secret_input(field)
             self._secrets_layout.addWidget(label, len(self._secrets_labels), 0)
-            self._secrets_layout.addWidget(line_edit, len(self._secrets_labels), 1)
+            self._secrets_layout.addWidget(input_widget, len(self._secrets_labels), 1)
             self._secrets_labels.append(label)
-            self._secrets_line_edits.append(line_edit)
+            self._secret_inputs.append(input_widget)
+            if isinstance(input_widget, QtWidgets.QLineEdit):
+                self._secrets_line_edits.append(input_widget)
+
+    def _create_secret_input(
+        self,
+        field: NewAccountField,
+    ) -> QtWidgets.QLineEdit | QtWidgets.QComboBox:
+        """Create the appropriate input widget for a secret field."""
+        if field.get("field_type", "text") == "select":
+            combo_box = QtWidgets.QComboBox()
+            for option in field.get("options", []):
+                combo_box.addItem(option["label"], userData=option["value"])
+            return combo_box
+        return QtWidgets.QLineEdit()
+
+    @staticmethod
+    def _secret_value(secret_input: QtWidgets.QLineEdit | QtWidgets.QComboBox) -> str:
+        """Return the current value for a secret input widget."""
+        if isinstance(secret_input, QtWidgets.QComboBox):
+            current_value = secret_input.currentData()
+            return str(current_value) if current_value is not None else secret_input.currentText()
+        return secret_input.text()
 
     def _create_new_account(self) -> None:
         """Create new account on database."""
@@ -177,8 +204,8 @@ class NewAccountDialog(QtWidgets.QDialog):
                 ToastType.ERROR,
             )
             return
-        for line_edit in self._secrets_line_edits:
-            if not line_edit.text():
+        for secret_input in self._secret_inputs:
+            if not self._secret_value(secret_input):
                 self._log_label.setText("Secrets cannot be empty!")
                 Toast.update_message(
                     toast_id,
@@ -188,7 +215,7 @@ class NewAccountDialog(QtWidgets.QDialog):
                 return
 
         account_name = self._account_line_edit.text()
-        secrets = [secret.text() for secret in self._secrets_line_edits]
+        secrets = [self._secret_value(secret_input) for secret_input in self._secret_inputs]
         exchange_name = self._exchange_combo_box.currentData()
 
         # Validate secrets

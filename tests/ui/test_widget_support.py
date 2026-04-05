@@ -123,7 +123,7 @@ def test_account_picker_switches_to_selected_account() -> None:
     controller.app_config._accounts.append(second)
     picker = AccountPicker(controller)
 
-    run_async(picker._on_account_changed, 1)
+    picker._on_account_changed(1)
 
     assert controller.app_config.current_keyring_account == second
 
@@ -143,7 +143,7 @@ def test_account_picker_restores_previous_index_when_new_account_is_cancelled() 
         picker = AccountPicker(controller)
         original_index = picker.currentIndex()
 
-        run_async(picker._on_account_changed, picker.count() - 1)
+        picker._on_account_changed(picker.count() - 1)
 
     assert picker.currentIndex() == original_index
 

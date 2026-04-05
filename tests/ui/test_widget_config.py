@@ -680,7 +680,13 @@ def test_new_account_dialog_creates_account_for_valid_exchange() -> None:
 
         @staticmethod
         def new_account_info() -> dict[str, object]:
-            return {"secrets": ["Account ID", "API Key", "Secret"]}
+            return {
+                "fields": [
+                    {"label": "Account ID"},
+                    {"label": "API Key"},
+                    {"label": "Secret"},
+                ]
+            }
 
         @staticmethod
         def validate_secrets(_secrets: list[str]) -> tuple[bool, str]:
@@ -709,6 +715,75 @@ def test_new_account_dialog_creates_account_for_valid_exchange() -> None:
     assert dialog.new_account is not None
     assert app_config.current_keyring_account.username == "orderly_test"
     set_password.assert_called_once()
+
+
+def test_new_account_dialog_uses_declared_select_field_values() -> None:
+    """NewAccountDialog should render generic select fields and store option values."""
+    app_config = AppConfigStub()
+    pass_guard = SimpleNamespace()
+    validated_secrets: list[str] = []
+
+    class _DummyExchange:
+        @staticmethod
+        def exchange_type() -> int:
+            return 0
+
+        @staticmethod
+        def name() -> str:
+            return "Custom"
+
+        @staticmethod
+        def new_account_info() -> dict[str, object]:
+            return {
+                "fields": [
+                    {"label": "API Key"},
+                    {"label": "API Secret"},
+                    {
+                        "label": "Environment",
+                        "field_type": "select",
+                        "options": [
+                            {"label": "Production", "value": "prod"},
+                            {"label": "Sandbox", "value": "sandbox"},
+                        ],
+                    },
+                ]
+            }
+
+        @staticmethod
+        def validate_secrets(secrets: list[str]) -> tuple[bool, str]:
+            validated_secrets[:] = secrets
+            return True, "ok"
+
+    with (
+        patch(
+            "plutus_terminal.ui.widgets.new_account.VALID_EXCHANGES",
+            {"custom": _DummyExchange},
+        ),
+        patch(
+            "plutus_terminal.ui.widgets.new_account.keyring_manager.set_exchange_password"
+        ) as set_password,
+        patch(
+            "plutus_terminal.ui.widgets.new_account.Toast.show_message",
+            return_value=b"toast-id",
+        ),
+        patch("plutus_terminal.ui.widgets.new_account.Toast.update_message"),
+    ):
+        dialog = NewAccountDialog(pass_guard, app_config)
+        dialog._account_line_edit.setText("custom_test")
+        for index, line_edit in enumerate(dialog._secrets_line_edits):
+            line_edit.setText(f"secret-{index}")
+
+        network_combo = dialog._secret_inputs[-1]
+        assert isinstance(network_combo, QtWidgets.QComboBox)
+        assert dialog._secrets_labels[-1].text() == "Environment"
+
+        network_combo.setCurrentIndex(1)
+        dialog._create_new_account()
+
+    assert validated_secrets == ["secret-0", "secret-1", "sandbox"]
+    assert set_password.call_args.args[0] == "custom_test"
+    assert set_password.call_args.args[1] == ["secret-0", "secret-1", "sandbox"]
+    assert set_password.call_args.args[2] is pass_guard
 
 
 def test_config_dialog_builds_expected_tabs() -> None:
