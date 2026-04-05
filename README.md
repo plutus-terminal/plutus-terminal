@@ -59,7 +59,7 @@ Plutus Terminal is for educational and informational purposes only and does not 
 ## 🛠️  Installation
 
 Plutus Terminal is a Python package with multiple dependencies. You can install
-it by downloading the PyApp executable, using pipx, or building it with Poetry.
+it by downloading the PyApp executable, using pipx, or building it with uv.
 
 <details>
 <summary>
@@ -125,11 +125,11 @@ pipx upgrade plutus-terminal
 
 <details>
 <summary>
-<strong>Installation using <code>Poetry</code>:</strong>
+<strong>Installation using <code>uv</code>:</strong>
 </summary>
 <br>
 
-### Poetry
+### uv
 
 #### To install
 
@@ -154,19 +154,21 @@ git checkout main
 Then, install the package:
 
 ```bash
-poetry install
+pipx install uv
+uv sync
 ```
 
 Run the tool with:
 
 ```bash
-poetry run plutus-terminal
+uv run plutus-terminal
 ```
 #### To update
 
 ```bash
 git pull
-poetry update
+uv lock --upgrade
+uv sync
 ```
 
 </details>

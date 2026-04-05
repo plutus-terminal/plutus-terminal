@@ -4,8 +4,8 @@ version = "0.1.0rc0"
 description = "Plutus Terminal is a powerful open-source crypto news trading terminal with the focus on Perpetuals DEX."
 authors = [{name = "Plutus", email = "plutus-terminal@protonmail.com"}]
 readme = "README.md"
-packages = [{include = "plutus_terminal"}]
 license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 homepage = "https://github.com/plutus-terminal/plutus-terminal"
 repository = "https://github.com/plutus-terminal/plutus-terminal"
 keywords = ["plutus", "terminal", "crypto", "trading", "trading-bot", "perpetuals", "dex"]
@@ -27,22 +27,30 @@ dependencies = [
     "plutus-lightweight-charts == 2.2.0",
 ]
 
-[tool.poetry.group.dev.dependencies]
-mypy = "1.15.0"
-isort = "6.0.1"
-pyside6-stubs = "6.7.3.0"
-pandas-stubs = "2.2.3.250308"
-types-peewee = "3.17.9.20250401"
-ruff = "0.11.6"
-pre-commit = "4.2.0"
-pytest = "^9.0.2"
-
 [project.scripts]
 plutus-terminal = "plutus_terminal.run:run"
 
+[dependency-groups]
+dev = [
+    "mypy==1.15.0",
+    "isort==6.0.1",
+    "pyside6-stubs==6.7.3.0",
+    "pandas-stubs==2.2.3.250308",
+    "types-peewee==3.17.9.20250401",
+    "ruff==0.11.6",
+    "pre-commit==4.2.0",
+    "pytest>=9.0.2",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.uv.build-backend]
+module-root = ""
+
 [build-system]
-requires = ["poetry-core>=2.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.7.19,<0.8.0"]
+build-backend = "uv_build"
 
 [tool.ruff]
 target-version = "py312"

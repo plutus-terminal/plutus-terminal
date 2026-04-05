@@ -5,7 +5,7 @@ Guidance for autonomous coding agents working in `plutus-terminal`.
 ## Project Snapshot
 
 - Language: Python 3.12 only (`>=3.12,<3.13`).
-- Packaging: Poetry (`pyproject.toml`, `poetry.lock`).
+- Packaging: uv (`pyproject.toml`, `uv.lock`) with the `uv_build` backend.
 - App type: PySide6 desktop app with async/event-loop integration via `qasync`.
 - Main package: `plutus_terminal/`.
 - Entry point: `plutus_terminal.run:run` (CLI command `plutus-terminal`).
@@ -15,30 +15,29 @@ Guidance for autonomous coding agents working in `plutus-terminal`.
 
 ## Environment Setup
 
-1. Install Poetry (if missing): `pipx install poetry`.
-2. Install deps: `poetry install`.
-3. Activate shell (optional): `poetry shell`.
-4. Run commands using `poetry run ...` to ensure virtualenv consistency.
+1. Install uv (if missing): `pipx install uv`.
+2. Install deps: `uv sync`.
+3. Run commands using `uv run ...` to ensure virtualenv consistency.
 
 ## Build / Run Commands
 
-- Install dependencies: `poetry install`
-- Run app: `poetry run plutus-terminal`
-- Alternate run: `poetry run python -m plutus_terminal.run`
-- Build package artifact: `poetry build`
-- Check package version: `poetry version -s`
+- Install dependencies: `uv sync`
+- Run app: `uv run plutus-terminal`
+- Alternate run: `uv run python -m plutus_terminal.run`
+- Build package artifact: `uv build`
+- Check package version: `uv version --short`
 
 ## Lint / Format Commands
 
-- Lint only: `poetry run ruff check .`
-- Lint and auto-fix: `poetry run ruff check . --fix`
-- Format code: `poetry run ruff format .`
-- Run all pre-commit hooks: `poetry run pre-commit run --all-files`
+- Lint only: `uv run ruff check .`
+- Lint and auto-fix: `uv run ruff check . --fix`
+- Format code: `uv run ruff format .`
+- Run all pre-commit hooks: `uv run pre-commit run --all-files`
 
 ## Type Checking Commands
 
-- Run mypy on package: `poetry run mypy plutus_terminal`
-- If mypy complains about missing stubs, sync deps with: `poetry install`
+- Run mypy on package: `uv run mypy plutus_terminal`
+- If mypy complains about missing stubs, sync deps with: `uv sync`
 
 ## Test Commands
 
@@ -46,20 +45,20 @@ Current state: repository has `tests/__init__.py` only (no committed test module
 
 When tests are added, use:
 
-- Run all tests: `poetry run pytest`
-- Run a file: `poetry run pytest tests/path/test_file.py`
-- Run a single test: `poetry run pytest tests/path/test_file.py::test_name`
-- Run single parametrized case: `poetry run pytest tests/path/test_file.py::test_name[param]`
-- Run by keyword: `poetry run pytest -k "keyword"`
-- Stop early on first failure: `poetry run pytest -x`
-- Quiet output: `poetry run pytest -q`
+- Run all tests: `uv run pytest`
+- Run a file: `uv run pytest tests/path/test_file.py`
+- Run a single test: `uv run pytest tests/path/test_file.py::test_name`
+- Run single parametrized case: `uv run pytest tests/path/test_file.py::test_name[param]`
+- Run by keyword: `uv run pytest -k "keyword"`
+- Stop early on first failure: `uv run pytest -x`
+- Quiet output: `uv run pytest -q`
 
 If `pytest` is not installed in the active environment, add it to dev deps first.
 
 ## CI / Release Notes Relevant to Agents
 
 - GitHub workflow in `.github/workflows/release.yml` builds and publishes on pushes to `main`/`unstable`.
-- Workflow installs via `poetry install` and publishes with `poetry publish --build`.
+- Workflow installs via `uv sync --frozen` and publishes with `uv build` + `uv publish`.
 - PyApp binaries are also produced for Linux/Windows in release workflow.
 - Do not alter release automation unless task explicitly requires it.
 
@@ -136,9 +135,9 @@ If `pytest` is not installed in the active environment, add it to dev deps first
 
 Before finishing a change, agents should:
 
-1. Run formatter: `poetry run ruff format .`
-2. Run lint: `poetry run ruff check .`
-3. Run types where relevant: `poetry run mypy plutus_terminal`
+1. Run formatter: `uv run ruff format .`
+2. Run lint: `uv run ruff check .`
+3. Run types where relevant: `uv run mypy plutus_terminal`
 4. Run targeted tests (or add tests if behavior changed materially).
 5. Update docs/config comments when behavior or workflow changes.
 
