@@ -227,8 +227,10 @@ class TradingChart(QWidget):
             keep_drawings (bool): Keep drawings on chart.
         """
         self._clear_overlay_lines()
+        ohlcv = ohlcv.copy()
         # Convert to local timezone
         ohlcv["date"] = ohlcv["date"].apply(ui_utils.convert_timestamp_to_local_timezone)
+        ohlcv["date"] = ohlcv["date"].astype("datetime64[ns]")
         self._main_chart.set(ohlcv)
         self._main_chart.price_scale()
         if self._main_chart.toolbox is None:
@@ -243,11 +245,14 @@ class TradingChart(QWidget):
         Args:
             ohlcv (pandas.DataFrame): Open, high, low, close, volume data.
         """
+        ohlcv = ohlcv.copy()
         # Convert to local timezone
         ohlcv["date"] = ohlcv["date"].apply(ui_utils.convert_timestamp_to_local_timezone)
+        ohlcv["date"] = ohlcv["date"].astype("datetime64[ns]")
         current_data = self._main_chart.candle_data.copy()
         current_data = current_data.rename(columns={"time": "date"})
         current_data["date"] = current_data["date"].apply(lambda x: pandas.to_datetime(x, unit="s"))
+        current_data["date"] = current_data["date"].astype("datetime64[ns]")
         updated_data = pandas.concat([ohlcv, current_data]).drop_duplicates().reset_index(drop=True)
         self._main_chart.set(updated_data, keep_drawings=True)
 

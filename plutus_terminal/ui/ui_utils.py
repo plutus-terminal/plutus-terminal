@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import math
+from numbers import Real
 from typing import Any, Optional, TypeVar
 
 import pandas
@@ -15,6 +16,40 @@ T = TypeVar("T", bound=QWidget)
 
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 DEFAULT_BAR_NUMBERS = 500
+_SECONDS_TO_MS_THRESHOLD = 10_000_000_000
+
+
+def _normalize_unix_unit(timestamp: Real) -> str:
+    """Return the unix timestamp unit for a numeric timestamp."""
+    return "ms" if abs(timestamp) >= _SECONDS_TO_MS_THRESHOLD else "s"
+
+
+def _coerce_utc_timestamp(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
+    """Normalize an exchange timestamp into a timezone-aware UTC timestamp."""
+    if isinstance(timestamp, Real) and not isinstance(timestamp, bool):
+        utc_timestamp = pandas.to_datetime(
+            timestamp, unit=_normalize_unix_unit(timestamp), utc=True
+        )
+    else:
+        utc_timestamp = pandas.Timestamp(timestamp)
+        if utc_timestamp.tzinfo is None:
+            utc_timestamp = utc_timestamp.tz_localize("UTC")
+        else:
+            utc_timestamp = utc_timestamp.tz_convert("UTC")
+    return utc_timestamp.as_unit("ns")
+
+
+def _coerce_local_timestamp(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
+    """Normalize a chart-local timestamp into a timezone-aware local timestamp."""
+    if isinstance(timestamp, Real) and not isinstance(timestamp, bool):
+        local_timestamp = pandas.to_datetime(timestamp, unit=_normalize_unix_unit(timestamp))
+    else:
+        local_timestamp = pandas.Timestamp(timestamp)
+    if local_timestamp.tzinfo is None:
+        local_timestamp = local_timestamp.tz_localize(LOCAL_TIMEZONE)
+    else:
+        local_timestamp = local_timestamp.tz_convert(LOCAL_TIMEZONE)
+    return local_timestamp.as_unit("ns")
 
 
 def get_minimal_digits(number: float, figures: int) -> int:
@@ -123,9 +158,7 @@ def get_or_create_stored_widget(
     return stored_widget
 
 
-def convert_timestamp_to_local_timezone(
-    timestamp: pandas.Timestamp,
-) -> pandas.Timestamp:
+def convert_timestamp_to_local_timezone(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
     """Convert pandas Timestamp target timeonze.
 
     The given Timestamp unit is seconds and it's UTC.
@@ -137,13 +170,13 @@ def convert_timestamp_to_local_timezone(
     Returns :
         pandas.Timestamp: Converted timestamp.
     """
-    utc_timestamp = pandas.to_datetime(timestamp, unit="s", utc=True)
+    utc_timestamp = _coerce_utc_timestamp(timestamp)
     # Convert to local timezone and stripping timezone information
     # because of lightweight charts
-    return utc_timestamp.tz_convert(LOCAL_TIMEZONE).tz_localize(None)
+    return utc_timestamp.tz_convert(LOCAL_TIMEZONE).tz_localize(None).as_unit("ns")
 
 
-def convert_timestamp_from_local_to_utc(timestamp: pandas.Timestamp) -> pandas.Timestamp:
+def convert_timestamp_from_local_to_utc(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
     """Convert pandas Timestamp from local timeonze to UTC.
 
     The given Timestamp unit is seconds and it's UTC.
@@ -155,7 +188,7 @@ def convert_timestamp_from_local_to_utc(timestamp: pandas.Timestamp) -> pandas.T
     Returns :
         pandas.Timestamp: Converted timestamp.
     """
-    local_timestamp = pandas.to_datetime(timestamp, unit="s")
+    local_timestamp = _coerce_local_timestamp(timestamp)
     # Convert to local timezone and stripping timezone information
     # because of lightweight charts
-    return local_timestamp.tz_localize(LOCAL_TIMEZONE).tz_convert("UTC")
+    return local_timestamp.tz_convert("UTC").as_unit("ns")

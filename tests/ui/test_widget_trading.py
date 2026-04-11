@@ -833,6 +833,51 @@ def test_trading_chart_batches_bursty_ticks_to_latest_value() -> None:
     chart.main_chart.update_from_tick.assert_called_once()
 
 
+def test_trading_chart_normalizes_history_timestamps_to_nanoseconds() -> None:
+    """TradingChart should feed nanosecond datetime history into the chart adapter."""
+    controller = UIControllerStub()
+    with patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _FakeQtChart):
+        chart = TradingChart(controller)
+        history = pandas.DataFrame(
+            {
+                "date": [
+                    pandas.Timestamp(1712822400, unit="s"),
+                    pandas.Timestamp(1712822460, unit="s"),
+                ],
+                "close": [1.0, 2.0],
+            }
+        )
+
+        chart.set_start_data(history)
+
+    assert str(chart.main_chart.candle_data["time"].dtype) == "datetime64[ns]"
+
+
+def test_trading_chart_update_data_preserves_distinct_nanosecond_times() -> None:
+    """TradingChart should keep distinct chart times when merging more history."""
+    controller = UIControllerStub()
+    with patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _FakeQtChart):
+        chart = TradingChart(controller)
+        chart.main_chart.candle_data = pandas.DataFrame(
+            {
+                "time": [1712822400, 1712822460],
+                "close": [1.0, 2.0],
+            }
+        )
+        history = pandas.DataFrame(
+            {
+                "date": [pandas.Timestamp(1712822520, unit="s")],
+                "close": [3.0],
+            }
+        )
+
+        chart.update_data(history)
+
+    merged_times = chart.main_chart.candle_data["time"]
+    assert str(merged_times.dtype) == "datetime64[ns]"
+    assert merged_times.nunique() == 3
+
+
 def test_news_updates_do_not_use_ui_batcher() -> None:
     """News updates should stay off the UI batching path."""
     controller = UIControllerStub()
