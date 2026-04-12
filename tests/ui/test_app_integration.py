@@ -23,10 +23,10 @@ from tests.ui.helpers import (
 )
 
 if TYPE_CHECKING:
+    from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.core.config import AppConfig
     from plutus_terminal.core.exchange.base import ExchangeBase
     from plutus_terminal.core.password_guard import PasswordGuard
-    from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.message_bus import MessageBus
     from tests.ui.helpers import ExchangeStub
 

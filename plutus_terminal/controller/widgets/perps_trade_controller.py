@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 import weakref
 
 from PySide6.QtCore import QObject
@@ -13,14 +13,16 @@ from plutus_terminal.controller.widgets.ui_update_batcher import UiUpdateBatcher
 from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
-from plutus_terminal.ui.widgets.perps_trade import LimitTradeWidget, StopTradeWidget
 
 if TYPE_CHECKING:
     from PySide6 import QtWidgets
 
     from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.ui.widgets.perps_trade import (
+        LimitTradeWidget,
+        MarketTradeWidget,
         PerpsTradeWidget,
+        StopTradeWidget,
     )
 
 
@@ -144,7 +146,6 @@ class PerpsTradeController(QObject):
     @asyncSlot()
     async def create_order(self, direction: PerpsTradeDirection) -> None:
         """Create an order from the active trade-entry tab."""
-
         view = self._view()
         if view is None:
             return
@@ -157,15 +158,18 @@ class PerpsTradeController(QObject):
         execution_price: Decimal | None = None
         stop_loss: float | None = 0.0
         take_profit: float | None = 0.0
-        if isinstance(current_tab, LimitTradeWidget):
-            execution_price = Decimal(current_tab.get_target_price())
-            stop_loss = current_tab.get_stop_loss()
-            take_profit = current_tab.get_take_profit()
-        elif isinstance(current_tab, StopTradeWidget):
-            execution_price = Decimal(current_tab.get_trigger_price())
+        if view.is_limit_widget(current_tab):
+            limit_tab = cast("LimitTradeWidget", current_tab)
+            execution_price = Decimal(limit_tab.get_target_price())
+            stop_loss = limit_tab.get_stop_loss()
+            take_profit = limit_tab.get_take_profit()
+        elif view.is_stop_widget(current_tab):
+            stop_tab = cast("StopTradeWidget", current_tab)
+            execution_price = Decimal(stop_tab.get_trigger_price())
         else:
-            stop_loss = current_tab.get_stop_loss()
-            take_profit = current_tab.get_take_profit()
+            market_tab = cast("MarketTradeWidget", current_tab)
+            stop_loss = market_tab.get_stop_loss()
+            take_profit = market_tab.get_take_profit()
         try:
             await view.exchange.create_order(
                 pair,

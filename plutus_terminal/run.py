@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Run plutus terminal."""
+
+from __future__ import annotations
 
 import asyncio
 import gc

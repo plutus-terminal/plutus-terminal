@@ -704,7 +704,6 @@ class ExchangeBase(ABC):
         trade_collateral = perps_position["position_size_stable"] / leverage
         opening_fee = self.fetcher.calculate_margin_fee(perps_position["position_size_stable"])
         closing_fee = opening_fee
-        position_fee = opening_fee
         funding_fee = self.fetcher.fetch_funding_fee(perps_position)
         pnl_percentage = self.fetcher.calculate_pnl_percent_before_fees(
             perps_position,

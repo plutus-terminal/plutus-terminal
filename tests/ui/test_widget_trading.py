@@ -47,6 +47,7 @@ from tests.ui.helpers import (
 ensure_app()
 
 _EXPECTED_ACCOUNT_REFRESH_COUNT = 2
+_EXPECTED_MERGED_TIMES = 3
 
 
 class _FakeLine:
@@ -875,7 +876,7 @@ def test_trading_chart_update_data_preserves_distinct_nanosecond_times() -> None
 
     merged_times = chart.main_chart.candle_data["time"]
     assert str(merged_times.dtype) == "datetime64[ns]"
-    assert merged_times.nunique() == 3
+    assert merged_times.nunique() == _EXPECTED_MERGED_TIMES
 
 
 def test_news_updates_do_not_use_ui_batcher() -> None:

@@ -11,6 +11,7 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from websockets import State
 
 from plutus_terminal.core.exchange.orderly.models import OrderlyCredentials, OrderlyEndpoints
@@ -20,6 +21,8 @@ from plutus_terminal.core.exchange.orderly.websocket import (
     OrderlyWebsocketSubscriptionError,
 )
 from plutus_terminal.core.exchange.orderly.ws_topics import EXECUTION_REPORT_TOPIC
+
+_RECONNECT_CALLS = 2
 
 
 @dataclass
@@ -105,13 +108,15 @@ class OrderlyWebsocketLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         )
         manager._subscribe_many = AsyncMock()  # type: ignore[method-assign]
 
-        with patch(
-            "plutus_terminal.core.exchange.orderly.websocket.connect",
-            AsyncMock(return_value=socket),
+        with (
+            patch(
+                "plutus_terminal.core.exchange.orderly.websocket.connect",
+                AsyncMock(return_value=socket),
+            ),
+            pytest.raises(OrderlyWebsocketAuthError, match="auth rejected"),
         ):
             # Act / Assert
-            with self.assertRaisesRegex(OrderlyWebsocketAuthError, "auth rejected"):
-                await asyncio.wait_for(manager.connect_private(), timeout=0.5)
+            await asyncio.wait_for(manager.connect_private(), timeout=0.5)
 
         manager._subscribe_many.assert_not_awaited()  # type: ignore[attr-defined]
 
@@ -234,8 +239,8 @@ class OrderlyWebsocketLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         assert connected_socket is second_socket
-        assert manager._authenticate_private_socket.await_count == 2  # type: ignore[attr-defined]
-        assert manager._subscribe_many.await_count == 2  # type: ignore[attr-defined]
+        assert manager._authenticate_private_socket.await_count == _RECONNECT_CALLS  # type: ignore[attr-defined]
+        assert manager._subscribe_many.await_count == _RECONNECT_CALLS  # type: ignore[attr-defined]
 
     async def test_reset_private_socket_preserves_saved_topics_for_future_reconnects(self) -> None:
         """Keep saved private subscriptions locally so reconnect logic can replay them later."""

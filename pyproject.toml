@@ -35,7 +35,7 @@ plutus-terminal = "plutus_terminal.run:run"
 [dependency-groups]
 dev = [
     "mypy==1.20.0",
-    "isort==6.0.1",
+    "isort==8.0.1",
     "pyside6-stubs==6.7.3.0",
     "pandas-stubs==3.0.0.260204",
     "types-peewee==4.0.0.20260408",

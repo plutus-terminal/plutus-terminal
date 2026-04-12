@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, cast
 import unittest
 from unittest.mock import AsyncMock
 
+import pytest
+
 from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.exchange.orderly.constraints import (
     quantize_base_size,
@@ -229,10 +231,10 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         market_rule = _build_market_rule(base_tick=Decimal("0"), quote_tick=Decimal("0"))
 
         # Act / Assert
-        with self.assertRaisesRegex(ValueError, "step=0"):
+        with pytest.raises(ValueError, match="step=0"):
             quantize_price(Decimal("97500.74"), market_rule)
 
-        with self.assertRaisesRegex(ValueError, "step=0"):
+        with pytest.raises(ValueError, match="step=0"):
             quantize_base_size(Decimal("0.0199"), market_rule)
 
     def test_validate_order_size_accepts_values_at_dynamic_minimum_boundaries(self) -> None:
@@ -260,14 +262,14 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         market_rule = _build_market_rule(base_min=Decimal("0.01"))
 
         # Act / Assert
-        with self.assertRaisesRegex(InvalidOrderSizeError, "greater than zero"):
+        with pytest.raises(InvalidOrderSizeError, match="greater than zero"):
             validate_order_size(
                 base_size=Decimal("0"),
                 limit_price=Decimal("1000"),
                 market_rule=market_rule,
             )
 
-        with self.assertRaisesRegex(InvalidOrderSizeError, "Minimum is 0.01"):
+        with pytest.raises(InvalidOrderSizeError, match="Minimum is 0.01"):
             validate_order_size(
                 base_size=Decimal("0.009"),
                 limit_price=Decimal("1000"),
@@ -280,7 +282,7 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         market_rule = _build_market_rule(base_max=Decimal("2"))
 
         # Act / Assert
-        with self.assertRaisesRegex(InvalidOrderSizeError, "Maximum is 2"):
+        with pytest.raises(InvalidOrderSizeError, match="Maximum is 2"):
             validate_order_size(
                 base_size=Decimal("2.001"),
                 limit_price=Decimal("1000"),
@@ -293,7 +295,7 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         market_rule = _build_market_rule(min_notional=Decimal("50"))
 
         # Act / Assert
-        with self.assertRaisesRegex(InvalidOrderSizeError, "Minimum is 50"):
+        with pytest.raises(InvalidOrderSizeError, match="Minimum is 50"):
             validate_order_size(
                 base_size=Decimal("0.01"),
                 limit_price=Decimal("4000"),
