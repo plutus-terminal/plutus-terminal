@@ -3,7 +3,7 @@
 from datetime import datetime
 import math
 from numbers import Real
-from typing import Any, Optional, TypeVar
+from typing import Any, Literal, Optional, TypeVar, cast
 
 import pandas
 from PySide6.QtCore import QDir
@@ -17,18 +17,23 @@ T = TypeVar("T", bound=QWidget)
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 DEFAULT_BAR_NUMBERS = 500
 _SECONDS_TO_MS_THRESHOLD = 10_000_000_000
+UnixTimeUnit = Literal["s", "ms"]
 
 
-def _normalize_unix_unit(timestamp: Real) -> str:
+def _normalize_unix_unit(timestamp: Real) -> UnixTimeUnit:
     """Return the unix timestamp unit for a numeric timestamp."""
-    return "ms" if abs(timestamp) >= _SECONDS_TO_MS_THRESHOLD else "s"
+    numeric_timestamp = float(timestamp)
+    return "ms" if abs(numeric_timestamp) >= _SECONDS_TO_MS_THRESHOLD else "s"
 
 
 def _coerce_utc_timestamp(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
     """Normalize an exchange timestamp into a timezone-aware UTC timestamp."""
     if isinstance(timestamp, Real) and not isinstance(timestamp, bool):
+        numeric_timestamp = cast("float", float(timestamp))
         utc_timestamp = pandas.to_datetime(
-            timestamp, unit=_normalize_unix_unit(timestamp), utc=True
+            numeric_timestamp,
+            unit=_normalize_unix_unit(timestamp),
+            utc=True,
         )
     else:
         utc_timestamp = pandas.Timestamp(timestamp)
@@ -42,7 +47,10 @@ def _coerce_utc_timestamp(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
 def _coerce_local_timestamp(timestamp: Any) -> pandas.Timestamp:  # noqa: ANN401
     """Normalize a chart-local timestamp into a timezone-aware local timestamp."""
     if isinstance(timestamp, Real) and not isinstance(timestamp, bool):
-        local_timestamp = pandas.to_datetime(timestamp, unit=_normalize_unix_unit(timestamp))
+        numeric_timestamp = cast("float", float(timestamp))
+        local_timestamp = pandas.to_datetime(
+            numeric_timestamp, unit=_normalize_unix_unit(timestamp)
+        )
     else:
         local_timestamp = pandas.Timestamp(timestamp)
     if local_timestamp.tzinfo is None:

@@ -38,7 +38,9 @@ LOGGER = logging.getLogger(__name__)
 def reload_style() -> None:  # noqa: D103
     relative_path = Path(__file__).parent
     with Path.open(relative_path.joinpath("style.qss")) as f:
-        QApplication.instance().setStyleSheet(f.read())
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.setStyleSheet(f.read())
 
 
 class PlutusMainWindow(QMainWindow):

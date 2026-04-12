@@ -13,16 +13,14 @@ from plutus_terminal.controller.widgets.ui_update_batcher import UiUpdateBatcher
 from plutus_terminal.core.exceptions import InvalidOrderSizeError
 from plutus_terminal.core.types_ import PerpsTradeDirection, PerpsTradeType
 from plutus_terminal.ui.widgets.toast import Toast, ToastType
+from plutus_terminal.ui.widgets.perps_trade import LimitTradeWidget, StopTradeWidget
 
 if TYPE_CHECKING:
     from PySide6 import QtWidgets
 
     from plutus_terminal.controller.ui_controller import UIController
     from plutus_terminal.ui.widgets.perps_trade import (
-        LimitTradeWidget,
-        MarketTradeWidget,
         PerpsTradeWidget,
-        StopTradeWidget,
     )
 
 
@@ -146,6 +144,7 @@ class PerpsTradeController(QObject):
     @asyncSlot()
     async def create_order(self, direction: PerpsTradeDirection) -> None:
         """Create an order from the active trade-entry tab."""
+
         view = self._view()
         if view is None:
             return
@@ -156,13 +155,13 @@ class PerpsTradeController(QObject):
         amount = Decimal(current_tab.get_amount())
         trade_type = self.get_trade_type()
         execution_price: Decimal | None = None
-        stop_loss = 0.0
-        take_profit = 0.0
-        if view.is_limit_widget(current_tab):
+        stop_loss: float | None = 0.0
+        take_profit: float | None = 0.0
+        if isinstance(current_tab, LimitTradeWidget):
             execution_price = Decimal(current_tab.get_target_price())
             stop_loss = current_tab.get_stop_loss()
             take_profit = current_tab.get_take_profit()
-        elif view.is_stop_widget(current_tab):
+        elif isinstance(current_tab, StopTradeWidget):
             execution_price = Decimal(current_tab.get_trigger_price())
         else:
             stop_loss = current_tab.get_stop_loss()

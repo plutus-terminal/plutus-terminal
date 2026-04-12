@@ -65,6 +65,7 @@ class OrderActionsCell(QWidget):
         """Schedule a cancel request without tying it to this widget's lifetime."""
         order_data = deepcopy(self._order_data)
         cancel_result = self._exchange.cancel_order(order_data)
+        task: asyncio.Task[object]
         if isinstance(cancel_result, asyncio.Task):
             task = cancel_result
         else:

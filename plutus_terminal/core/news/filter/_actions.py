@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 
 from plutus_terminal.core.news.filter.types import ActionType
 
@@ -43,16 +43,25 @@ def coin_association_action(
             * coin (str): Coin symbol
             * color (tuple[int, int, int]): RGB color for text.
     """
-    news_data["coin"].add(kwargs["coin"])
+    news_data["coin"].add(cast("str", kwargs["coin"]))
     # Only replace text if this key is provided
     if text_data_key and search_result:
-        text = news_data[text_data_key]
+        if text_data_key == "body":
+            text = news_data["body"]
+        elif text_data_key == "quote_message":
+            text = news_data["quote_message"]
+        else:
+            return news_data
         # Ensure color keyword is a tuple
+        color = tuple(cast("tuple[int, int, int]", kwargs["color"]))
         text = (
-            f"{text[: search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
+            f"{text[: search_result.start]}<span style='color: rgb{color};'>"
             f"{search_result.match}</span>{text[search_result.end :]}"
         )
-        news_data[text_data_key] = text
+        if text_data_key == "body":
+            news_data["body"] = text
+        else:
+            news_data["quote_message"] = text
     return news_data
 
 
@@ -76,16 +85,25 @@ def sound_association_action(
             * sound_path (str): QResources path to sound.
             * color (tuple[int, int, int]): RGB color for text.
     """
-    news_data["sfx"] = kwargs["sound_path"]
+    news_data["sfx"] = cast("str", kwargs["sound_path"])
     # Only replace text if this key is provided
     if text_data_key and search_result:
-        text = news_data[text_data_key]
+        if text_data_key == "body":
+            text = news_data["body"]
+        elif text_data_key == "quote_message":
+            text = news_data["quote_message"]
+        else:
+            return news_data
         # Ensure color keyword is a tuple
+        color = tuple(cast("tuple[int, int, int]", kwargs["color"]))
         text = (
-            f"{text[: search_result.start]}<span style='color: rgb{tuple(kwargs['color'])};'>"
+            f"{text[: search_result.start]}<span style='color: rgb{color};'>"
             f"{search_result.match}</span>{text[search_result.end :]}"
         )
-        news_data[text_data_key] = text
+        if text_data_key == "body":
+            news_data["body"] = text
+        else:
+            news_data["quote_message"] = text
     return news_data
 
 
