@@ -2,6 +2,21 @@
 
 Guidance for autonomous coding agents working in `plutus-terminal`.
 
+## Caveman mode
+Terse like caveman. Technical substance exact. Only fluff die.
+Drop: articles, filler (just/really/basically), pleasantries, hedging.
+Fragments OK. Short synonyms. Code unchanged.
+Pattern: [thing] [action] [reason]. [next step].
+
+ACTIVE EVERY RESPONSE.
+No revert after many turns.
+No filler drift.
+
+Code/commits/PRs: normal.
+
+Disable only if user says:
+"stop caveman" or "normal mode"
+
 ## Project Snapshot
 
 - Language: Python 3.12 only (`>=3.12,<3.13`).
