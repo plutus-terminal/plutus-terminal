@@ -455,9 +455,12 @@ wheels = [
 
 [[package]]
 name = "peewee"
-version = "3.17.9"
+version = "4.0.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/57/09/4393bd378e70b7fc3163ee83353cc27bb520010a5c2b3c924121e7e7e068/peewee-3.17.9.tar.gz", hash = "sha256:fe15cd001758e324c8e3ca8c8ed900e7397c2907291789e1efc383e66b9bc7a8", size = 3026085, upload-time = "2025-02-05T16:30:35.774Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/8e/8fe6b93914ed40b9cb5162e45e1be4f8bb8cf7f5a49333aa1a2d383e4870/peewee-4.0.4.tar.gz", hash = "sha256:70e07c14a10bec8d663514bda5854e44ef15d5b03974b41f7218066b6fd3a065", size = 718021, upload-time = "2026-04-02T13:52:25.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/9b/bee274b72adc7c692bf7cb8d6b0cd4071acf2957e82dace45d3f2770470e/peewee-4.0.4-py3-none-any.whl", hash = "sha256:37ccd3f89e523c7b42eed023cd90b48d088753ddff1d74e854a9c6445e7bd797", size = 144487, upload-time = "2026-04-02T13:52:24.099Z" },
+]
 
 [[package]]
 name = "platformdirs"
@@ -535,7 +538,7 @@ requires-dist = [
     { name = "keyring", specifier = "==25.7.0" },
     { name = "orjson", specifier = "==3.10.16" },
     { name = "pandas", specifier = "==3.0.2" },
-    { name = "peewee", specifier = "==3.17.9" },
+    { name = "peewee", specifier = "==4.0.4" },
     { name = "plutus-lightweight-charts", specifier = "==2.2.0" },
     { name = "pyside6", specifier = "==6.9.0" },
     { name = "qasync", specifier = "==0.27.1" },
