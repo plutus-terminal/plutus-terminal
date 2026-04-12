@@ -19,7 +19,7 @@ dependencies = [
     "textsearch == 0.0.24",
     "peewee==4.0.4",
     "qasync==0.28.0",
-    "google-re2 == 1.1.20240702",
+    "google-re2==1.1.20251105",
     "orjson == 3.10.16",
     "setproctitle == 1.3.5",
     "cryptography == 44.0.2",
