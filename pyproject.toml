@@ -38,7 +38,7 @@ dev = [
     "isort==6.0.1",
     "pyside6-stubs==6.7.3.0",
     "pandas-stubs==3.0.0.260204",
-    "types-peewee==3.17.9.20250401",
+    "types-peewee==4.0.0.20260408",
     "ruff==0.11.6",
     "pre-commit==4.2.0",
     "pytest>=9.0.2",

@@ -202,7 +202,10 @@ class AccountWidget(QtWidgets.QFrame):
 
     def _delete_account(self) -> None:
         """Delete account."""
-        self._app_config.delete_account(self._keyring_account.id)  # type: ignore[arg-type]
+        account_id = self._keyring_account.get_id()
+        if account_id is None:
+            return
+        self._app_config.delete_account(int(account_id))
         Toast.show_message(
             f"Account '{self._keyring_account.username}' deleted",
             type_=ToastType.SUCCESS,

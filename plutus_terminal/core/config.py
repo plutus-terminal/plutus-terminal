@@ -88,7 +88,7 @@ class AccountService:
             account = KeyringAccount.get_by_id(account_id)
             keyring.delete_password(AppConfig.SERVICE_NAME, str(account.username))
             TradeConfig.delete().where(TradeConfig.account == account_id).execute()
-            KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()
+            account.delete_instance()
 
 
 class TradeConfigService:
