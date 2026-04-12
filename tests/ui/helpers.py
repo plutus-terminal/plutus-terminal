@@ -163,6 +163,7 @@ class AppConfigStub(QtCore.QObject):
         self._accounts = [
             SimpleNamespace(
                 id=1,
+                get_id=lambda: 1,
                 username="demo_account",
                 exchange_name="orderly",
                 exchange_type=0,
@@ -193,8 +194,10 @@ class AppConfigStub(QtCore.QObject):
         exchange_name: str,
     ) -> SimpleNamespace:
         """Create and select a new in-memory account."""
+        account_id = len(self._accounts) + 1
         account = SimpleNamespace(
-            id=len(self._accounts) + 1,
+            id=account_id,
+            get_id=lambda account_id=account_id: account_id,
             username=username,
             exchange_name=exchange_name,
             exchange_type=exchange_type,

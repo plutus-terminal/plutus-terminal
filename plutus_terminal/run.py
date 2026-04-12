@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Run plutus terminal."""
 
 import asyncio
@@ -5,7 +7,7 @@ import gc
 from pathlib import Path
 import platform
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
@@ -18,6 +20,9 @@ from PySide6.QtWidgets import (
 from qasync import QEventLoop, asyncSlot
 
 from plutus_terminal.ui import resources
+
+if TYPE_CHECKING:
+    from plutus_terminal.core.password_guard import PasswordGuard
 
 
 class StyledSplashScreen(QSplashScreen):
@@ -34,7 +39,7 @@ class StyledSplashScreen(QSplashScreen):
         width = self._pixmap.size().width()
         height = self._pixmap.size().height()
         self._pos = QPoint(int(width * 0.6), int(height * 0.75))
-        self._color = Qt.GlobalColor.white
+        self._color: QColor | Qt.GlobalColor = Qt.GlobalColor.white
         self.setFont(QFont("Segoe UI", 18))
         self.font().setBold(True)
         self.font().setUnderline(True)
@@ -136,7 +141,7 @@ class PlutusSystemTrayApp(QApplication):
             if not new_account_dialog.exec():
                 sys.exit()
 
-    def input_password(self) -> "PasswordGuard":  # noqa: F821
+    def input_password(self) -> PasswordGuard:
         """Input password."""
         self.splash_screen.show_message(
             "Unlocking Plutus Terminal...",
@@ -151,6 +156,7 @@ class PlutusSystemTrayApp(QApplication):
 
         self._app_config = AppConfig()
         pass_guard = PasswordGuard(self._app_config)
+        dialog: CreatePasswordDialog | UnlockPasswordDialog
         if self._app_config.get_gui_settings("first_run"):
             dialog = CreatePasswordDialog(pass_guard)
             if not dialog.exec():
