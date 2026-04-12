@@ -22,7 +22,7 @@ dependencies = [
     "google-re2==1.1.20251105",
     "orjson==3.11.8",
     "setproctitle==1.3.7",
-    "cryptography == 44.0.2",
+    "cryptography==46.0.7",
     "plutus-lightweight-charts == 2.2.0",
     "hexbytes==1.3.1",
     "eth-typing==6.0.0",
