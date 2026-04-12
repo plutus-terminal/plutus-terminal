@@ -102,7 +102,7 @@ class TradingChart(QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -445,7 +445,7 @@ class SearchPairModal(QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent, Qt.WindowType.WindowStaysOnTopHint)
@@ -523,7 +523,7 @@ class SearchPairModal(QWidget):
 class VimLineEdit(QLineEdit):
     """Line edit with vim motions for completer."""
 
-    def __init__(self, completer: QCompleter, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, completer: QCompleter, parent: QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(parent)
         self._completer = completer

@@ -325,7 +325,7 @@ class FetcherStub:
         self._cached_orders: list[dict[str, object]] = []
         self._cached_positions: list[dict[str, object]] = []
         self._cached_prices: dict[str, dict[str, object]] = {
-            pair: {"price": Decimal("100000"), "date": datetime.now(timezone.utc)}
+            pair: {"price": Decimal(100000), "date": datetime.now(timezone.utc)}
         }
 
     async def subscribe_to_price(self, pair: str, force: bool = False) -> None:
@@ -381,12 +381,12 @@ class ExchangeStub(QtCore.QObject):
         self.pair_suffix = ""
         self.fetcher = FetcherStub(pair)
         self.cached_prices = self.fetcher.cached_prices
-        self.stable_balance = Decimal("200")
+        self.stable_balance = Decimal(200)
         self.account_info = {
-            "Available Balance + Unsettled PnL": Decimal("200"),
-            "Available Balance": Decimal("180"),
-            "Unsettled PnL": Decimal("20"),
-            "Free Balance": Decimal("150"),
+            "Available Balance + Unsettled PnL": Decimal(200),
+            "Available Balance": Decimal(180),
+            "Unsettled PnL": Decimal(20),
+            "Free Balance": Decimal(150),
             "Account Id": "acct-123",
         }
         self.created_orders: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -419,7 +419,7 @@ class ExchangeStub(QtCore.QObject):
 
     def calculate_margin_fee(self, position_size: Decimal) -> Decimal:
         """Return a deterministic fee preview."""
-        return position_size / Decimal("100")
+        return position_size / Decimal(100)
 
     def calculate_liquidation_price(self, perps_position: dict[str, object]) -> Decimal:
         """Return a deterministic liquidation price."""
@@ -438,15 +438,15 @@ class ExchangeStub(QtCore.QObject):
         current_price: Decimal | None,
     ) -> dict[str, Decimal | bool | str]:
         """Return predictable pnl details."""
-        price = current_price or Decimal("100")
+        price = current_price or Decimal(100)
         return {
-            "pnl_usd_before_fees": price / Decimal("10"),
-            "pnl_percentage_before_fees": Decimal("5"),
-            "funding_fee_usd": Decimal("1"),
-            "opening_fee_usd": Decimal("2"),
-            "closing_fee_usd": Decimal("3"),
-            "pnl_usd_after_fees": price / Decimal("12"),
-            "pnl_percentage_after_fees": Decimal("4"),
+            "pnl_usd_before_fees": price / Decimal(10),
+            "pnl_percentage_before_fees": Decimal(5),
+            "funding_fee_usd": Decimal(1),
+            "opening_fee_usd": Decimal(2),
+            "closing_fee_usd": Decimal(3),
+            "pnl_usd_after_fees": price / Decimal(12),
+            "pnl_percentage_after_fees": Decimal(4),
             "pnl_label": "Unrealized PnL",
             "net_pnl_label": "Close-now PnL",
             "show_closing_fee": True,
@@ -670,12 +670,12 @@ def build_position(
     return {
         "pair": pair,
         "id": 1,
-        "position_size_stable": Decimal("100"),
-        "collateral_stable": Decimal("20"),
-        "open_price": Decimal("100000"),
+        "position_size_stable": Decimal(100),
+        "collateral_stable": Decimal(20),
+        "open_price": Decimal(100000),
         "trade_direction": trade_direction,
-        "leverage": Decimal("5"),
-        "liquidation_price": Decimal("90000"),
+        "leverage": Decimal(5),
+        "liquidation_price": Decimal(90000),
         "extra": {"base_size": Decimal("0.001")},
     }
 
@@ -687,8 +687,8 @@ def build_order(
     trade_direction: PerpsTradeDirection = PerpsTradeDirection.LONG,
     order_type: PerpsTradeType = PerpsTradeType.LIMIT,
     reduce_only: bool = False,
-    trigger_price: Decimal = Decimal("100000"),
-    size_stable: Decimal = Decimal("50"),
+    trigger_price: Decimal = Decimal(100000),
+    size_stable: Decimal = Decimal(50),
     extra: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Create one deterministic order payload."""

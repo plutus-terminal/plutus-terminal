@@ -91,7 +91,7 @@ class PerpsTradeController(QObject):
         if current_widget is None:
             return
         balance = view.exchange.stable_balance
-        percentage = Decimal(current_widget.percent_group.id(button)) / Decimal("100")
+        percentage = Decimal(current_widget.percent_group.id(button)) / Decimal(100)
         current_widget.amount_box.setValue(balance * percentage)
 
     def refresh_trade_summary(self) -> None:

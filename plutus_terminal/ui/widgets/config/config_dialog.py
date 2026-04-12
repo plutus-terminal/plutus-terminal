@@ -26,7 +26,7 @@ class ConfigDialog(QtWidgets.QDialog):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize dialog."""
         super().__init__(parent)

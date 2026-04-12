@@ -13,6 +13,7 @@ from qasync import contextlib
 from plutus_terminal.core.exchange.types import PerpsTradeDirection
 
 T = TypeVar("T", bound=QWidget)
+WidgetStorage = dict[str, dict[int, QWidget]]
 
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 DEFAULT_BAR_NUMBERS = 500
@@ -84,13 +85,15 @@ def list_resources_from_prefix(prefix: str) -> list[str]:
     return qdir.entryList()
 
 
-def create_stored_widget(
-    widget: type[T],
-    storage: dict,
+def create_stored_widget[
+    TWidget: QWidget,
+](
+    widget: type[TWidget],
+    storage: WidgetStorage,
     pair: str,
     trade_direction: PerpsTradeDirection,
     **kwargs: Any,  # noqa: ANN401
-) -> T:
+) -> TWidget:
     """Create stored widget.
 
     Args:
@@ -114,10 +117,10 @@ def create_stored_widget(
 
 
 def get_stored_widget(
-    storage: dict,
+    storage: WidgetStorage,
     pair: str,
     trade_direction: PerpsTradeDirection,
-) -> Optional[QWidget]:
+) -> QWidget | None:
     """Get stored widget.
 
     Args:
@@ -135,13 +138,15 @@ def get_stored_widget(
     )
 
 
-def get_or_create_stored_widget(
-    widget: type[T],
-    storage: dict,
+def get_or_create_stored_widget[
+    TWidget: QWidget,
+](
+    widget: type[TWidget],
+    storage: WidgetStorage,
     pair: str,
     trade_direction: PerpsTradeDirection,
     **kwargs: Any,  # noqa: ANN401
-) -> Optional[QWidget] | T:
+) -> QWidget | None | TWidget:
     """Get or create stored widget.
 
     Args:

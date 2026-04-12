@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import gc
+from importlib import import_module
 from pathlib import Path
 import platform
 import sys
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 from qasync import QEventLoop, asyncSlot
+import setproctitle
 
 from plutus_terminal.ui import resources
 
@@ -100,9 +103,9 @@ class PlutusSystemTrayApp(QApplication):
         """Create controller."""
         self.splash_screen.show_message("Creating Plutus Controller...")
         self.processEvents()
-        from plutus_terminal.controller.plutus_controller import PlutusController
-
-        self.plutus_controller = PlutusController(self.pass_guard, self._app_config)
+        plutus_controller_module = import_module("plutus_terminal.controller.plutus_controller")
+        plutus_controller = plutus_controller_module.PlutusController
+        self.plutus_controller = plutus_controller(self.pass_guard, self._app_config)
 
     def _init_tray(self) -> None:
         """Initialize tray icon."""
@@ -133,11 +136,12 @@ class PlutusSystemTrayApp(QApplication):
 
         If no account is found a new account dialog will be shown.
         """
-        from plutus_terminal.core.config import AppConfig
-        from plutus_terminal.ui.widgets.new_account import NewAccountDialog
-
-        if not AppConfig.get_all_accounts():
-            new_account_dialog = NewAccountDialog(self.pass_guard, self._app_config)
+        config_module = import_module("plutus_terminal.core.config")
+        new_account_module = import_module("plutus_terminal.ui.widgets.new_account")
+        app_config = config_module.AppConfig
+        new_account_dialog_cls = new_account_module.NewAccountDialog
+        if not app_config.get_all_accounts():
+            new_account_dialog = new_account_dialog_cls(self.pass_guard, self._app_config)
             if not new_account_dialog.exec():
                 sys.exit()
 
@@ -147,22 +151,22 @@ class PlutusSystemTrayApp(QApplication):
             "Unlocking Plutus Terminal...",
         )
         self.processEvents()
-        from plutus_terminal.core.config import AppConfig
-        from plutus_terminal.core.password_guard import PasswordGuard
-        from plutus_terminal.ui.widgets.password_dialog import (
-            CreatePasswordDialog,
-            UnlockPasswordDialog,
-        )
-
-        self._app_config = AppConfig()
-        pass_guard = PasswordGuard(self._app_config)
-        dialog: CreatePasswordDialog | UnlockPasswordDialog
+        config_module = import_module("plutus_terminal.core.config")
+        password_guard_module = import_module("plutus_terminal.core.password_guard")
+        password_dialog_module = import_module("plutus_terminal.ui.widgets.password_dialog")
+        app_config = config_module.AppConfig
+        password_guard_cls = password_guard_module.PasswordGuard
+        create_password_dialog = password_dialog_module.CreatePasswordDialog
+        unlock_password_dialog = password_dialog_module.UnlockPasswordDialog
+        self._app_config = app_config()
+        pass_guard = password_guard_cls(self._app_config)
+        dialog: Any
         if self._app_config.get_gui_settings("first_run"):
-            dialog = CreatePasswordDialog(pass_guard)
+            dialog = create_password_dialog(pass_guard)
             if not dialog.exec():
                 sys.exit()
         else:
-            dialog = UnlockPasswordDialog(pass_guard)
+            dialog = unlock_password_dialog(pass_guard)
             if not dialog.exec():
                 sys.exit()
         if not pass_guard.password:
@@ -184,16 +188,13 @@ def run() -> None:
 
     # Set process name
     if platform.system() == "Windows":
-        import ctypes
-
         ctypes.windll.kernel32.SetConsoleTitleW("Plutus Terminal")  # type: ignore
     else:
-        import setproctitle
-
         setproctitle.setproctitle("Plutus Terminal")
 
-    from plutus_terminal.log_utils import install_asyncio_exception_logging, setup_logging
-
+    log_utils = import_module("plutus_terminal.log_utils")
+    install_asyncio_exception_logging = log_utils.install_asyncio_exception_logging
+    setup_logging = log_utils.setup_logging
     setup_logging()
 
     event_loop = QEventLoop(app)

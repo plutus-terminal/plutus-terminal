@@ -39,7 +39,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -607,7 +607,7 @@ class MarketTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         quote_symbol: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -693,7 +693,7 @@ class LimitTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         quote_symbol: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -796,7 +796,7 @@ class StopTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         quote_symbol: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)

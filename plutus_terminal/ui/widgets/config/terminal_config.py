@@ -25,7 +25,7 @@ class TerminalConfig(QtWidgets.QWidget):
         self,
         app_config: AppConfig,
         on_settings_imported: Callable[[], None] | None = None,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)

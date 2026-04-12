@@ -28,7 +28,7 @@ class PositionCloseAction(QWidgetAction):
     reduce_clicked = Signal(dict)
     set_price_clicked = Signal()
 
-    def __init__(self, position: PerpsPosition, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, position: PerpsPosition, parent: QWidget | None = None) -> None:
         """Initialize widget."""
         super().__init__(parent)  # type: ignore[arg-type]
         self._position = position
@@ -147,7 +147,7 @@ class PositionCloseAction(QWidgetAction):
         """Set amount from button."""
         self._set_amount_spinbox(
             Decimal(self._amount_group.id(button))
-            / Decimal("100")
+            / Decimal(100)
             * self._position["position_size_stable"],
         )
 

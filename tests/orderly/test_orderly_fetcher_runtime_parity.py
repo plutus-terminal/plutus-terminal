@@ -313,8 +313,8 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         await self.fetcher._apply_balance_event(event)
 
         # Assert
-        assert self.fetcher._cached_stable_balance == Decimal("7")
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("7"))
+        assert self.fetcher._cached_stable_balance == Decimal(7)
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal(7))
 
     async def test_apply_account_event_updates_fee_rate_bps_for_fee_estimates(self) -> None:
         """Use websocket account fee-rate bps for future opening and closing fee estimates."""
@@ -337,13 +337,13 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
             {
                 "pair": "Crypto.BTC/USDC",
                 "id": 1,
-                "position_size_stable": Decimal("970"),
-                "collateral_stable": Decimal("97"),
-                "open_price": Decimal("97000"),
+                "position_size_stable": Decimal(970),
+                "collateral_stable": Decimal(97),
+                "open_price": Decimal(97000),
                 "trade_direction": PerpsTradeDirection.LONG,
                 "trade_type": PerpsTradeType.MARKET,
-                "leverage": Decimal("10"),
-                "liquidation_price": Decimal("0"),
+                "leverage": Decimal(10),
+                "liquidation_price": Decimal(0),
                 "extra": {},
             },
         )
@@ -352,14 +352,14 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         await self.fetcher._apply_balance_event(event)
 
         # Assert
-        assert self.fetcher.calculate_margin_fee(Decimal("1200")) == Decimal("0.96")
+        assert self.fetcher.calculate_margin_fee(Decimal(1200)) == Decimal("0.96")
         assert self.fetcher.fetch_opening_fee(position) == Decimal("0.776")
-        assert self.fetcher.calculate_close_fee(position, Decimal("120000")) == Decimal("0.96")
+        assert self.fetcher.calculate_close_fee(position, Decimal(120000)) == Decimal("0.96")
 
     async def test_apply_balance_event_ignores_private_payloads_without_usdc_balance(self) -> None:
         """Do not emit balance updates when the private payload lacks the settlement token."""
         # Arrange
-        self.fetcher._cached_stable_balance = Decimal("4")
+        self.fetcher._cached_stable_balance = Decimal(4)
         event = {
             "topic": "balance",
             "data": {"balances": {"BTC": {"holding": "1"}}},
@@ -369,7 +369,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         await self.fetcher._apply_balance_event(event)
 
         # Assert
-        assert self.fetcher._cached_stable_balance == Decimal("4")
+        assert self.fetcher._cached_stable_balance == Decimal(4)
         self.message_bus.balance_fetched.emit.assert_not_called()
 
     async def test_refresh_account_config_uses_bps_from_client_info(self) -> None:
@@ -385,12 +385,12 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         await self.fetcher._refresh_account_config()
 
         # Assert
-        assert self.fetcher.calculate_margin_fee(Decimal("1200")) == Decimal("0.96")
+        assert self.fetcher.calculate_margin_fee(Decimal(1200)) == Decimal("0.96")
 
     async def test_refresh_balance_throttles_client_info_refresh_with_cache_ttl(self) -> None:
         """Avoid re-fetching `/v1/client/info` on every balance poll within the cache window."""
         # Arrange
-        self.fetcher.fetch_stable_balance = AsyncMock(return_value=Decimal("7"))  # type: ignore[method-assign]
+        self.fetcher.fetch_stable_balance = AsyncMock(return_value=Decimal(7))  # type: ignore[method-assign]
         self.request_private.return_value = {
             "data": {
                 "futures_taker_fee_rate": 8,
@@ -453,7 +453,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         """Parse private position payloads into cache updates and emit trading balance separately."""
         # Arrange
-        self.fetcher._cached_stable_balance = Decimal("10")
+        self.fetcher._cached_stable_balance = Decimal(10)
         event = {
             "topic": "position",
             "data": {
@@ -482,7 +482,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         self.message_bus.positions_fetched.emit.assert_called_once_with(
             self.fetcher._cached_positions
         )
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("10"))
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal(10))
 
     async def test_fetch_all_positions_retries_transient_request_errors(self) -> None:
         """Retry transient transport failures before giving up on positions snapshots."""
@@ -541,12 +541,12 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         assert self.fetcher._cached_positions == []
         self.message_bus.positions_fetched.emit.assert_called_once_with([])
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("0"))
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal(0))
 
     async def test_apply_positions_event_prefers_free_collateral_for_trading_balance(self) -> None:
         """Use account free collateral as the emitted trading balance when positions payload provides it."""
         # Arrange
-        self.fetcher._cached_stable_balance = Decimal("10")
+        self.fetcher._cached_stable_balance = Decimal(10)
         event = {
             "topic": "position",
             "data": {
@@ -657,7 +657,7 @@ class OrderlyFetcherRuntimeParityTests(unittest.IsolatedAsyncioTestCase):
         await self.fetcher.receive_subscribed_prices()
 
         # Assert
-        assert self.fetcher._cached_prices["Crypto.BTC/USDC"]["price"] == Decimal("97500")
+        assert self.fetcher._cached_prices["Crypto.BTC/USDC"]["price"] == Decimal(97500)
 
     async def test_consume_private_events_refreshes_orders_and_positions_for_execution_topics(
         self,

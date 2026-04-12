@@ -1,4 +1,4 @@
-# ruff: noqa: S101, PT009, PT027, PLR2004, SLF001
+# ruff: noqa: S101, PT027, PLR2004, SLF001
 
 """Focused parity tests for Orderly exchange orchestration behavior."""
 
@@ -39,7 +39,7 @@ def _build_app_config() -> SimpleNamespace:
 
 def _build_market_registry(
     *,
-    min_notional: Decimal = Decimal("1"),
+    min_notional: Decimal = Decimal(1),
     max_leverage: int = 20,
 ) -> SimpleNamespace:
     market_rule = SimpleNamespace(min_notional=min_notional, max_leverage=max_leverage)
@@ -81,7 +81,7 @@ def _build_exchange(
         _cached_orders=[{"id": "order-1"}],
         _cached_positions=[{"id": 7}],
         _cached_prices={},
-        _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+        _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
     )
     exchange._max_leverage = max_leverage
     exchange._credentials = SimpleNamespace(account_id="acct-12345678")
@@ -371,14 +371,14 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             _cached_orders=[{"id": "abc"}],
             _cached_positions=[{"id": 1}],
             _cached_prices={},
-            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
         )
         exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
 
         # Act
         await exchange.create_order(
             pair="Crypto.BTC/USDC",
-            amount=Decimal("10"),
+            amount=Decimal(10),
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
             execution_price=Decimal("97500.5"),
@@ -388,7 +388,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         trader.create_order.assert_awaited_once()
         trade_arguments = trader.create_order.await_args.args[0]
         assert trade_arguments["symbol"] == "PERP_BTC_USDC"
-        assert trade_arguments["size_stable"] == Decimal("50")
+        assert trade_arguments["size_stable"] == Decimal(50)
         fetcher.fetch_all_orders.assert_awaited_once()
         fetcher.fetch_all_positions.assert_awaited_once()
         message = message_bus.send_message.emit.call_args.args[0]
@@ -400,7 +400,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
     async def test_create_order_does_not_apply_min_notional_before_leverage(self) -> None:
         """Defer Orderly notional validation until the final leveraged payload is built."""
         # Arrange
-        market_registry = _build_market_registry(min_notional=Decimal("25"))
+        market_registry = _build_market_registry(min_notional=Decimal(25))
         trader = SimpleNamespace(create_order=AsyncMock(return_value={"order_id": "abc"}))
         fetcher = SimpleNamespace(
             fetch_all_orders=AsyncMock(),
@@ -409,7 +409,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             _cached_orders=[{"id": "abc"}],
             _cached_positions=[{"id": 1}],
             _cached_prices={},
-            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
         )
         exchange = _build_exchange(market_registry=market_registry, trader=trader)
         exchange._fetcher = fetcher
@@ -417,7 +417,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         # Act
         await exchange.create_order(
             pair="Crypto.BTC/USDC",
-            amount=Decimal("10"),
+            amount=Decimal(10),
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
             execution_price=Decimal("97500.5"),
@@ -426,7 +426,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         # Assert
         trader.create_order.assert_awaited_once()
         trade_arguments = trader.create_order.await_args.args[0]
-        assert trade_arguments["size_stable"] == Decimal("50")
+        assert trade_arguments["size_stable"] == Decimal(50)
 
     async def test_create_order_surfaces_auth_context_in_user_message_and_skips_refresh(
         self,
@@ -444,14 +444,14 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             _cached_orders=[],
             _cached_positions=[],
             _cached_prices={},
-            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
         )
         exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
 
         # Act
         await exchange.create_order(
             pair="Crypto.BTC/USDC",
-            amount=Decimal("10"),
+            amount=Decimal(10),
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
             execution_price=Decimal("97500.5"),
@@ -487,14 +487,14 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             _cached_orders=[{"id": "abc"}],
             _cached_positions=[{"id": 1}],
             _cached_prices={},
-            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
         )
         exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
 
         # Act
         await exchange.create_order(
             pair="Crypto.BTC/USDC",
-            amount=Decimal("10"),
+            amount=Decimal(10),
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
             execution_price=Decimal("97500.5"),
@@ -522,14 +522,14 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             _cached_orders=[],
             _cached_positions=[],
             _cached_prices={},
-            _balance_with_unsettled_pnl=Mock(return_value=Decimal("100")),
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
         )
         exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
 
         # Act
         await exchange.create_order(
             pair="Crypto.BTC/USDC",
-            amount=Decimal("10"),
+            amount=Decimal(10),
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
             execution_price=Decimal("97500.5"),
@@ -556,7 +556,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             "id": "ui-fallback-id",
             "pair": "Crypto.BTC/USDC",
             "trigger_price": Decimal("97500.5"),
-            "size_stable": Decimal("50"),
+            "size_stable": Decimal(50),
             "trade_direction": PerpsTradeDirection.LONG,
             "order_type": PerpsTradeType.LIMIT,
             "reduce_only": False,
@@ -596,14 +596,14 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         }
 
         # Act
-        await exchange.edit_order(order_data, Decimal("50"), Decimal("98000"))
+        await exchange.edit_order(order_data, Decimal(50), Decimal(98000))
 
         # Assert
         trader.edit_order.assert_awaited_once()
         trade_arguments = trader.edit_order.await_args.args[0]
         assert trade_arguments["symbol"] == "PERP_BTC_USDC"
-        assert trade_arguments["size_stable"] == Decimal("50")
-        assert trade_arguments["price"] == Decimal("98000")
+        assert trade_arguments["size_stable"] == Decimal(50)
+        assert trade_arguments["price"] == Decimal(98000)
         fetcher.fetch_all_orders.assert_awaited_once()
         message_bus.orders_fetched.emit.assert_called_once_with(fetcher._cached_orders)
 
@@ -619,8 +619,8 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
                     "pair": "Crypto.BTC/USDC",
                     "trade_direction": PerpsTradeDirection.LONG,
                     "order_type": PerpsTradeType.TRIGGER_TP,
-                    "trigger_price": Decimal("99000"),
-                    "size_stable": Decimal("50"),
+                    "trigger_price": Decimal(99000),
+                    "size_stable": Decimal(50),
                     "reduce_only": True,
                     "extra": {"root_algo_order_id": "root-1", "symbol": "PERP_BTC_USDC"},
                 },
@@ -629,8 +629,8 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
                     "pair": "Crypto.BTC/USDC",
                     "trade_direction": PerpsTradeDirection.LONG,
                     "order_type": PerpsTradeType.TRIGGER_SL,
-                    "trigger_price": Decimal("94000"),
-                    "size_stable": Decimal("50"),
+                    "trigger_price": Decimal(94000),
+                    "size_stable": Decimal(50),
                     "reduce_only": True,
                     "extra": {"root_algo_order_id": "root-1", "symbol": "PERP_BTC_USDC"},
                 },
@@ -640,14 +640,14 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         order_data = fetcher._cached_orders[0]
 
         # Act
-        await exchange.edit_order(order_data, Decimal("50"), Decimal("99500"))
+        await exchange.edit_order(order_data, Decimal(50), Decimal(99500))
 
         # Assert
         trader.edit_order.assert_awaited_once()
         trade_arguments = trader.edit_order.await_args.args[0]
         assert trade_arguments["order_id"] == "root-1"
-        assert trade_arguments["take_profit"] == Decimal("99500")
-        assert trade_arguments["stop_loss"] == Decimal("94000")
+        assert trade_arguments["take_profit"] == Decimal(99500)
+        assert trade_arguments["stop_loss"] == Decimal(94000)
 
     async def test_edit_order_surfaces_rate_limit_context_in_user_message(self) -> None:
         """Report rate-limit failures without emitting stale refreshed order state."""
@@ -668,7 +668,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         }
 
         # Act
-        await exchange.edit_order(order_data, Decimal("50"), Decimal("98000"))
+        await exchange.edit_order(order_data, Decimal(50), Decimal(98000))
 
         # Assert
         message = message_bus.send_message.emit.call_args.args[0]
@@ -691,7 +691,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         position = {
             "pair": "Crypto.BTC/USDC",
             "open_price": Decimal("97500.5"),
-            "position_size_stable": Decimal("100"),
+            "position_size_stable": Decimal(100),
             "trade_direction": PerpsTradeDirection.LONG,
             "extra": {"base_size": "0.00102564"},
         }
@@ -723,7 +723,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         position = {
             "pair": "Crypto.BTC/USDC",
             "open_price": Decimal("97500.5"),
-            "position_size_stable": Decimal("100"),
+            "position_size_stable": Decimal(100),
             "trade_direction": PerpsTradeDirection.LONG,
             "extra": {},
         }
@@ -752,11 +752,11 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         position = {
             "pair": "Crypto.BTC/USDC",
             "id": 77,
-            "position_size_stable": Decimal("970"),
-            "collateral_stable": Decimal("97"),
-            "open_price": Decimal("97000"),
+            "position_size_stable": Decimal(970),
+            "collateral_stable": Decimal(97),
+            "open_price": Decimal(97000),
             "trade_direction": PerpsTradeDirection.LONG,
-            "leverage": Decimal("10"),
+            "leverage": Decimal(10),
             "liquidation_price": Decimal("87456.12"),
             "extra": {"unsettled_pnl": "4.255"},
         }
@@ -780,7 +780,7 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         """Expose the balance breakdown needed by the trading UI."""
         # Arrange
         fetcher = SimpleNamespace(
-            available_balance=Mock(return_value=Decimal("100")),
+            available_balance=Mock(return_value=Decimal(100)),
             available_balance_with_unsettled_pnl=Mock(return_value=Decimal("112.5")),
             unsettled_pnl_total=Mock(return_value=Decimal("12.5")),
             trading_balance=Mock(return_value=Decimal("87.5")),
@@ -792,6 +792,6 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         assert account_info["Free Balance"] == Decimal("87.5")
-        assert account_info["Available Balance"] == Decimal("100")
+        assert account_info["Available Balance"] == Decimal(100)
         assert account_info["Available Balance + Unsettled PnL"] == Decimal("112.5")
         assert account_info["Unsettled PnL"] == Decimal("12.5")

@@ -154,5 +154,5 @@ class NewAccountField(TypedDict):
 class NewAccountInfo(TypedDict):
     """New account info."""
 
-    referral_link: NotRequired[Optional[str]]
+    referral_link: NotRequired[str | None]
     fields: list[NewAccountField]

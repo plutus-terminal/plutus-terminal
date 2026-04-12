@@ -39,7 +39,7 @@ dev = [
     "pyside6-stubs==6.7.3.0",
     "pandas-stubs==3.0.0.260204",
     "types-peewee==4.0.0.20260408",
-    "ruff==0.11.6",
+    "ruff==0.15.10",
     "pre-commit==4.2.0",
     "pytest>=9.0.2",
 ]

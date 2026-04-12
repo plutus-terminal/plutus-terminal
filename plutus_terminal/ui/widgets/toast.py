@@ -66,7 +66,7 @@ class Toast(QFrame):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         desktop: bool = False,
         message_id: bytes | None = None,
         toast_kind: ToastKind = ToastKind.MESSAGE,

@@ -1,4 +1,4 @@
-# ruff: noqa: S101, PT009, PT027, SLF001
+# ruff: noqa: S101, PT027, SLF001
 
 """Lifecycle parity tests for Orderly websocket auth, ack, and reconnect flows."""
 

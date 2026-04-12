@@ -26,7 +26,7 @@ class NewAccountDialog(QtWidgets.QDialog):
         self,
         pass_guard: PasswordGuard,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -34,7 +34,7 @@ class NewAccountDialog(QtWidgets.QDialog):
         self._app_config = app_config
 
         self.main_layout = QtWidgets.QVBoxLayout(self)
-        self.new_account: Optional[KeyringAccount] = None
+        self.new_account: KeyringAccount | None = None
 
         self._add_acc_icon = QtWidgets.QLabel()
         self._info_group = QtWidgets.QGroupBox("Account Info:")

@@ -27,10 +27,10 @@ class _ExchangeStub:
 
     def __init__(self) -> None:
         self.account_info = {
-            "Available Balance + Unsettled PnL": Decimal("100"),
-            "Free Balance": Decimal("80"),
-            "Available Balance": Decimal("95"),
-            "Unsettled PnL": Decimal("5"),
+            "Available Balance + Unsettled PnL": Decimal(100),
+            "Free Balance": Decimal(80),
+            "Available Balance": Decimal(95),
+            "Unsettled PnL": Decimal(5),
             "Account Id": "acct-123",
         }
 
@@ -94,13 +94,13 @@ class OrderlyAccountInfoWidgetParityTests(unittest.TestCase):
             ui_controller.current_exchange.account_info = {
                 "Available Balance + Unsettled PnL": Decimal("112.5"),
                 "Free Balance": Decimal("87.5"),
-                "Available Balance": Decimal("100"),
+                "Available Balance": Decimal(100),
                 "Unsettled PnL": Decimal("12.5"),
                 "Account Id": "acct-456",
             }
 
             # Act
-            ui_controller.message_bus.balance_fetched.emit(Decimal("0"))
+            ui_controller.message_bus.balance_fetched.emit(Decimal(0))
             QtTest.QTest.qWait(15)
             self._app.processEvents()
 

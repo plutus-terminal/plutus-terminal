@@ -231,7 +231,7 @@ def test_account_info_refreshes_balance_summary() -> None:
     ):
         widget = AccountInfo(controller)
 
-        controller.message_bus.balance_fetched.emit(Decimal("0"))
+        controller.message_bus.balance_fetched.emit(Decimal(0))
         QtTest.QTest.qWait(15)
         process_events()
 
@@ -250,7 +250,7 @@ def test_account_info_refreshes_snapshot_for_balance_and_position_signals() -> N
         widget = AccountInfo(controller)
         widget.refresh_exchange_account_info = Mock()
 
-        controller.message_bus.balance_fetched.emit(Decimal("0"))
+        controller.message_bus.balance_fetched.emit(Decimal(0))
         controller.message_bus.positions_fetched.emit([build_position()])
 
         assert widget.refresh_exchange_account_info.call_count == 0
@@ -270,7 +270,7 @@ def test_perps_trade_widget_percent_button_sets_amount() -> None:
 
     widget._handle_percent_button_click(first_button)
 
-    assert market.amount_box.value() == Decimal("50")
+    assert market.amount_box.value() == Decimal(50)
 
 
 def test_perps_trade_widget_refreshes_liquidation_labels_from_market_data() -> None:
@@ -282,7 +282,7 @@ def test_perps_trade_widget_refreshes_liquidation_labels_from_market_data() -> N
         return_value=batcher,
     ):
         widget = PerpsTradeWidget(controller)
-        widget._trade_type_market.amount_box.setValue(Decimal("10"))
+        widget._trade_type_market.amount_box.setValue(Decimal(10))
         widget._liq_price_long_value.setText("--")
         widget._liq_price_short_value.setText("--")
 
@@ -305,23 +305,23 @@ def test_market_limit_and_stop_widgets_return_current_values() -> None:
     take_profit = 1.5
     stop_loss = 0.5
     market = MarketTradeWidget("USDC")
-    market.amount_box.setValue(Decimal("12"))
+    market.amount_box.setValue(Decimal(12))
     market.take_profit_box.setValue(take_profit)
     market.stop_loss_box.setValue(stop_loss)
     limit = LimitTradeWidget("USDC")
-    limit.amount_box.setValue(Decimal("9"))
-    limit.target_price_box.setValue(Decimal("100"))
+    limit.amount_box.setValue(Decimal(9))
+    limit.target_price_box.setValue(Decimal(100))
     stop = StopTradeWidget("USDC")
-    stop.amount_box.setValue(Decimal("7"))
-    stop.trigger_price_box.setValue(Decimal("88"))
+    stop.amount_box.setValue(Decimal(7))
+    stop.trigger_price_box.setValue(Decimal(88))
 
-    assert market.get_amount() == Decimal("12")
+    assert market.get_amount() == Decimal(12)
     assert market.get_take_profit() == take_profit
     assert market.get_stop_loss() == stop_loss
-    assert limit.get_amount() == Decimal("9")
-    assert limit.get_target_price() == Decimal("100")
-    assert stop.get_amount() == Decimal("7")
-    assert stop.get_trigger_price() == Decimal("88")
+    assert limit.get_amount() == Decimal(9)
+    assert limit.get_target_price() == Decimal(100)
+    assert stop.get_amount() == Decimal(7)
+    assert stop.get_trigger_price() == Decimal(88)
 
 
 def test_liquidation_price_cell_formats_price() -> None:
@@ -336,13 +336,13 @@ def test_liquidation_price_cell_formats_price() -> None:
 def test_pnl_breakdown_builds_fee_tooltip() -> None:
     """PnL breakdown tooltips should include fees and net pnl labels."""
     breakdown = PnlBreakdown()
-    breakdown.set_pnl(Decimal("10"), Decimal("5"))
+    breakdown.set_pnl(Decimal(10), Decimal(5))
     breakdown.set_tooltip_content(
-        Decimal("12"),
-        Decimal("1"),
-        Decimal("2"),
-        Decimal("3"),
-        Decimal("6"),
+        Decimal(12),
+        Decimal(1),
+        Decimal(2),
+        Decimal(3),
+        Decimal(6),
         funding_fee_included=True,
         labels=("Gross PnL", "Net PnL"),
         push_tool_tip=False,
@@ -359,14 +359,14 @@ def test_manage_order_builds_paired_reduce_request() -> None:
     position = build_position()
     dialog = ManageOrder(order, ExchangeStub(), position)
     dialog._pair_order_checkbox.setChecked(True)
-    dialog.trigger_box.setValue(Decimal("110000"))
-    dialog.secondary_trigger_box.setValue(Decimal("95000"))
+    dialog.trigger_box.setValue(Decimal(110000))
+    dialog.secondary_trigger_box.setValue(Decimal(95000))
 
     payload = dialog._build_reduce_order_request()
 
     assert payload is not None
-    assert payload["take_profit_price"] == Decimal("110000")
-    assert payload["stop_loss_price"] == Decimal("95000")
+    assert payload["take_profit_price"] == Decimal(110000)
+    assert payload["stop_loss_price"] == Decimal(95000)
 
 
 def test_manage_order_warns_for_invalid_reduce_trigger() -> None:
@@ -374,7 +374,7 @@ def test_manage_order_warns_for_invalid_reduce_trigger() -> None:
     order = build_order(order_type=PerpsTradeType.TRIGGER_TP, reduce_only=True)
     position = build_position()
     dialog = ManageOrder(order, ExchangeStub(), position)
-    dialog.trigger_box.setValue(Decimal("90000"))
+    dialog.trigger_box.setValue(Decimal(90000))
 
     with patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
         payload = dialog._build_reduce_order_request()
@@ -394,11 +394,11 @@ def test_position_actions_cell_routes_tp_sl_request_to_ui_controller() -> None:
         cell._handle_tp_sl_clicked,
         {
             "pair": "Crypto.BTC/USDC",
-            "size_stable": Decimal("50"),
+            "size_stable": Decimal(50),
             "trade_direction": PerpsTradeDirection.LONG,
-            "take_profit_price": Decimal("110000"),
-            "stop_loss_price": Decimal("95000"),
-            "reference_price": Decimal("110000"),
+            "take_profit_price": Decimal(110000),
+            "stop_loss_price": Decimal(95000),
+            "reference_price": Decimal(110000),
         },
     )
 
@@ -415,13 +415,13 @@ def test_order_actions_cell_edits_order_using_exchange() -> None:
         cell._edit_order,
         {
             **build_order(),
-            "size_stable": Decimal("75"),
-            "trigger_price": Decimal("101000"),
+            "size_stable": Decimal(75),
+            "trigger_price": Decimal(101000),
         },
     )
 
-    assert exchange.edited_orders[0]["new_size_stable"] == Decimal("75")
-    assert exchange.edited_orders[0]["new_execution_price"] == Decimal("101000")
+    assert exchange.edited_orders[0]["new_size_stable"] == Decimal(75)
+    assert exchange.edited_orders[0]["new_execution_price"] == Decimal(101000)
 
 
 def test_trade_table_updates_tabs_and_refreshes_liquidation_column() -> None:
@@ -445,12 +445,12 @@ def test_trade_table_keeps_distinct_action_cells_for_same_pair_orders() -> None:
     widget = TradeTable(controller)
     older_order = build_order(
         order_id="",
-        trigger_price=Decimal("100000"),
+        trigger_price=Decimal(100000),
         extra={"client_order_id": "client-old", "updated_time": "1"},
     )
     newer_order = build_order(
         order_id="",
-        trigger_price=Decimal("101000"),
+        trigger_price=Decimal(101000),
         extra={"client_order_id": "client-new", "updated_time": "2"},
     )
 
@@ -467,15 +467,15 @@ def test_trade_table_keeps_distinct_action_cells_for_same_pair_orders() -> None:
 
     run_async(second_cell.cancel_order)
 
-    assert controller.current_exchange.cancelled_orders[0]["trigger_price"] == Decimal("100000")
+    assert controller.current_exchange.cancelled_orders[0]["trigger_price"] == Decimal(100000)
 
 
 def test_trade_table_cancel_survives_row_removal_during_inflight_close() -> None:
     """Canceling one row should survive the table reset that removes that same row."""
     controller = UIControllerStub()
     widget = TradeTable(controller)
-    older_order = build_order(order_id="older", trigger_price=Decimal("100000"))
-    newer_order = build_order(order_id="newer", trigger_price=Decimal("101000"))
+    older_order = build_order(order_id="older", trigger_price=Decimal(100000))
+    newer_order = build_order(order_id="newer", trigger_price=Decimal(101000))
     widget.update_orders([newer_order, older_order])
     process_events()
 
@@ -531,13 +531,13 @@ def test_trade_table_forwards_cached_prices_to_positions_table() -> None:
         widget._positions_table.update_cached_prices = Mock()
         first_prices = {
             "Crypto.BTC/USDC": {
-                "price": Decimal("100500"),
+                "price": Decimal(100500),
                 "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
             }
         }
         second_prices = {
             "Crypto.BTC/USDC": {
-                "price": Decimal("100750"),
+                "price": Decimal(100750),
                 "date": QtCore.QDateTime.currentDateTimeUtc().toSecsSinceEpoch(),
             }
         }
@@ -559,12 +559,12 @@ def test_trade_table_recreates_deleted_cached_action_cell() -> None:
     widget = TradeTable(controller)
     older_order = build_order(
         order_id="",
-        trigger_price=Decimal("100000"),
+        trigger_price=Decimal(100000),
         extra={"client_order_id": "client-old", "updated_time": "1"},
     )
     newer_order = build_order(
         order_id="",
-        trigger_price=Decimal("101000"),
+        trigger_price=Decimal(101000),
         extra={"client_order_id": "client-new", "updated_time": "2"},
     )
 
@@ -596,8 +596,8 @@ def test_trade_table_prunes_deleted_cached_action_cell_without_crashing() -> Non
     """Pruning stale rows should ignore cached widgets whose C++ object is already gone."""
     controller = UIControllerStub()
     widget = TradeTable(controller)
-    older_order = build_order(order_id="older", trigger_price=Decimal("100000"))
-    newer_order = build_order(order_id="newer", trigger_price=Decimal("101000"))
+    older_order = build_order(order_id="older", trigger_price=Decimal(100000))
+    newer_order = build_order(order_id="newer", trigger_price=Decimal(101000))
 
     widget.update_orders([newer_order, older_order])
     process_events()
@@ -623,12 +623,12 @@ def test_order_identity_key_distinguishes_same_pair_orders_with_blank_ids() -> N
     """Fallback identity keys should keep multiple same-pair orders distinct in the UI."""
     older_order = build_order(
         order_id="",
-        trigger_price=Decimal("100000"),
+        trigger_price=Decimal(100000),
         extra={"client_order_id": "client-old", "updated_time": "1"},
     )
     newer_order = build_order(
         order_id="",
-        trigger_price=Decimal("101000"),
+        trigger_price=Decimal(101000),
         extra={"client_order_id": "client-new", "updated_time": "2"},
     )
 
@@ -924,8 +924,8 @@ def test_trading_chart_handles_multi_order_refresh_after_chart_reset() -> None:
     with patch("plutus_terminal.ui.widgets.trading_chart.QtChart", _ResetInvalidatingQtChart):
         chart = TradingChart(controller)
         orders = [
-            build_order(order_id="first", trigger_price=Decimal("100000")),
-            build_order(order_id="second", trigger_price=Decimal("101000")),
+            build_order(order_id="first", trigger_price=Decimal(100000)),
+            build_order(order_id="second", trigger_price=Decimal(101000)),
         ]
         history = pandas.DataFrame({"date": [pandas.Timestamp("2024-01-01")], "close": [1]})
 

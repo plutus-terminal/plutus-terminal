@@ -19,7 +19,7 @@ class FilterAction(Protocol):
         self,
         news_data: NewsData,
         text_data_key: str,
-        search_result: Optional[TSResult],
+        search_result: TSResult | None,
         **kwargs: dict,
     ) -> Any: ...  # noqa: ANN401
 
@@ -27,7 +27,7 @@ class FilterAction(Protocol):
 def coin_association_action(
     news_data: NewsData,
     text_data_key: str,
-    search_result: Optional[TSResult],
+    search_result: TSResult | None,
     **kwargs: dict[Any, Any],
 ) -> NewsData:
     """Associate coin with news if found.
@@ -68,7 +68,7 @@ def coin_association_action(
 def sound_association_action(
     news_data: NewsData,
     text_data_key: str,
-    search_result: Optional[TSResult],
+    search_result: TSResult | None,
     **kwargs: dict[Any, Any],
 ) -> NewsData:
     """Associate sound with news if found.
@@ -110,7 +110,7 @@ def sound_association_action(
 def ignore_action(
     news_data: NewsData,
     text_data_key: str,  # noqa: ARG001
-    search_result: Optional[TSResult],  # noqa: ARG001
+    search_result: TSResult | None,  # noqa: ARG001
     **kwargs: dict[Any, Any],  # noqa: ARG001
 ) -> NewsData:
     """Ignore news.

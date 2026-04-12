@@ -44,10 +44,10 @@ class _AppConfig(QtCore.QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self.trade_value_lowest = Decimal("10")
-        self.trade_value_low = Decimal("25")
-        self.trade_value_medium = Decimal("50")
-        self.trade_value_high = Decimal("100")
+        self.trade_value_lowest = Decimal(10)
+        self.trade_value_low = Decimal(25)
+        self.trade_value_medium = Decimal(50)
+        self.trade_value_high = Decimal(100)
         self.leverage_button_1 = 2
         self.leverage_button_2 = 5
         self.leverage_button_3 = 10
@@ -86,10 +86,10 @@ class _ExchangeStub:
         "Crypto.ETH/USDC": _ETH_PAIR_MAX_LEVERAGE,
     }
     cached_prices: ClassVar[dict[str, dict[str, Decimal]]] = {
-        "Crypto.BTC/USDC": {"price": Decimal("97500")},
-        "Crypto.ETH/USDC": {"price": Decimal("3000")},
+        "Crypto.BTC/USDC": {"price": Decimal(97500)},
+        "Crypto.ETH/USDC": {"price": Decimal(3000)},
     }
-    stable_balance: ClassVar[Decimal] = Decimal("100")
+    stable_balance: ClassVar[Decimal] = Decimal(100)
 
     @staticmethod
     def format_simple_pair_from_pair(pair: str) -> str:
@@ -105,11 +105,11 @@ class _ExchangeStub:
 
     @staticmethod
     def calculate_margin_fee(_position_size: Decimal) -> Decimal:
-        return Decimal("1")
+        return Decimal(1)
 
     @staticmethod
     def calculate_liquidation_price(_position: object) -> Decimal:
-        return Decimal("90000")
+        return Decimal(90000)
 
 
 class _UIControllerStub(QtCore.QObject):
@@ -159,7 +159,7 @@ class OrderlyTradeWidgetParityTests(unittest.TestCase):
         ui_controller.current_exchange.create_order = AsyncMock()
         widget = PerpsTradeWidget(ui_controller)
         widget._trade_tab.setCurrentWidget(widget._trade_type_limit)
-        widget._trade_type_limit.amount_box.setValue(Decimal("10"))
+        widget._trade_type_limit.amount_box.setValue(Decimal(10))
         widget._trade_type_limit.target_price_box.setValue(Decimal("97500.5"))
 
         # Act
@@ -175,7 +175,7 @@ class OrderlyTradeWidgetParityTests(unittest.TestCase):
         # Assert
         ui_controller.current_exchange.create_order.assert_awaited_once_with(
             "Crypto.BTC/USDC",
-            Decimal("10"),
+            Decimal(10),
             PerpsTradeDirection.LONG,
             PerpsTradeType.LIMIT,
             Decimal("97500.5"),

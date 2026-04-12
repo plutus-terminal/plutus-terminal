@@ -35,12 +35,12 @@ def _build_market_rule(**overrides: object) -> OrderlyMarketRule:
         base="BTC",
         quote="USDC",
         base_min=Decimal("0.001"),
-        base_max=Decimal("100"),
+        base_max=Decimal(100),
         base_tick=Decimal("0.001"),
-        quote_min=Decimal("1"),
-        quote_max=Decimal("1000000"),
+        quote_min=Decimal(1),
+        quote_max=Decimal(1000000),
         quote_tick=Decimal("0.10"),
-        min_notional=Decimal("10"),
+        min_notional=Decimal(10),
         max_leverage=25,
     )
     return replace(market_rule, **overrides)
@@ -94,12 +94,12 @@ class OrderlyMarketRegistryParityTests(unittest.IsolatedAsyncioTestCase):
             base="BTC",
             quote="USDC",
             base_min=Decimal("0.001"),
-            base_max=Decimal("250"),
+            base_max=Decimal(250),
             base_tick=Decimal("0.001"),
-            quote_min=Decimal("1"),
-            quote_max=Decimal("1000000"),
+            quote_min=Decimal(1),
+            quote_max=Decimal(1000000),
             quote_tick=Decimal("0.10"),
-            min_notional=Decimal("5"),
+            min_notional=Decimal(5),
             max_leverage=40,
         )
 
@@ -138,7 +138,7 @@ class OrderlyMarketRegistryParityTests(unittest.IsolatedAsyncioTestCase):
         assert refreshed_rule.base_min == Decimal("0.01")
         assert refreshed_rule.base_tick == Decimal("0.01")
         assert refreshed_rule.quote_tick == Decimal("0.50")
-        assert refreshed_rule.min_notional == Decimal("25")
+        assert refreshed_rule.min_notional == Decimal(25)
         assert refreshed_rule.max_leverage == 12
 
     async def test_refresh_skips_malformed_rows_and_keeps_valid_perp_rows(self) -> None:
@@ -228,7 +228,7 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
     def test_quantize_helpers_raise_when_tick_is_not_positive(self) -> None:
         """Fail fast when market metadata exposes a non-positive tick size."""
         # Arrange
-        market_rule = _build_market_rule(base_tick=Decimal("0"), quote_tick=Decimal("0"))
+        market_rule = _build_market_rule(base_tick=Decimal(0), quote_tick=Decimal(0))
 
         # Act / Assert
         with pytest.raises(ValueError, match="step=0"):
@@ -242,14 +242,14 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         # Arrange
         market_rule = _build_market_rule(
             base_min=Decimal("0.01"),
-            base_max=Decimal("10"),
-            min_notional=Decimal("25"),
+            base_max=Decimal(10),
+            min_notional=Decimal(25),
         )
 
         # Act
         result = validate_order_size(
             base_size=Decimal("0.01"),
-            limit_price=Decimal("2500"),
+            limit_price=Decimal(2500),
             market_rule=market_rule,
         )
 
@@ -264,41 +264,41 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         # Act / Assert
         with pytest.raises(InvalidOrderSizeError, match="greater than zero"):
             validate_order_size(
-                base_size=Decimal("0"),
-                limit_price=Decimal("1000"),
+                base_size=Decimal(0),
+                limit_price=Decimal(1000),
                 market_rule=market_rule,
             )
 
-        with pytest.raises(InvalidOrderSizeError, match="Minimum is 0.01"):
+        with pytest.raises(InvalidOrderSizeError, match=r"Minimum is 0\.01"):
             validate_order_size(
                 base_size=Decimal("0.009"),
-                limit_price=Decimal("1000"),
+                limit_price=Decimal(1000),
                 market_rule=market_rule,
             )
 
     def test_validate_order_size_rejects_base_size_above_maximum(self) -> None:
         """Reject sizes that exceed the dynamic base-size ceiling."""
         # Arrange
-        market_rule = _build_market_rule(base_max=Decimal("2"))
+        market_rule = _build_market_rule(base_max=Decimal(2))
 
         # Act / Assert
         with pytest.raises(InvalidOrderSizeError, match="Maximum is 2"):
             validate_order_size(
                 base_size=Decimal("2.001"),
-                limit_price=Decimal("1000"),
+                limit_price=Decimal(1000),
                 market_rule=market_rule,
             )
 
     def test_validate_order_size_rejects_notional_below_minimum(self) -> None:
         """Reject orders whose dynamic notional is below the market minimum."""
         # Arrange
-        market_rule = _build_market_rule(min_notional=Decimal("50"))
+        market_rule = _build_market_rule(min_notional=Decimal(50))
 
         # Act / Assert
         with pytest.raises(InvalidOrderSizeError, match="Minimum is 50"):
             validate_order_size(
                 base_size=Decimal("0.01"),
-                limit_price=Decimal("4000"),
+                limit_price=Decimal(4000),
                 market_rule=market_rule,
             )
 
@@ -306,15 +306,15 @@ class OrderlyConstraintsParityTests(unittest.TestCase):
         """Document the current gap: size validation ignores quote bounds and mark-price range."""
         # Arrange
         market_rule = _build_market_rule(
-            quote_min=Decimal("100"),
-            quote_max=Decimal("110"),
-            min_notional=Decimal("1"),
+            quote_min=Decimal(100),
+            quote_max=Decimal(110),
+            min_notional=Decimal(1),
         )
 
         # Act
         result = validate_order_size(
-            base_size=Decimal("1"),
-            limit_price=Decimal("1000"),
+            base_size=Decimal(1),
+            limit_price=Decimal(1000),
             market_rule=market_rule,
         )
 

@@ -120,13 +120,13 @@ class OrderlyMarketRegistry:
                 pair=pair,
                 base=base,
                 quote=quote,
-                base_min=Decimal("0"),
-                base_max=Decimal("999999999"),
+                base_min=Decimal(0),
+                base_max=Decimal(999999999),
                 base_tick=Decimal("0.00000001"),
-                quote_min=Decimal("0"),
-                quote_max=Decimal("999999999"),
+                quote_min=Decimal(0),
+                quote_max=Decimal(999999999),
                 quote_tick=Decimal("0.01"),
-                min_notional=Decimal("1"),
+                min_notional=Decimal(1),
                 max_leverage=100,
             )
             by_symbol[symbol] = rule

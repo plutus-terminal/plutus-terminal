@@ -25,7 +25,7 @@ class AccountConfig(QtWidgets.QWidget):
         self,
         pass_guard: PasswordGuard,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -142,7 +142,7 @@ class AccountWidget(QtWidgets.QFrame):
         self,
         keyring_account: KeyringAccount,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)

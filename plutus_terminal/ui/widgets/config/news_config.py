@@ -36,7 +36,7 @@ class NewsSourceConfig(QtWidgets.QWidget):
     """Widget to control news API configuration."""
 
     def __init__(
-        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+        self, ui_controller: UIController, parent: QtWidgets.QWidget | None = None
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -428,7 +428,7 @@ class NewsFiltersConfig(QtWidgets.QWidget):
     """Widget to control news filter configuration."""
 
     def __init__(
-        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+        self, ui_controller: UIController, parent: QtWidgets.QWidget | None = None
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -624,7 +624,7 @@ class ColorButton(QtWidgets.QPushButton):
 
     def __init__(
         self,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
         *,
         color: QtGui.QColor,
     ) -> None:
@@ -632,7 +632,7 @@ class ColorButton(QtWidgets.QPushButton):
         super().__init__(parent)
         self.setObjectName("buttonColor")
 
-        self._color: QtGui.QColor = color if color else QtGui.QColor(255, 0, 0)
+        self._color: QtGui.QColor = color or QtGui.QColor(255, 0, 0)
         self.pressed.connect(self.on_color_picker)
         self.set_color(color)
 
@@ -676,7 +676,7 @@ class BaseFilterWidget(QtWidgets.QFrame):
     def __init__(
         self,
         user_filter: UserFilter,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -708,7 +708,7 @@ class KeywordMatchingWidget(BaseFilterWidget):
     def __init__(
         self,
         user_filter: UserFilter,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(user_filter=user_filter, parent=parent)
@@ -873,7 +873,7 @@ class DataMatchingWidget(BaseFilterWidget):
     def __init__(
         self,
         user_filter: UserFilter,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(user_filter=user_filter, parent=parent)

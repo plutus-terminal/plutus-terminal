@@ -63,7 +63,7 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
             _build_trade_arguments(
                 trade_type=PerpsTradeType.TRIGGER_TP,
                 reduce_only=True,
-                take_profit=Decimal("99000"),
+                take_profit=Decimal(99000),
             ),
         )
 
@@ -111,7 +111,7 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
             _build_trade_arguments(
                 trade_type=PerpsTradeType.TRIGGER_SL,
                 reduce_only=True,
-                stop_loss=Decimal("94000"),
+                stop_loss=Decimal(94000),
             ),
         )
 
@@ -135,8 +135,8 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         # Act
         result = await self.trader.create_order(
             _build_trade_arguments(
-                take_profit=Decimal("99000"),
-                stop_loss=Decimal("94000"),
+                take_profit=Decimal(99000),
+                stop_loss=Decimal(94000),
             ),
         )
 
@@ -194,8 +194,8 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         # Act
         result = await self.trader.create_order(
             _build_trade_arguments(
-                take_profit=Decimal("99000"),
-                stop_loss=Decimal("94000"),
+                take_profit=Decimal(99000),
+                stop_loss=Decimal(94000),
             ),
         )
 
@@ -268,11 +268,11 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         """Validate the final Orderly payload notional instead of the raw margin input."""
         # Arrange
         strict_rule = SimpleNamespace(
-            base_min=Decimal("0"),
-            base_max=Decimal("1000"),
+            base_min=Decimal(0),
+            base_max=Decimal(1000),
             base_tick=Decimal("0.00000001"),
             quote_tick=Decimal("0.01"),
-            min_notional=Decimal("25"),
+            min_notional=Decimal(25),
         )
         trader = OrderlyTrader(
             rest_client=cast(
@@ -289,6 +289,6 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(InvalidOrderSizeError, "Minimum is 25"):
             await trader.create_order(
                 _build_trade_arguments(
-                    size_stable=Decimal("10"),
+                    size_stable=Decimal(10),
                 ),
             )

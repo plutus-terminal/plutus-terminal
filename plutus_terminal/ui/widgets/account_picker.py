@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class AccountPicker(QComboBox):
     """Combo box to select account."""
 
-    def __init__(self, ui_controller: UIController, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, ui_controller: UIController, parent: QWidget | None = None) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
         self._ui_controller = ui_controller

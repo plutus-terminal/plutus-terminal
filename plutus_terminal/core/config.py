@@ -14,6 +14,7 @@ from plutus_terminal.core.db.models import (
     TradeConfig,
     UserFilter,
     create_database,
+    ensure_trade_config_columns,
 )
 from plutus_terminal.core.types_ import ExchangeType
 
@@ -325,8 +326,6 @@ class AppConfig(QObject):
         if not DATABASE_PATH.exists():
             create_database()
             return
-        from plutus_terminal.core.db.models import ensure_trade_config_columns
-
         ensure_trade_config_columns()
 
     def _load_services_for_account(self) -> None:
