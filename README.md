@@ -1,6 +1,6 @@
 <div align="center">
 
-![Made with Python](https://img.shields.io/badge/python-3.12-yellow?style=flat&logo=python&logoColor=white&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
+![Made with Python](https://img.shields.io/badge/python-3.13-yellow?style=flat&logo=python&logoColor=white&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
 ![License](https://img.shields.io/badge/license-GPLv3-red?style=flat&link=https%3A%2F%2Fplutuss-organization.gitbook.io%2Fdocumentation)
 [![Docuemntation](https://img.shields.io/badge/documentation-blue?style=flat)](https://plutuss-organization.gitbook.io/documentation/)
 

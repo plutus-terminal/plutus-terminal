@@ -19,7 +19,7 @@ Disable only if user says:
 
 ## Project Snapshot
 
-- Language: Python 3.12 only (`>=3.12,<3.13`).
+- Language: Python 3.13 only (`>=3.13,<3.14`).
 - Packaging: uv (`pyproject.toml`, `uv.lock`) with the `uv_build` backend.
 - App type: PySide6 desktop app with async/event-loop integration via `qasync`.
 - Main package: `plutus_terminal/`.

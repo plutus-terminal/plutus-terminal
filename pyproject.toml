@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 homepage = "https://github.com/plutus-terminal/plutus-terminal"
 repository = "https://github.com/plutus-terminal/plutus-terminal"
 keywords = ["plutus", "terminal", "crypto", "trading", "trading-bot", "perpetuals", "dex"]
-requires-python = ">=3.12, <3.13"
+requires-python = ">=3.13, <3.14"
 dependencies = [
     "keyring==25.7.0",
     "pyside6 ==6.9.0",
@@ -55,7 +55,7 @@ requires = ["uv_build>=0.7.19,<0.8.0"]
 build-backend = "uv_build"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]
