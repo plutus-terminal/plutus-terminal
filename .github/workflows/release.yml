@@ -18,19 +18,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Setup Python and Poetry
+      # Setup Python and uv
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
 
-          python-version: 3.12
+          python-version: 3.13
 
-      - name: Setup poetry
-        uses: Gr1N/setup-poetry@v9
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
 
       # Install dependencies
-      - name: Install dependencies with Poetry
-        run: poetry install
+      - name: Install dependencies with uv
+        run: uv sync --frozen
 
       # Set Git user information
       - name: Set Git identity
@@ -42,7 +42,7 @@ jobs:
         id: version_tag
 
         run: |
-          app_version=$(poetry version -s)
+          app_version=$(uv version --short)
           echo "version=$app_version" >> "$GITHUB_OUTPUT"
           git tag -a v$app_version -m "Version $app_version"
           git push origin v$app_version
@@ -51,7 +51,7 @@ jobs:
       - name: Extract Changelog for current version
         id: changelog
         run: |
-          current_version=$(poetry version -s)
+          current_version=$(uv version --short)
           changelog=$(awk "/^## ${current_version}/{flag=1;next}/^##/{flag=0}flag" CHANGELOG.md | sed '$d')
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "${changelog}" >> $GITHUB_OUTPUT
@@ -61,8 +61,8 @@ jobs:
       # Publish to PyPi
       - name: Publish to PyPi
         run: |
-          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
-          poetry publish --build
+          uv build
+          uv publish --token ${{ secrets.PYPI_API_TOKEN }}
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 

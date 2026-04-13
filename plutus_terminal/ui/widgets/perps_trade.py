@@ -39,7 +39,7 @@ class PerpsTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -607,7 +607,7 @@ class MarketTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         quote_symbol: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -675,11 +675,11 @@ class MarketTradeWidget(QtWidgets.QWidget):
         """Get amount."""
         return self.amount_box.value()
 
-    def get_take_profit(self) -> Decimal:
+    def get_take_profit(self) -> float:
         """Get take profit."""
         return self.take_profit_box.value()
 
-    def get_stop_loss(self) -> Decimal:
+    def get_stop_loss(self) -> float:
         """Get stop loss."""
         return self.stop_loss_box.value()
 
@@ -693,7 +693,7 @@ class LimitTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         quote_symbol: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -778,11 +778,11 @@ class LimitTradeWidget(QtWidgets.QWidget):
         """Get price."""
         return self.target_price_box.value()
 
-    def get_take_profit(self) -> Decimal:
+    def get_take_profit(self) -> float:
         """Get take profit."""
         return self.take_profit_box.value()
 
-    def get_stop_loss(self) -> Decimal:
+    def get_stop_loss(self) -> float:
         """Get stop loss."""
         return self.stop_loss_box.value()
 
@@ -796,7 +796,7 @@ class StopTradeWidget(QtWidgets.QWidget):
     def __init__(
         self,
         quote_symbol: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)

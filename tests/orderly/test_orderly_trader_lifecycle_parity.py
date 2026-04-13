@@ -259,8 +259,8 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
                 root_algo_type="POSITIONAL_TP_SL",
                 trade_type=PerpsTradeType.TRIGGER_TP,
                 reduce_only=True,
-                take_profit=Decimal("99000"),
-                stop_loss=Decimal("94000"),
+                take_profit=Decimal(99000),
+                stop_loss=Decimal(94000),
             ),
         )
 

@@ -33,7 +33,7 @@ class PerpsConfig(QtWidgets.QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)

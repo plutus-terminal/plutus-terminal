@@ -4,48 +4,58 @@ version = "0.1.0rc0"
 description = "Plutus Terminal is a powerful open-source crypto news trading terminal with the focus on Perpetuals DEX."
 authors = [{name = "Plutus", email = "plutus-terminal@protonmail.com"}]
 readme = "README.md"
-packages = [{include = "plutus_terminal"}]
 license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 homepage = "https://github.com/plutus-terminal/plutus-terminal"
 repository = "https://github.com/plutus-terminal/plutus-terminal"
 keywords = ["plutus", "terminal", "crypto", "trading", "trading-bot", "perpetuals", "dex"]
-requires-python = ">=3.12, <3.13"
+requires-python = ">=3.13, <3.14"
 dependencies = [
-    "keyring ==25.6.0",
+    "keyring==25.7.0",
     "pyside6 ==6.9.0",
     "httpx == 0.28.1",
-    "pandas == 2.2.3",
-    "tenacity == 9.1.2",
-    "web3 == 7.10.0",
+    "pandas==3.0.2",
+    "tenacity==9.1.4",
     "textsearch == 0.0.24",
-    "peewee == 3.17.9",
-    "qasync == 0.27.1",
-    "google-re2 == 1.1.20240702",
-    "orjson == 3.10.16",
-    "setproctitle == 1.3.5",
-    "cryptography == 44.0.2",
+    "peewee==4.0.4",
+    "qasync==0.28.0",
+    "google-re2==1.1.20251105",
+    "orjson==3.11.8",
+    "setproctitle==1.3.7",
+    "cryptography==46.0.7",
     "plutus-lightweight-charts == 2.2.0",
+    "hexbytes==1.3.1",
+    "eth-typing==6.0.0",
+    "websockets==16.0",
 ]
-
-[tool.poetry.group.dev.dependencies]
-mypy = "1.15.0"
-isort = "6.0.1"
-pyside6-stubs = "6.7.3.0"
-pandas-stubs = "2.2.3.250308"
-types-peewee = "3.17.9.20250401"
-ruff = "0.11.6"
-pre-commit = "4.2.0"
-pytest = "^9.0.2"
 
 [project.scripts]
 plutus-terminal = "plutus_terminal.run:run"
 
+[dependency-groups]
+dev = [
+    "mypy==1.20.0",
+    "isort==8.0.1",
+    "pyside6-stubs==6.7.3.0",
+    "pandas-stubs==3.0.0.260204",
+    "types-peewee==4.0.0.20260408",
+    "ruff==0.15.10",
+    "pre-commit==4.5.1",
+    "pytest==9.0.3",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.uv.build-backend]
+module-root = ""
+
 [build-system]
-requires = ["poetry-core>=2.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.11.6,<0.12"]
+build-backend = "uv_build"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 
 [tool.ruff.lint]

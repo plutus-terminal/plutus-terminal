@@ -62,8 +62,8 @@ _PRIVATE_SNAPSHOT_RETRY_ATTEMPTS = 3
 _PRIVATE_SNAPSHOT_RETRY_BASE_SECONDS = 0.5
 _PRIVATE_SNAPSHOT_RETRY_MAX_SECONDS = 4.0
 _PRIVATE_SNAPSHOT_429_MIN_BACKOFF_SECONDS = 1.0
-_BPS_DENOMINATOR = Decimal("10000")
-_DEFAULT_FUTURES_TAKER_FEE_RATE_BPS = Decimal("6")
+_BPS_DENOMINATOR = Decimal(10000)
+_DEFAULT_FUTURES_TAKER_FEE_RATE_BPS = Decimal(6)
 _FUNDING_FEE_CACHE_TTL_SECONDS = 60.0
 _FUNDING_RATES_CACHE_TTL_SECONDS = 15.0
 _OPENING_FEE_CACHE_TTL_SECONDS = 60.0
@@ -558,7 +558,7 @@ class OrderlyFetcher(ExchangeFetcher):
             return _available_balance_from_row(row)
         return Decimal(0)
 
-    def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
+    def get_position_associated_with_order(self, order: OrderData) -> PerpsPosition | None:
         """Get currently cached position associated with given order."""
         for position in self._cached_positions:
             if (
@@ -615,7 +615,7 @@ class OrderlyFetcher(ExchangeFetcher):
     def calculate_sdk_unsettled_pnl(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal:
         """Calculate the React SDK unsettlement PnL value for one position."""
         unrealized_pnl = self.calculate_unrealized_pnl(perps_position, current_price)
@@ -648,7 +648,7 @@ class OrderlyFetcher(ExchangeFetcher):
     def calculate_close_fee(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal:
         """Estimate close fee using close notional and taker fee rate."""
         resolved_price = self._resolve_position_mark_price(perps_position, current_price)
@@ -690,7 +690,7 @@ class OrderlyFetcher(ExchangeFetcher):
     def calculate_pnl_percent_before_fees(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal:
         """Calculate pure unrealized PnL percent before fees and funding."""
         trade_collateral = perps_position["collateral_stable"]
@@ -703,7 +703,7 @@ class OrderlyFetcher(ExchangeFetcher):
     def _calculate_unrealized_pnl_usd(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal:
         """Calculate native unrealized PnL from current/mark price and entry price."""
         resolved_price = self._resolve_position_mark_price(perps_position, current_price)
@@ -719,7 +719,7 @@ class OrderlyFetcher(ExchangeFetcher):
     def calculate_unrealized_pnl(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal:
         """Public wrapper for unrealized PnL estimation."""
         return self._calculate_unrealized_pnl_usd(perps_position, current_price)
@@ -727,7 +727,7 @@ class OrderlyFetcher(ExchangeFetcher):
     def _resolve_position_mark_price(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal | None:
         """Resolve mark price from current override, native position data, or cache."""
         if current_price is not None and current_price > Decimal(0):

@@ -210,7 +210,7 @@ class OrderlyExchange(ExchangeBase):
     def calculate_pnl(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> PnlDetails:
         """Calculate Orderly PnL using the same semantics as the React SDK."""
         trade_collateral = perps_position["collateral_stable"]
@@ -336,9 +336,9 @@ class OrderlyExchange(ExchangeBase):
         amount: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
-        execution_price: Optional[Decimal] = None,
-        take_profit: Optional[float] = None,
-        stop_loss: Optional[float] = None,
+        execution_price: Decimal | None = None,
+        take_profit: float | None = None,
+        stop_loss: float | None = None,
     ) -> None:
         """Create new order for a pair."""
         price = await self._resolve_execution_price(pair, trade_type, execution_price)
@@ -428,7 +428,7 @@ class OrderlyExchange(ExchangeBase):
         collateral_delta: Decimal,  # noqa: ARG002
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
-        execution_price: Optional[Decimal],
+        execution_price: Decimal | None,
     ) -> None:
         """Create reduce-only order."""
         price = await self._resolve_execution_price(pair, trade_type, execution_price)
@@ -536,7 +536,7 @@ class OrderlyExchange(ExchangeBase):
         self,
         pair: str,
         trade_type: PerpsTradeType,
-        execution_price: Optional[Decimal],
+        execution_price: Decimal | None,
     ) -> Decimal:
         """Resolve execution price for market or limit orders."""
         if execution_price is not None:
@@ -566,8 +566,8 @@ class OrderlyExchange(ExchangeBase):
         *,
         execution_price: Decimal,
         trade_direction: PerpsTradeDirection,
-        take_profit: Optional[float],
-        stop_loss: Optional[float],
+        take_profit: float | None,
+        stop_loss: float | None,
     ) -> tuple[Decimal, Decimal]:
         """Resolve attached TP/SL targets while keeping paired submission explicit.
 

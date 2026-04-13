@@ -18,7 +18,7 @@ class Clock(QtWidgets.QLabel):
 
     def __init__(
         self,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget.
 

@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QW
 class ImageWebViewer(QLabel):
     """Display images from web that can be zoomed in a modal widget."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize widget shared variables."""
         super().__init__(parent=parent)
         self._pixmap = QPixmap()

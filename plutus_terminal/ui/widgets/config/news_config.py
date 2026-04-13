@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 import keyring
 from keyring.errors import PasswordDeleteError
@@ -36,7 +36,7 @@ class NewsSourceConfig(QtWidgets.QWidget):
     """Widget to control news API configuration."""
 
     def __init__(
-        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+        self, ui_controller: UIController, parent: QtWidgets.QWidget | None = None
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -402,13 +402,16 @@ class NewsSourceConfig(QtWidgets.QWidget):
     def _toggle_password_visibility(self, checked: bool) -> None:
         """Toggle the password visibility."""
         sender = self.sender()
+        if not isinstance(sender, QtWidgets.QPushButton):
+            return
+
         field_map = {
             self._tree_password_button: self._tree_input,
             self._phoenix_password_button: self._phoenix_input,
             self._synoptic_password_button: self._synoptic_input,
         }
         line_input = field_map.get(sender)
-        if line_input is None or not isinstance(sender, QtWidgets.QPushButton):
+        if line_input is None:
             return
 
         line_input.setEchoMode(
@@ -425,7 +428,7 @@ class NewsFiltersConfig(QtWidgets.QWidget):
     """Widget to control news filter configuration."""
 
     def __init__(
-        self, ui_controller: UIController, parent: Optional[QtWidgets.QWidget] = None
+        self, ui_controller: UIController, parent: QtWidgets.QWidget | None = None
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -619,12 +622,17 @@ class ColorButton(QtWidgets.QPushButton):
 
     color_changed = QtCore.Signal(object)
 
-    def __init__(self, *args: object, color: QtGui.QColor, **kwargs: dict) -> None:
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget | None = None,
+        *,
+        color: QtGui.QColor,
+    ) -> None:
         """Initialize ColorButton."""
-        super().__init__(*args, **kwargs)  # type: ignore[misc]
+        super().__init__(parent)
         self.setObjectName("buttonColor")
 
-        self._color: QtGui.QColor = color if color else QtGui.QColor(255, 0, 0)
+        self._color: QtGui.QColor = color or QtGui.QColor(255, 0, 0)
         self.pressed.connect(self.on_color_picker)
         self.set_color(color)
 
@@ -668,7 +676,7 @@ class BaseFilterWidget(QtWidgets.QFrame):
     def __init__(
         self,
         user_filter: UserFilter,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
@@ -687,7 +695,9 @@ class BaseFilterWidget(QtWidgets.QFrame):
     def write_to_db(self) -> None:
         """Write user_filter to database."""
         if self._to_delete:
-            AppConfig.delete_user_filter(self._user_filter.id)  # type: ignore[arg-type]
+            filter_id = self._user_filter.get_id()
+            if filter_id is not None:
+                AppConfig.delete_user_filter(int(filter_id))
             self.deleteLater()
             return
 
@@ -698,7 +708,7 @@ class KeywordMatchingWidget(BaseFilterWidget):
     def __init__(
         self,
         user_filter: UserFilter,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(user_filter=user_filter, parent=parent)
@@ -807,7 +817,8 @@ class KeywordMatchingWidget(BaseFilterWidget):
         if keyword := match_pattern.get("keyword", ""):
             self._match_pattern.setText(keyword)
 
-        action_index = self._action_combo.findData(ActionType(int(self._user_filter.action_type)))
+        action_type = ActionType(cast("int", self._user_filter.action_type))
+        action_index = self._action_combo.findData(action_type)
         self._action_combo.setCurrentIndex(action_index)
 
         action_args = orjson.loads(str(self._user_filter.action_args))
@@ -846,7 +857,11 @@ class KeywordMatchingWidget(BaseFilterWidget):
         if self._coin_line.isVisible():
             action_args["coin"] = self._coin_line.text()
         if self._color_picker.isVisible():
-            action_args["color"] = self._color_picker.color.toTuple()[0:3]
+            action_args["color"] = (
+                self._color_picker.color.red(),
+                self._color_picker.color.green(),
+                self._color_picker.color.blue(),
+            )
 
         self._user_filter.action_args = orjson.dumps(action_args).decode("utf-8")  # type: ignore[assignment]
         AppConfig.write_model_to_db(self._user_filter)
@@ -858,7 +873,7 @@ class DataMatchingWidget(BaseFilterWidget):
     def __init__(
         self,
         user_filter: UserFilter,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(user_filter=user_filter, parent=parent)
@@ -975,7 +990,8 @@ class DataMatchingWidget(BaseFilterWidget):
             data_index = self._data_field.findData(data_key)
             self._data_field.setCurrentIndex(data_index)
 
-        action_index = self._action_combo.findData(ActionType(int(self._user_filter.action_type)))
+        action_type = ActionType(cast("int", self._user_filter.action_type))
+        action_index = self._action_combo.findData(action_type)
         self._action_combo.setCurrentIndex(action_index)
 
         action_args = orjson.loads(str(self._user_filter.action_args))

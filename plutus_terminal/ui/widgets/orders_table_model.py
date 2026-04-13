@@ -45,7 +45,7 @@ class OrdersTableModel(QAbstractTableModel):
     ) -> None:
         """Initialize shared variables."""
         super().__init__()
-        self._data = data if data else []
+        self._data = data or []
         self._row_lookup = build_row_lookup(self._data)
         self._row_keys = get_row_keys(self._data)
         self._format_simple_pair = format_simple_pair

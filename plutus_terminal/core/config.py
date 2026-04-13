@@ -14,6 +14,7 @@ from plutus_terminal.core.db.models import (
     TradeConfig,
     UserFilter,
     create_database,
+    ensure_trade_config_columns,
 )
 from plutus_terminal.core.types_ import ExchangeType
 
@@ -88,7 +89,7 @@ class AccountService:
             account = KeyringAccount.get_by_id(account_id)
             keyring.delete_password(AppConfig.SERVICE_NAME, str(account.username))
             TradeConfig.delete().where(TradeConfig.account == account_id).execute()
-            KeyringAccount.delete().where(KeyringAccount.id == account_id).execute()
+            account.delete_instance()
 
 
 class TradeConfigService:
@@ -325,8 +326,6 @@ class AppConfig(QObject):
         if not DATABASE_PATH.exists():
             create_database()
             return
-        from plutus_terminal.core.db.models import ensure_trade_config_columns
-
         ensure_trade_config_columns()
 
     def _load_services_for_account(self) -> None:

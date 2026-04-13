@@ -106,7 +106,7 @@ class ExchangeFetcher(Protocol):
         """Fetch stable balance."""
         ...
 
-    def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
+    def get_position_associated_with_order(self, order: OrderData) -> PerpsPosition | None:
         """Get position associated with given order.
 
         Args:
@@ -153,7 +153,7 @@ class ExchangeFetcher(Protocol):
     def calculate_pnl_percent_before_fees(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> Decimal:
         """Calculate pnl percent for a given position.
 
@@ -525,9 +525,9 @@ class ExchangeBase(ABC):
         amount: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
-        execution_price: Optional[Decimal] = None,
-        take_profit: Optional[float] = None,
-        stop_loss: Optional[float] = None,
+        execution_price: Decimal | None = None,
+        take_profit: float | None = None,
+        stop_loss: float | None = None,
     ) -> None:
         """Create new order.
 
@@ -576,7 +576,7 @@ class ExchangeBase(ABC):
         collateral_delta: Decimal,
         trade_direction: PerpsTradeDirection,
         trade_type: PerpsTradeType,
-        execution_price: Optional[Decimal],
+        execution_price: Decimal | None,
     ) -> None:
         """Create new reduce only order.
 
@@ -642,7 +642,7 @@ class ExchangeBase(ABC):
             ),
         )
 
-    def get_position_associated_with_order(self, order: OrderData) -> Optional[PerpsPosition]:
+    def get_position_associated_with_order(self, order: OrderData) -> PerpsPosition | None:
         """Get position associated with given order.
 
         Args:
@@ -689,7 +689,7 @@ class ExchangeBase(ABC):
     def calculate_pnl(
         self,
         perps_position: PerpsPosition,
-        current_price: Optional[Decimal],
+        current_price: Decimal | None,
     ) -> PnlDetails:
         """Calculate pnl for a given position.
 
@@ -704,7 +704,6 @@ class ExchangeBase(ABC):
         trade_collateral = perps_position["position_size_stable"] / leverage
         opening_fee = self.fetcher.calculate_margin_fee(perps_position["position_size_stable"])
         closing_fee = opening_fee
-        position_fee = opening_fee
         funding_fee = self.fetcher.fetch_funding_fee(perps_position)
         pnl_percentage = self.fetcher.calculate_pnl_percent_before_fees(
             perps_position,

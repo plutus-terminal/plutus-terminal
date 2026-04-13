@@ -99,16 +99,16 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert orders_by_id["54321"]["order_type"].order_family == "stop"
         assert orders_by_id["54321"]["order_type"] is PerpsTradeType.STOP_MARKET
         assert orders_by_id["54321"]["trade_direction"] is PerpsTradeDirection.LONG
-        assert orders_by_id["54321"]["trigger_price"] == Decimal("95000")
-        assert orders_by_id["54321"]["size_stable"] == Decimal("950")
+        assert orders_by_id["54321"]["trigger_price"] == Decimal(95000)
+        assert orders_by_id["54321"]["size_stable"] == Decimal(950)
         assert orders_by_id["60001"]["order_type"].order_family == "tp_sl"
         assert orders_by_id["60001"]["order_type"] is PerpsTradeType.TRIGGER_TP
-        assert orders_by_id["60001"]["trigger_price"] == Decimal("99000")
-        assert orders_by_id["60001"]["size_stable"] == Decimal("990")
+        assert orders_by_id["60001"]["trigger_price"] == Decimal(99000)
+        assert orders_by_id["60001"]["size_stable"] == Decimal(990)
         assert orders_by_id["60002"]["order_type"].order_family == "tp_sl"
         assert orders_by_id["60002"]["order_type"] is PerpsTradeType.TRIGGER_SL
-        assert orders_by_id["60002"]["trigger_price"] == Decimal("94000")
-        assert orders_by_id["60002"]["size_stable"] == Decimal("940")
+        assert orders_by_id["60002"]["trigger_price"] == Decimal(94000)
+        assert orders_by_id["60002"]["size_stable"] == Decimal(940)
 
     async def test_fetch_all_orders_filters_unknown_and_terminal_native_rows(self) -> None:
         """Drop rows that should not surface as active terminal orders."""
@@ -182,8 +182,8 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         position = positions[0]
         assert position["pair"] == "Crypto.BTC/USDC"
         assert position["trade_direction"] is PerpsTradeDirection.LONG
-        assert position["position_size_stable"] == Decimal("970")
-        assert position["collateral_stable"] == Decimal("97")
+        assert position["position_size_stable"] == Decimal(970)
+        assert position["collateral_stable"] == Decimal(97)
         assert position["liquidation_price"] == Decimal("87456.12")
         assert self.fetcher.calculate_liquidation_price(position) == Decimal("87456.12")
         position_extra = cast("dict[str, str]", position.get("extra", {}))
@@ -191,7 +191,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert Decimal(position_extra["fee_24h"]) == Decimal("0.6")
         assert Decimal(position_extra["last_sum_unitary_funding"]) == Decimal("0.00001234")
         assert position_extra["timestamp"] == "1710000000000"
-        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal("0"))
+        self.message_bus.balance_fetched.emit.assert_called_once_with(Decimal(0))
 
     async def test_fetch_unsettled_pnl_scales_with_selected_position_size(
         self,
@@ -203,7 +203,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
-        partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
+        partial_position = cast("Any", position | {"position_size_stable": Decimal(485)})
 
         # Assert
         assert self.fetcher.fetch_unsettled_pnl(partial_position) == Decimal("2.5025")
@@ -228,7 +228,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
-        partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
+        partial_position = cast("Any", position | {"position_size_stable": Decimal(485)})
 
         # Assert
         assert self.fetcher.fetch_funding_fee(partial_position) == Decimal("0.375")
@@ -260,7 +260,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
-        partial_position = cast("Any", position | {"position_size_stable": Decimal("485")})
+        partial_position = cast("Any", position | {"position_size_stable": Decimal(485)})
 
         # Assert
         assert self.fetcher.fetch_opening_fee(partial_position) == Decimal("0.2910")
@@ -273,11 +273,11 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         position = {
             "pair": "Crypto.BTC/USDC",
             "id": 77,
-            "position_size_stable": Decimal("970"),
-            "collateral_stable": Decimal("97"),
-            "open_price": Decimal("97000"),
+            "position_size_stable": Decimal(970),
+            "collateral_stable": Decimal(97),
+            "open_price": Decimal(97000),
             "trade_direction": PerpsTradeDirection.LONG,
-            "leverage": Decimal("10"),
+            "leverage": Decimal(10),
             "liquidation_price": Decimal("87456.12"),
             "extra": {
                 "symbol": "PERP_BTC_USDC",
@@ -328,7 +328,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
 
         # Act
         position = (await self.fetcher.fetch_all_positions())[0]
-        close_fee = self.fetcher.calculate_close_fee(position, Decimal("120000"))
+        close_fee = self.fetcher.calculate_close_fee(position, Decimal(120000))
 
         # Assert
         assert close_fee == Decimal("0.72")
@@ -390,7 +390,7 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         """Ignore unsubscribe requests for pairs without an active subscription count."""
         pair = "Crypto.BTC/USDC"
         self.fetcher._cached_prices[pair] = {  # noqa: SLF001
-            "price": Decimal("1"),
+            "price": Decimal(1),
             "date": cast("Any", None),
         }
 

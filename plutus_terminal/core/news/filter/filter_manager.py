@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from httpx import Client
 import orjson
@@ -67,9 +67,9 @@ class FilterManager:
     def _create_user_filters(self) -> None:
         """Create user filters."""
         for user_filter in self._all_user_filters:
-            filter_type = FilterType(user_filter.filter_type)
+            filter_type = FilterType(cast("int", user_filter.filter_type))
             match_pattern = orjson.loads(user_filter.match_pattern)  # type: ignore
-            action_type = ActionType(user_filter.action_type)
+            action_type = ActionType(cast("int", user_filter.action_type))
             action_args = orjson.loads(user_filter.action_args)  # type: ignore
 
             self._filter_type_map[filter_type].add_to_queue(
@@ -82,7 +82,7 @@ class FilterManager:
         """Re-create all internal and user filters."""
         for filter_type in self._filter_type_map.values():
             filter_type.clear_queue()
-        self._all_user_filters: list[UserFilter] = AppConfig.get_all_user_filters()
+        self._all_user_filters = AppConfig.get_all_user_filters()
         self._create_internal_filters()
         self._create_user_filters()
 

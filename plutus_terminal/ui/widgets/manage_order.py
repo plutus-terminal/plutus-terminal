@@ -30,8 +30,8 @@ class ManageOrder(QtWidgets.QDialog):
         self,
         order_data: OrderData,
         exchange: ExchangeBase,
-        associated_position: Optional[PerpsPosition],
-        parent: Optional[QtWidgets.QWidget] = None,
+        associated_position: PerpsPosition | None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize dialog."""
         super().__init__(parent)

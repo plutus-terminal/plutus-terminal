@@ -1,4 +1,4 @@
-# ruff: noqa: S101, SLF001
+# ruff: noqa: SLF001
 
 """Focused parity tests for position close action routing."""
 
@@ -27,8 +27,8 @@ class OrderlyPositionActionsParityTests(unittest.IsolatedAsyncioTestCase):
         """Create a position widget with exchange stubs for each test."""
         self.position = {
             "pair": "Crypto.BTC/USDC",
-            "position_size_stable": Decimal("100"),
-            "collateral_stable": Decimal("20"),
+            "position_size_stable": Decimal(100),
+            "collateral_stable": Decimal(20),
             "trade_direction": PerpsTradeDirection.LONG,
         }
         self.exchange = SimpleNamespace(
@@ -43,10 +43,10 @@ class OrderlyPositionActionsParityTests(unittest.IsolatedAsyncioTestCase):
         # Arrange
         kwargs = {
             "pair": "Crypto.BTC/USDC",
-            "size": Decimal("100"),
+            "size": Decimal(100),
             "trade_direction": PerpsTradeDirection.LONG,
             "trade_type": PerpsTradeType.LIMIT,
-            "execution_price": Decimal("98000"),
+            "execution_price": Decimal(98000),
         }
 
         # Act
@@ -56,11 +56,11 @@ class OrderlyPositionActionsParityTests(unittest.IsolatedAsyncioTestCase):
         self.exchange.close_position.assert_not_awaited()
         self.exchange.create_reduce_order.assert_awaited_once_with(
             pair="Crypto.BTC/USDC",
-            size=Decimal("100"),
+            size=Decimal(100),
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
-            execution_price=Decimal("98000"),
-            collateral_delta=Decimal("20"),
+            execution_price=Decimal(98000),
+            collateral_delta=Decimal(20),
         )
 
     async def test_full_size_market_close_keeps_immediate_close_behavior(self) -> None:
@@ -68,7 +68,7 @@ class OrderlyPositionActionsParityTests(unittest.IsolatedAsyncioTestCase):
         # Arrange
         kwargs = {
             "pair": "Crypto.BTC/USDC",
-            "size": Decimal("100"),
+            "size": Decimal(100),
             "trade_direction": PerpsTradeDirection.LONG,
             "trade_type": PerpsTradeType.MARKET,
             "execution_price": None,

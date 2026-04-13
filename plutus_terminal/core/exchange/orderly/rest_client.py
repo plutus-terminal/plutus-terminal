@@ -123,7 +123,7 @@ class OrderlyRestClient:
                     "Orderly HTTP request failed: %s %s - %s",
                     request_method,
                     path,
-                    response_text or str(error),
+                    response_text,
                 )
             raise
 

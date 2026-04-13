@@ -16,7 +16,7 @@ class LogViewer(QtWidgets.QDialog):
     _TAIL_INTERVAL_MS = 500
     _BUTTON_MIN_HEIGHT = 35
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         """Initialize dialog."""
         super().__init__(parent)
         self._log_path = LOG_PATH

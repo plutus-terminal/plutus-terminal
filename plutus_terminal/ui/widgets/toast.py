@@ -66,7 +66,7 @@ class Toast(QFrame):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         desktop: bool = False,
         message_id: bytes | None = None,
         toast_kind: ToastKind = ToastKind.MESSAGE,
@@ -295,7 +295,7 @@ class Toast(QFrame):
         Returns:
             bytes: Toast ID.
         """
-        if message_id in Toast._toast_bucket(desktop, ToastKind.MESSAGE):
+        if message_id is not None and message_id in Toast._toast_bucket(desktop, ToastKind.MESSAGE):
             Toast.update_message(message_id, message, type_, desktop)
             return message_id
 

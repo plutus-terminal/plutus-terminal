@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from plutus_terminal.core.exchange.orderly.auth import (
     build_rest_headers,
     build_rest_signature_payload,
@@ -24,7 +26,7 @@ def _build_credentials() -> OrderlyCredentials:
     return OrderlyCredentials(
         account_id="account-id",
         orderly_key="webui-token-key",
-        orderly_secret="webui-token-secret",
+        orderly_secret="webui-token-secret",  # noqa: S106
     )
 
 
@@ -218,7 +220,7 @@ class OrderlyAuthRestClientParityTests(unittest.IsolatedAsyncioTestCase):
         client._client.request = AsyncMock()
 
         # Act / Assert
-        with self.assertRaisesRegex(OrderlyRequestError, "credentials are required"):
+        with pytest.raises(OrderlyRequestError, match="credentials are required"):
             await client.request_private("GET", "/v1/orders")
 
         client._client.request.assert_not_awaited()
@@ -234,15 +236,15 @@ class OrderlyAuthRestClientParityTests(unittest.IsolatedAsyncioTestCase):
         )
         self.client._client.request = AsyncMock(return_value=response)
 
-        with patch(
-            "plutus_terminal.core.exchange.orderly.rest_client.build_rest_headers",
-            return_value={"signed": "headers"},
+        with (
+            patch(
+                "plutus_terminal.core.exchange.orderly.rest_client.build_rest_headers",
+                return_value={"signed": "headers"},
+            ),
+            pytest.raises(OrderlyRequestError, match=r"\[-1002\] invalid or expired api key"),
         ):
             # Act / Assert
-            with self.assertRaisesRegex(
-                OrderlyRequestError, r"\[-1002\] invalid or expired api key"
-            ):
-                await self.client.request_private("GET", "/v1/client/info")
+            await self.client.request_private("GET", "/v1/client/info")
 
     async def test_request_public_surfaces_generic_application_failures_without_api_code(
         self,
@@ -253,5 +255,5 @@ class OrderlyAuthRestClientParityTests(unittest.IsolatedAsyncioTestCase):
         self.client._client.request = AsyncMock(return_value=response)
 
         # Act / Assert
-        with self.assertRaisesRegex(OrderlyRequestError, "gateway rejected request"):
+        with pytest.raises(OrderlyRequestError, match="gateway rejected request"):
             await self.client.request_public("GET", "/v1/public/info")

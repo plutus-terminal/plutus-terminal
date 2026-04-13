@@ -21,7 +21,7 @@ class ToastConfig(QtWidgets.QWidget):
     def __init__(
         self,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)

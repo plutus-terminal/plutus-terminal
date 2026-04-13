@@ -89,7 +89,7 @@ def test_decimal_spin_box_with_button_starts_at_zero_minimum() -> None:
     """Trade spin boxes should not allow negative values by default."""
     box = DecimalSpinBoxWithButton("USD")
 
-    assert box.minimum() == Decimal("0")
+    assert box.minimum() == Decimal(0)
     assert box.button.text() == "USD"
 
 

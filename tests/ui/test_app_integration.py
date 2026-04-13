@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 import unittest
 from unittest.mock import patch
 
@@ -20,6 +21,14 @@ from tests.ui.helpers import (
     UIControllerStub,
     ensure_app,
 )
+
+if TYPE_CHECKING:
+    from plutus_terminal.controller.ui_controller import UIController
+    from plutus_terminal.core.config import AppConfig
+    from plutus_terminal.core.exchange.base import ExchangeBase
+    from plutus_terminal.core.password_guard import PasswordGuard
+    from plutus_terminal.message_bus import MessageBus
+    from tests.ui.helpers import ExchangeStub
 
 ensure_app()
 
@@ -37,6 +46,9 @@ class _StubConfigDialog(QtWidgets.QDialog):
     def __init__(self, *_args: object, **_kwargs: object) -> None:
         super().__init__()
 
+    def open_dialog(self) -> None:
+        """Match the production dialog API used by the top bar."""
+
 
 class MainWindowIntegrationTests(unittest.IsolatedAsyncioTestCase):
     """Cover the composed app window and the opt-in live Orderly flow."""
@@ -48,7 +60,7 @@ class MainWindowIntegrationTests(unittest.IsolatedAsyncioTestCase):
             patch("plutus_terminal.ui.main_window.TradingChart", _StubChart),
             patch("plutus_terminal.ui.main_window.ConfigDialog", _StubConfigDialog),
         ):
-            window = PlutusMainWindow(controller)
+            window = PlutusMainWindow(cast("UIController", controller))
             await window.init_async()
 
         assert window.centralWidget() is window.main_widget
@@ -84,13 +96,19 @@ class MainWindowIntegrationTests(unittest.IsolatedAsyncioTestCase):
             patch("plutus_terminal.ui.main_window.TradingChart", _StubChart),
             patch("plutus_terminal.ui.main_window.ConfigDialog", _StubConfigDialog),
         ):
-            exchange = await OrderlyExchange.create(message_bus, SimpleNamespace(), app_config)
+            exchange = await OrderlyExchange.create(
+                cast("MessageBus", message_bus),
+                cast("PasswordGuard", SimpleNamespace()),
+                cast("AppConfig", app_config),
+            )
             controller = UIControllerStub(
-                exchange=exchange, app_config=app_config, message_bus=message_bus
+                exchange=cast("ExchangeStub", exchange),
+                app_config=app_config,
+                message_bus=message_bus,
             )
             controller.news_manager = NewsManagerStub([])
             controller.current_pair = exchange.default_pair
-            window = PlutusMainWindow(controller)
+            window = PlutusMainWindow(cast("UIController", controller))
             try:
                 await window.init_async()
                 assert exchange.account_info["Network"] == "testnet"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 import weakref
 
 from PySide6.QtCore import QObject
@@ -91,7 +91,7 @@ class PerpsTradeController(QObject):
         if current_widget is None:
             return
         balance = view.exchange.stable_balance
-        percentage = Decimal(current_widget.percent_group.id(button)) / Decimal("100")
+        percentage = Decimal(current_widget.percent_group.id(button)) / Decimal(100)
         current_widget.amount_box.setValue(balance * percentage)
 
     def refresh_trade_summary(self) -> None:
@@ -156,17 +156,20 @@ class PerpsTradeController(QObject):
         amount = Decimal(current_tab.get_amount())
         trade_type = self.get_trade_type()
         execution_price: Decimal | None = None
-        stop_loss = 0.0
-        take_profit = 0.0
+        stop_loss: float | None = 0.0
+        take_profit: float | None = 0.0
         if view.is_limit_widget(current_tab):
-            execution_price = Decimal(current_tab.get_target_price())
-            stop_loss = current_tab.get_stop_loss()
-            take_profit = current_tab.get_take_profit()
+            limit_tab = cast("LimitTradeWidget", current_tab)
+            execution_price = Decimal(limit_tab.get_target_price())
+            stop_loss = limit_tab.get_stop_loss()
+            take_profit = limit_tab.get_take_profit()
         elif view.is_stop_widget(current_tab):
-            execution_price = Decimal(current_tab.get_trigger_price())
+            stop_tab = cast("StopTradeWidget", current_tab)
+            execution_price = Decimal(stop_tab.get_trigger_price())
         else:
-            stop_loss = current_tab.get_stop_loss()
-            take_profit = current_tab.get_take_profit()
+            market_tab = cast("MarketTradeWidget", current_tab)
+            stop_loss = market_tab.get_stop_loss()
+            take_profit = market_tab.get_take_profit()
         try:
             await view.exchange.create_order(
                 pair,

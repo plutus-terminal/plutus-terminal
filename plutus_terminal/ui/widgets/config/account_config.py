@@ -25,7 +25,7 @@ class AccountConfig(QtWidgets.QWidget):
         self,
         pass_guard: PasswordGuard,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -142,7 +142,7 @@ class AccountWidget(QtWidgets.QFrame):
         self,
         keyring_account: KeyringAccount,
         app_config: AppConfig,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -202,7 +202,10 @@ class AccountWidget(QtWidgets.QFrame):
 
     def _delete_account(self) -> None:
         """Delete account."""
-        self._app_config.delete_account(self._keyring_account.id)  # type: ignore[arg-type]
+        account_id = self._keyring_account.get_id()
+        if account_id is None:
+            return
+        self._app_config.delete_account(int(account_id))
         Toast.show_message(
             f"Account '{self._keyring_account.username}' deleted",
             type_=ToastType.SUCCESS,

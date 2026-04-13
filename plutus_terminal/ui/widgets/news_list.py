@@ -32,7 +32,7 @@ class NewsList(QtWidgets.QWidget):
     def __init__(
         self,
         ui_controller: UIController,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize shared attributes."""
         super().__init__(parent=parent)
@@ -54,7 +54,7 @@ class NewsList(QtWidgets.QWidget):
         self._sfxs: dict[str, QSoundEffect] = {}
         self._news_widgets: dict[str, NewsWidget] = {}
 
-        self._selected_news_widget: Optional[NewsWidget] = None
+        self._selected_news_widget: NewsWidget | None = None
 
         self.max_news = 25
 
@@ -211,7 +211,7 @@ class NewsList(QtWidgets.QWidget):
         # Set the vertical scroll bar's value to the cumulative height
         self._scroll_area.verticalScrollBar().setValue(cumulative_height)
 
-    def _show_widget_at_top(self, news_widget: Optional[NewsWidget]) -> None:
+    def _show_widget_at_top(self, news_widget: NewsWidget | None) -> None:
         """Move scroll area to show widget at the top."""
         if news_widget is None:
             return

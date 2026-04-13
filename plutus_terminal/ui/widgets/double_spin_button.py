@@ -13,7 +13,7 @@ class DoubleSpinBoxWithButton(QtWidgets.QDoubleSpinBox):
     def __init__(
         self,
         button_text: str,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         """Initialize widget."""
         super().__init__(parent=parent)
