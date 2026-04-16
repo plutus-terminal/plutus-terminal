@@ -30,6 +30,7 @@ from plutus_terminal.ui.widgets.perps_trade import (
 from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
 from plutus_terminal.ui.widgets.positions_table_action_cell import PositionActionsCell
 from plutus_terminal.ui.widgets.positions_table_liquidation_cell import LiquidationPriceCell
+from plutus_terminal.ui.widgets.toast import ToastType
 from plutus_terminal.ui.widgets.trade_table import TradeTable
 from plutus_terminal.ui.widgets.trading_chart import SearchPairModal, TradingChart, VimLineEdit
 from tests.ui.helpers import (
@@ -369,18 +370,21 @@ def test_manage_order_builds_paired_reduce_request() -> None:
     assert payload["stop_loss_price"] == Decimal(95000)
 
 
-def test_manage_order_warns_for_invalid_reduce_trigger() -> None:
-    """Reduce-only TP/SL validation should reject unprofitable trigger prices."""
+def test_manage_order_shows_error_toast_for_invalid_reduce_trigger() -> None:
+    """Reduce-only TP/SL validation should use an error toast for invalid triggers."""
     order = build_order(order_type=PerpsTradeType.TRIGGER_TP, reduce_only=True)
     position = build_position()
     dialog = ManageOrder(order, ExchangeStub(), position)
     dialog.trigger_box.setValue(Decimal(90000))
 
-    with patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
+    with patch("plutus_terminal.ui.widgets.manage_order.Toast.show_message") as toast:
         payload = dialog._build_reduce_order_request()
 
     assert payload is None
-    warning.assert_called_once()
+    toast.assert_called_once_with(
+        "Take profit must be on the profitable side of the open price.",
+        type_=ToastType.ERROR,
+    )
 
 
 def test_position_actions_cell_routes_tp_sl_request_to_ui_controller() -> None:
