@@ -121,22 +121,26 @@ class OrderlyTrader:
     async def edit_order(self, trade_arguments: dict) -> TradeResults:
         """Edit one order through Orderly native PUT endpoints."""
         trade_type = PerpsTradeType(trade_arguments["trade_type"])
-        request = _build_order_request(trade_arguments, self._market_registry)
         order_id = str(trade_arguments["order_id"])
         payload: dict[str, object]
 
         if trade_type.is_regular_order:
+            request = _build_order_request(trade_arguments, self._market_registry)
             path = "/v1/order"
             payload = _build_regular_edit_payload(order_id, request)
         elif trade_type.is_stop_order:
+            request = _build_order_request(trade_arguments, self._market_registry)
             path = "/v1/algo/order"
             payload = _build_stop_edit_payload(order_id, request)
         else:
+            request = _build_tp_sl_edit_request(trade_arguments, self._market_registry)
             path = "/v1/algo/order"
             payload = _build_tp_sl_edit_payload(
                 order_id,
                 request,
                 root_algo_type=str(trade_arguments.get("root_algo_type", "")),
+                tp_child_order_id=_optional_order_id(trade_arguments.get("tp_child_order_id")),
+                sl_child_order_id=_optional_order_id(trade_arguments.get("sl_child_order_id")),
             )
 
         try:
@@ -266,7 +270,12 @@ def _build_stop_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dic
     return body
 
 
-def _build_attached_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[str, object]:
+def _build_attached_tp_sl_order_payload(
+    request: OrderlyOrderRequest,
+    *,
+    tp_child_order_id: str | None = None,
+    sl_child_order_id: str | None = None,
+) -> dict[str, object]:
     """Build native Orderly `TP_SL` payload for attached regular-order exits."""
     child_orders: list[dict[str, object]] = []
     if request.has_take_profit:
@@ -276,6 +285,7 @@ def _build_attached_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[st
                 OrderlyTpSlChildType.TAKE_PROFIT,
                 request.take_profit,
                 child_order_type=OrderlyOrderType.MARKET,
+                child_order_id=tp_child_order_id,
             ),
         )
     if request.has_stop_loss:
@@ -285,6 +295,7 @@ def _build_attached_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[st
                 OrderlyTpSlChildType.STOP_LOSS,
                 request.stop_loss,
                 child_order_type=OrderlyOrderType.MARKET,
+                child_order_id=sl_child_order_id,
             ),
         )
     if not child_orders:
@@ -300,7 +311,12 @@ def _build_attached_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[st
     }
 
 
-def _build_reduce_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[str, object]:
+def _build_reduce_tp_sl_order_payload(
+    request: OrderlyOrderRequest,
+    *,
+    tp_child_order_id: str | None = None,
+    sl_child_order_id: str | None = None,
+) -> dict[str, object]:
     """Build native Orderly `POSITIONAL_TP_SL` payload for existing positions."""
     child_orders: list[dict[str, object]] = []
     if request.has_take_profit:
@@ -310,6 +326,7 @@ def _build_reduce_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[str,
                 OrderlyTpSlChildType.TAKE_PROFIT,
                 request.take_profit,
                 child_order_type=OrderlyOrderType.CLOSE_POSITION,
+                child_order_id=tp_child_order_id,
             ),
         )
     if request.has_stop_loss:
@@ -319,6 +336,7 @@ def _build_reduce_tp_sl_order_payload(request: OrderlyOrderRequest) -> dict[str,
                 OrderlyTpSlChildType.STOP_LOSS,
                 request.stop_loss,
                 child_order_type=OrderlyOrderType.CLOSE_POSITION,
+                child_order_id=sl_child_order_id,
             ),
         )
     if not child_orders:
@@ -338,16 +356,19 @@ def _build_tp_sl_edit_payload(
     request: OrderlyOrderRequest,
     *,
     root_algo_type: str,
+    tp_child_order_id: str | None = None,
+    sl_child_order_id: str | None = None,
 ) -> dict[str, object]:
-    """Build `/v1/algo/order` edit payload for an existing TP/SL root order."""
-    body = (
-        _build_reduce_tp_sl_order_payload(request)
-        if root_algo_type == OrderlyAlgoType.POSITIONAL_TP_SL.value
-        else _build_attached_tp_sl_order_payload(request)
-    )
-    body = dict(body)
-    body["order_id"] = order_id
-    return body
+    """Build minimal `/v1/algo/order` edit payload matching SDK semantics."""
+    del root_algo_type
+    return {
+        "order_id": order_id,
+        "child_orders": _build_tp_sl_edit_child_orders(
+            request,
+            tp_child_order_id=tp_child_order_id,
+            sl_child_order_id=sl_child_order_id,
+        ),
+    }
 
 
 def _build_tp_sl_child_order(
@@ -356,10 +377,11 @@ def _build_tp_sl_child_order(
     trigger_price: Decimal,
     *,
     child_order_type: OrderlyOrderType,
+    child_order_id: str | None = None,
 ) -> dict[str, object]:
     """Build a child order for native Orderly TP/SL algo requests."""
     side = _tp_sl_child_side(request)
-    return {
+    child_order: dict[str, object] = {
         "symbol": request.symbol,
         "algo_type": child_type.value,
         "side": side.value,
@@ -368,6 +390,85 @@ def _build_tp_sl_child_order(
         "trigger_price_type": request.trigger_price_type.value,
         "reduce_only": True,
     }
+    if child_order_id is not None:
+        child_order["order_id"] = child_order_id
+    return child_order
+
+
+def _build_tp_sl_edit_child_orders(
+    request: OrderlyOrderRequest,
+    *,
+    tp_child_order_id: str | None,
+    sl_child_order_id: str | None,
+) -> list[dict[str, object]]:
+    """Build minimal child-order edits for TP/SL root updates."""
+    child_orders: list[dict[str, object]] = []
+    if request.has_take_profit:
+        child_orders.append(
+            _build_tp_sl_edit_child_order(
+                trigger_price=request.take_profit,
+                child_order_id=tp_child_order_id,
+            ),
+        )
+    if request.has_stop_loss:
+        child_orders.append(
+            _build_tp_sl_edit_child_order(
+                trigger_price=request.stop_loss,
+                child_order_id=sl_child_order_id,
+            ),
+        )
+    if not child_orders:
+        msg = "TP/SL algo edits require at least one trigger target."
+        raise ValueError(msg)
+    return child_orders
+
+
+def _build_tp_sl_edit_child_order(
+    *,
+    trigger_price: Decimal,
+    child_order_id: str | None,
+) -> dict[str, object]:
+    """Build minimal child edit payload for one TP/SL leg."""
+    child_order: dict[str, object] = {"trigger_price": str(trigger_price)}
+    if child_order_id is not None:
+        child_order["order_id"] = child_order_id
+    return child_order
+
+
+def _build_tp_sl_edit_request(
+    trade_arguments: dict,
+    market_registry: OrderlyMarketRegistry,
+) -> OrderlyOrderRequest:
+    """Build TP/SL edit request without size validation used by regular orders."""
+    symbol = str(trade_arguments["symbol"])
+    direction = PerpsTradeDirection(trade_arguments["trade_direction"])
+    trade_type = PerpsTradeType(trade_arguments["trade_type"])
+    reduce_only = bool(trade_arguments.get("reduce_only", False))
+    market_rule = market_registry.get_rule_by_symbol(symbol)
+
+    return OrderlyOrderRequest(
+        symbol=symbol,
+        trade_type=trade_type,
+        side=_side_for_trade(direction, reduce_only),
+        quantity=Decimal(1),
+        reduce_only=reduce_only,
+        price=_optional_quantized_price(trade_arguments.get("price"), market_rule),
+        trigger_price=None,
+        take_profit=_optional_quantized_price(trade_arguments.get("take_profit"), market_rule)
+        or Decimal(0),
+        stop_loss=_optional_quantized_price(trade_arguments.get("stop_loss"), market_rule)
+        or Decimal(0),
+    )
+
+
+def _optional_order_id(value: object | None) -> str | None:
+    """Normalize optional child order ids for TP/SL edit payloads."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text in {"", "0"}:
+        return None
+    return text
 
 
 def _native_order_type(trade_type: PerpsTradeType) -> OrderlyOrderType:

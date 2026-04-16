@@ -576,6 +576,122 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert "failed to refresh Orderly data" in refresh_message.text
         message_bus.orders_fetched.emit.assert_not_called()
 
+    async def test_cancel_tp_sl_order_recreates_surviving_sibling_after_root_cancel(self) -> None:
+        """Cancel TP/SL root and recreate surviving sibling because child delete is unreliable."""
+        # Arrange
+        trader = SimpleNamespace(
+            cancel_order=AsyncMock(return_value={"success": True}),
+            create_reduce_order=AsyncMock(return_value={"success": True}),
+        )
+        tp_order = {
+            "id": "tp-child",
+            "pair": "Crypto.BTC/USDC",
+            "trigger_price": Decimal(99000),
+            "size_stable": Decimal(50),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_TP,
+            "reduce_only": True,
+            "extra": {
+                "symbol": "PERP_BTC_USDC",
+                "root_algo_order_id": "root-1",
+                "algo_order_id": "tp-child",
+            },
+        }
+        sl_order = {
+            "id": "sl-child",
+            "pair": "Crypto.BTC/USDC",
+            "trigger_price": Decimal(94000),
+            "size_stable": Decimal(50),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_SL,
+            "reduce_only": True,
+            "extra": {
+                "symbol": "PERP_BTC_USDC",
+                "root_algo_order_id": "root-1",
+                "algo_order_id": "sl-child",
+                "base_size": "0.01",
+            },
+        }
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            _cached_orders=[tp_order, sl_order],
+            _cached_positions=[],
+        )
+        exchange = _build_exchange(trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.cancel_order(tp_order)
+
+        # Assert
+        trader.cancel_order.assert_awaited_once_with(
+            {
+                "order_id": "root-1",
+                "symbol": "PERP_BTC_USDC",
+                "trade_type": PerpsTradeType.TRIGGER_TP,
+            },
+        )
+        trader.create_reduce_order.assert_awaited_once()
+        trade_arguments = trader.create_reduce_order.await_args.args[0]
+        assert trade_arguments["take_profit"] == Decimal(0)
+        assert trade_arguments["stop_loss"] == Decimal(94000)
+        assert trade_arguments["trade_type"] is PerpsTradeType.TRIGGER_SL
+        assert trade_arguments["base_size"] == Decimal("0.01")
+
+    async def test_cancel_tp_sl_order_uses_cached_position_base_size_when_order_lacks_it(
+        self,
+    ) -> None:
+        """Reuse cached position base size so sibling recreate does not collapse to zero."""
+        trader = SimpleNamespace(
+            cancel_order=AsyncMock(return_value={"success": True}),
+            create_reduce_order=AsyncMock(return_value={"success": True}),
+        )
+        tp_order = {
+            "id": "tp-child",
+            "pair": "Crypto.BTC/USDC",
+            "trigger_price": Decimal(99000),
+            "size_stable": Decimal(50),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_TP,
+            "reduce_only": True,
+            "extra": {
+                "symbol": "PERP_BTC_USDC",
+                "root_algo_order_id": "root-1",
+                "algo_order_id": "tp-child",
+            },
+        }
+        sl_order = {
+            "id": "sl-child",
+            "pair": "Crypto.BTC/USDC",
+            "trigger_price": Decimal(94000),
+            "size_stable": Decimal(50),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_SL,
+            "reduce_only": True,
+            "extra": {
+                "symbol": "PERP_BTC_USDC",
+                "root_algo_order_id": "root-1",
+                "algo_order_id": "sl-child",
+                "base_size": "0",
+            },
+        }
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            _cached_orders=[tp_order, sl_order],
+            _cached_positions=[
+                {
+                    "pair": "Crypto.BTC/USDC",
+                    "trade_direction": PerpsTradeDirection.LONG,
+                    "extra": {"base_size": "0.02"},
+                }
+            ],
+        )
+        exchange = _build_exchange(trader=trader, fetcher=fetcher)
+
+        await exchange.cancel_order(tp_order)
+
+        trade_arguments = trader.create_reduce_order.await_args.args[0]
+        assert trade_arguments["base_size"] == Decimal("0.02")
+
     async def test_edit_order_refreshes_open_orders_after_successful_native_edit(self) -> None:
         """Refresh open orders after Orderly accepts a native edit request."""
         # Arrange
@@ -606,6 +722,51 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert trade_arguments["price"] == Decimal(98000)
         fetcher.fetch_all_orders.assert_awaited_once()
         message_bus.orders_fetched.emit.assert_called_once_with(fetcher._cached_orders)
+
+    async def test_edit_regular_order_replaces_order_when_native_put_fails(self) -> None:
+        """Fallback to cancel plus create when Orderly rejects regular order edits."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(
+            edit_order=AsyncMock(side_effect=TransactionFailedError("[400] edit rejected")),
+            cancel_order=AsyncMock(return_value={"success": True}),
+            create_order=AsyncMock(return_value={"success": True}),
+        )
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            _cached_orders=[{"id": "replacement"}],
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+        order_data = {
+            "id": "edit-1",
+            "pair": "Crypto.BTC/USDC",
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.LIMIT,
+            "reduce_only": False,
+            "extra": {"symbol": "PERP_BTC_USDC", "native_order_id": "70001"},
+        }
+
+        # Act
+        await exchange.edit_order(order_data, Decimal(50), Decimal(98000))
+
+        # Assert
+        trader.edit_order.assert_awaited_once()
+        trader.cancel_order.assert_awaited_once_with(
+            {
+                "order_id": "70001",
+                "symbol": "PERP_BTC_USDC",
+                "trade_type": PerpsTradeType.LIMIT,
+            },
+        )
+        trader.create_order.assert_awaited_once()
+        create_arguments = trader.create_order.await_args.args[0]
+        assert "order_id" not in create_arguments
+        assert create_arguments["symbol"] == "PERP_BTC_USDC"
+        assert create_arguments["price"] == Decimal(98000)
+        assert create_arguments["size_stable"] == Decimal(50)
+        fetcher.fetch_all_orders.assert_awaited_once()
+        message_bus.orders_fetched.emit.assert_called_once_with(fetcher._cached_orders)
+        message_bus.send_message.emit.assert_not_called()
 
     async def test_edit_order_builds_root_tp_sl_edit_with_sibling_targets(self) -> None:
         """Edit TP/SL orders through the root algo order while preserving sibling triggers."""
@@ -648,6 +809,231 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         assert trade_arguments["order_id"] == "root-1"
         assert trade_arguments["take_profit"] == Decimal(99500)
         assert trade_arguments["stop_loss"] == Decimal(94000)
+        assert trade_arguments["tp_child_order_id"] == "tp-child"
+        assert trade_arguments["sl_child_order_id"] == "sl-child"
+
+    async def test_submit_position_tp_sl_creates_new_root_when_cache_misses(self) -> None:
+        """Create positional TP/SL with POST only when no existing root is cached."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(
+            create_reduce_order=AsyncMock(return_value={"success": True}),
+            edit_order=AsyncMock(),
+        )
+        fetcher = SimpleNamespace(
+            get_open_positional_tp_sl_order=Mock(return_value=None),
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            _cached_orders=[],
+            _cached_positions=[],
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.submit_position_tp_sl(
+            pair="Crypto.BTC/USDC",
+            size_stable=Decimal(50),
+            trade_direction=PerpsTradeDirection.LONG,
+            take_profit_price=Decimal(101000),
+            stop_loss_price=None,
+            reference_price=Decimal(101000),
+            base_size=Decimal("0.0005"),
+        )
+
+        # Assert
+        trader.create_reduce_order.assert_awaited_once()
+        trader.edit_order.assert_not_called()
+        trade_arguments = trader.create_reduce_order.await_args.args[0]
+        assert trade_arguments["take_profit"] == Decimal(101000)
+        assert trade_arguments["stop_loss"] == Decimal(0)
+        assert trade_arguments["base_size"] == Decimal("0.0005")
+        fetcher.fetch_all_orders.assert_awaited_once()
+        fetcher.fetch_all_positions.assert_awaited_once()
+
+    async def test_submit_position_tp_sl_edits_cached_root_and_preserves_existing_sibling(
+        self,
+    ) -> None:
+        """Edit cached positional TP/SL root instead of posting duplicate close protection."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(
+            create_reduce_order=AsyncMock(),
+            edit_order=AsyncMock(return_value={"success": True}),
+        )
+        existing_tp_order = {
+            "id": "tp-child",
+            "pair": "Crypto.BTC/USDC",
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_TP,
+            "trigger_price": Decimal(99000),
+            "size_stable": Decimal(50),
+            "reduce_only": True,
+            "extra": {
+                "root_algo_order_id": "root-1",
+                "root_algo_type": "POSITIONAL_TP_SL",
+                "symbol": "PERP_BTC_USDC",
+            },
+        }
+        existing_sl_order = {
+            "id": "sl-child",
+            "pair": "Crypto.BTC/USDC",
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_SL,
+            "trigger_price": Decimal(94000),
+            "size_stable": Decimal(50),
+            "reduce_only": True,
+            "extra": {
+                "root_algo_order_id": "root-1",
+                "root_algo_type": "POSITIONAL_TP_SL",
+                "symbol": "PERP_BTC_USDC",
+            },
+        }
+        fetcher = SimpleNamespace(
+            get_open_positional_tp_sl_order=Mock(return_value=existing_tp_order),
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            _cached_orders=[existing_tp_order, existing_sl_order],
+            _cached_positions=[],
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.submit_position_tp_sl(
+            pair="Crypto.BTC/USDC",
+            size_stable=Decimal(50),
+            trade_direction=PerpsTradeDirection.LONG,
+            take_profit_price=None,
+            stop_loss_price=Decimal(93500),
+            reference_price=Decimal(93500),
+            base_size=None,
+        )
+
+        # Assert
+        trader.create_reduce_order.assert_not_called()
+        trader.edit_order.assert_awaited_once()
+        trade_arguments = trader.edit_order.await_args.args[0]
+        assert trade_arguments["order_id"] == "root-1"
+        assert trade_arguments["root_algo_type"] == "POSITIONAL_TP_SL"
+        assert trade_arguments["take_profit"] == Decimal(99000)
+        assert trade_arguments["stop_loss"] == Decimal(93500)
+        assert trade_arguments["tp_child_order_id"] == "tp-child"
+        assert trade_arguments["sl_child_order_id"] == "sl-child"
+
+    async def test_submit_position_tp_sl_recreates_tp_only_root_when_adding_sl(self) -> None:
+        """Replace TP-only positional roots because Orderly PUT cannot add missing sibling legs."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(
+            cancel_order=AsyncMock(return_value={"success": True}),
+            create_reduce_order=AsyncMock(return_value={"success": True}),
+            edit_order=AsyncMock(),
+        )
+        existing_tp_order = {
+            "id": "tp-child",
+            "pair": "Crypto.BTC/USDC",
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.TRIGGER_TP,
+            "trigger_price": Decimal(99000),
+            "size_stable": Decimal(50),
+            "reduce_only": True,
+            "extra": {
+                "root_algo_order_id": "root-1",
+                "root_algo_type": "POSITIONAL_TP_SL",
+                "symbol": "PERP_BTC_USDC",
+            },
+        }
+        fetcher = SimpleNamespace(
+            get_open_positional_tp_sl_order=Mock(return_value=existing_tp_order),
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            _cached_orders=[existing_tp_order],
+            _cached_positions=[],
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.submit_position_tp_sl(
+            pair="Crypto.BTC/USDC",
+            size_stable=Decimal(50),
+            trade_direction=PerpsTradeDirection.LONG,
+            take_profit_price=None,
+            stop_loss_price=Decimal(93500),
+            reference_price=Decimal(93500),
+            base_size=None,
+        )
+
+        # Assert
+        trader.edit_order.assert_not_called()
+        trader.cancel_order.assert_awaited_once_with(
+            {
+                "order_id": "root-1",
+                "symbol": "PERP_BTC_USDC",
+                "trade_type": PerpsTradeType.TRIGGER_TP,
+            },
+        )
+        trader.create_reduce_order.assert_awaited_once()
+        trade_arguments = trader.create_reduce_order.await_args.args[0]
+        assert trade_arguments["take_profit"] == Decimal(99000)
+        assert trade_arguments["stop_loss"] == Decimal(93500)
+        assert "order_id" not in trade_arguments
+
+    async def test_submit_position_tp_sl_recreates_sl_only_root_when_adding_tp(self) -> None:
+        """Replace SL-only positional roots when the caller adds the missing TP leg."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(
+            cancel_order=AsyncMock(return_value={"success": True}),
+            create_reduce_order=AsyncMock(return_value={"success": True}),
+            edit_order=AsyncMock(),
+        )
+        existing_sl_order = {
+            "id": "sl-child",
+            "pair": "Crypto.BTC/USDC",
+            "trade_direction": PerpsTradeDirection.SHORT,
+            "order_type": PerpsTradeType.TRIGGER_SL,
+            "trigger_price": Decimal(96000),
+            "size_stable": Decimal(50),
+            "reduce_only": True,
+            "extra": {
+                "root_algo_order_id": "root-2",
+                "root_algo_type": "POSITIONAL_TP_SL",
+                "symbol": "PERP_BTC_USDC",
+            },
+        }
+        fetcher = SimpleNamespace(
+            get_open_positional_tp_sl_order=Mock(return_value=existing_sl_order),
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            _cached_orders=[existing_sl_order],
+            _cached_positions=[],
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+
+        # Act
+        await exchange.submit_position_tp_sl(
+            pair="Crypto.BTC/USDC",
+            size_stable=Decimal(50),
+            trade_direction=PerpsTradeDirection.SHORT,
+            take_profit_price=Decimal(90500),
+            stop_loss_price=None,
+            reference_price=Decimal(90500),
+            base_size=None,
+        )
+
+        # Assert
+        trader.edit_order.assert_not_called()
+        trader.cancel_order.assert_awaited_once_with(
+            {
+                "order_id": "root-2",
+                "symbol": "PERP_BTC_USDC",
+                "trade_type": PerpsTradeType.TRIGGER_SL,
+            },
+        )
+        trader.create_reduce_order.assert_awaited_once()
+        trade_arguments = trader.create_reduce_order.await_args.args[0]
+        assert trade_arguments["take_profit"] == Decimal(90500)
+        assert trade_arguments["stop_loss"] == Decimal(96000)
+        assert "order_id" not in trade_arguments
 
     async def test_edit_order_surfaces_rate_limit_context_in_user_message(self) -> None:
         """Report rate-limit failures without emitting stale refreshed order state."""

@@ -182,10 +182,10 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(error_context.exception.__cause__, OrderlyRequestError)
         assert "order not found" in str(error_context.exception.__cause__)
 
-    async def test_cancel_order_hits_algo_delete_endpoint_with_order_id_param(
+    async def test_cancel_order_hits_algo_delete_endpoint_with_child_order_id_param(
         self,
     ) -> None:
-        """Cancel algo orders through the native algo delete endpoint using `order_id`."""
+        """Cancel TP/SL child rows through the native algo delete endpoint using child id."""
         # Arrange
         self.request_private.return_value = {
             "success": True,
@@ -273,14 +273,72 @@ class OrderlyTraderLifecycleParityTests(unittest.IsolatedAsyncioTestCase):
         assert call.args[:2] == ("PUT", "/v1/algo/order")
         payload = call.kwargs["json_body"]
         assert payload["order_id"] == "root-1"
-        assert payload["algo_type"] == "POSITIONAL_TP_SL"
+        assert "algo_type" not in payload
+        assert "trigger_price_type" not in payload
         assert "side" not in payload
         assert "quantity" not in payload
-        assert {child["algo_type"] for child in payload["child_orders"]} == {
-            "TAKE_PROFIT",
-            "STOP_LOSS",
+        assert payload["child_orders"] == [
+            {"trigger_price": "99000"},
+            {"trigger_price": "94000"},
+        ]
+
+    async def test_edit_order_includes_existing_child_ids_for_tp_sl_updates(self) -> None:
+        """Preserve concrete child ids so Orderly updates existing TP/SL legs instead of id zero."""
+        # Arrange
+        self.request_private.return_value = {
+            "success": True,
+            "data": {"status": "EDIT_SENT", "order_id": "root-1"},
         }
-        assert {child["type"] for child in payload["child_orders"]} == {"CLOSE_POSITION"}
+
+        # Act
+        await self.trader.edit_order(
+            _build_trade_arguments(
+                order_id="root-1",
+                root_algo_type="POSITIONAL_TP_SL",
+                trade_type=PerpsTradeType.TRIGGER_TP,
+                reduce_only=True,
+                take_profit=Decimal(99000),
+                stop_loss=Decimal(94000),
+                tp_child_order_id="tp-child",
+                sl_child_order_id="sl-child",
+            ),
+        )
+
+        # Assert
+        payload = self.request_private.await_args.kwargs["json_body"]
+        assert payload["child_orders"] == [
+            {"order_id": "tp-child", "trigger_price": "99000"},
+            {"order_id": "sl-child", "trigger_price": "94000"},
+        ]
+
+    async def test_edit_order_skips_missing_child_ids_when_adding_new_tp_sl_leg(self) -> None:
+        """Do not send synthetic zero child ids when adding a new sibling leg."""
+        # Arrange
+        self.request_private.return_value = {
+            "success": True,
+            "data": {"status": "EDIT_SENT", "order_id": "root-1"},
+        }
+
+        # Act
+        await self.trader.edit_order(
+            _build_trade_arguments(
+                order_id="root-1",
+                root_algo_type="POSITIONAL_TP_SL",
+                trade_type=PerpsTradeType.TRIGGER_SL,
+                reduce_only=True,
+                take_profit=Decimal(99000),
+                stop_loss=Decimal(94000),
+                tp_child_order_id="tp-child",
+                sl_child_order_id="0",
+            ),
+        )
+
+        # Assert
+        payload = self.request_private.await_args.kwargs["json_body"]
+        assert payload["child_orders"] == [
+            {"order_id": "tp-child", "trigger_price": "99000"},
+            {"trigger_price": "94000"},
+        ]
 
     async def test_edit_order_wraps_native_put_failures_without_replacing_the_order(
         self,

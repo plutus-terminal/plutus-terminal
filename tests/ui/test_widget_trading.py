@@ -424,6 +424,28 @@ def test_order_actions_cell_edits_order_using_exchange() -> None:
     assert exchange.edited_orders[0]["new_execution_price"] == Decimal(101000)
 
 
+def test_order_actions_cell_edits_reduce_only_tp_order_using_take_profit_price() -> None:
+    """Reduce-only TP edits should use the native TP payload key instead of trigger_price."""
+    exchange = ExchangeStub()
+    cell = OrderActionsCell(
+        build_order(order_type=PerpsTradeType.TRIGGER_TP, reduce_only=True), exchange
+    )
+
+    run_async(
+        cell._edit_order,
+        {
+            "pair": "Crypto.BTC/USDC",
+            "size_stable": Decimal(50),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "take_profit_price": Decimal(102000),
+            "stop_loss_price": None,
+            "reference_price": Decimal(102000),
+        },
+    )
+
+    assert exchange.edited_orders[0]["new_execution_price"] == Decimal(102000)
+
+
 def test_trade_table_updates_tabs_and_refreshes_liquidation_column() -> None:
     """Trade table should track tab counts and coalesced liquidation refreshes."""
     controller = UIControllerStub()

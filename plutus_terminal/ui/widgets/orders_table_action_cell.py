@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from decimal import Decimal
 import logging
 from typing import TYPE_CHECKING
 
@@ -106,5 +107,20 @@ class OrderActionsCell(QWidget):
         await self._exchange.edit_order(
             order_data=self._order_data,
             new_size_stable=new_order_data["size_stable"],
-            new_execution_price=new_order_data["trigger_price"],
+            new_execution_price=_resolve_execution_price(self._order_data, new_order_data),
         )
+
+
+def _resolve_execution_price(order_data: OrderData, new_order_data: OrderData) -> Decimal:
+    """Resolve edited trigger price for regular and reduce-only TP/SL dialog payloads."""
+    if "trigger_price" in new_order_data:
+        return Decimal(str(new_order_data["trigger_price"]))
+
+    order_type = order_data["order_type"]
+    if order_type.name == "TRIGGER_TP":
+        return Decimal(str(new_order_data["take_profit_price"]))
+    if order_type.name == "TRIGGER_SL":
+        return Decimal(str(new_order_data["stop_loss_price"]))
+
+    msg = "Edited order payload missing trigger price."
+    raise KeyError(msg)
