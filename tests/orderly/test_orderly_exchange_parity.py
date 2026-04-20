@@ -466,26 +466,132 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
         message_bus.orders_fetched.emit.assert_not_called()
         message_bus.positions_fetched.emit.assert_not_called()
 
-    async def test_create_order_warns_when_primary_succeeds_but_tp_sl_attach_fails(self) -> None:
-        """Report partial success without surfacing the entry as a full failure."""
+    def test_resolve_attached_tp_sl_targets_uses_both_configured_auto_targets(self) -> None:
+        """Auto TP/SL config should submit both legs when both are configured."""
         # Arrange
-        message_bus = _build_message_bus()
-        trader = SimpleNamespace(
-            create_order=AsyncMock(
-                return_value={
-                    "primary": {"order_id": "abc"},
-                    "tp_sl": None,
-                    "partial_success": True,
-                    "tp_sl_error": "[429] too many requests",
-                },
-            ),
+        app_config = _build_app_config()
+        app_config.take_profit = 2.0
+        app_config.stop_loss = 1.0
+        exchange = _build_exchange(app_config=app_config)
+
+        # Act
+        take_profit_target, stop_loss_target = exchange._resolve_attached_tp_sl_targets(
+            execution_price=Decimal(100000),
+            trade_direction=PerpsTradeDirection.LONG,
+            take_profit=None,
+            stop_loss=None,
         )
+
+        # Assert
+        assert take_profit_target == Decimal(102000)
+        assert stop_loss_target == Decimal(99000)
+
+    async def test_create_order_queues_both_auto_tp_and_auto_sl_when_configured(self) -> None:
+        """Orderly auto-protection should forward both TP and SL from app config."""
+        # Arrange
+        app_config = _build_app_config()
+        app_config.take_profit = 2.0
+        app_config.stop_loss = 1.0
+        trader = SimpleNamespace(create_order=AsyncMock(return_value={"order_id": "abc"}))
         fetcher = SimpleNamespace(
             fetch_all_orders=AsyncMock(),
             fetch_all_positions=AsyncMock(),
             fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
             _cached_orders=[{"id": "abc"}],
-            _cached_positions=[{"id": 1}],
+            _cached_positions=[],
+            _cached_prices={},
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
+        )
+        exchange = _build_exchange(app_config=app_config, trader=trader, fetcher=fetcher)
+        exchange._handle_deferred_entry_tp_sl = AsyncMock(return_value="queued")  # type: ignore[method-assign]
+
+        # Act
+        await exchange.create_order(
+            pair="Crypto.BTC/USDC",
+            amount=Decimal(10),
+            trade_direction=PerpsTradeDirection.LONG,
+            trade_type=PerpsTradeType.MARKET,
+            execution_price=Decimal("97500.5"),
+        )
+
+        # Assert
+        exchange._handle_deferred_entry_tp_sl.assert_awaited_once()
+        call = exchange._handle_deferred_entry_tp_sl.await_args
+        assert call is not None
+        assert call.kwargs["take_profit_price"] == Decimal("99450.51")
+        assert call.kwargs["stop_loss_price"] == Decimal("96525.495")
+
+    async def test_create_market_order_applies_deferred_tp_sl_when_position_is_visible(
+        self,
+    ) -> None:
+        """Apply Orderly TP/SL through the positional flow after market fill visibility."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(create_order=AsyncMock(return_value={"order_id": "abc"}))
+        live_position = {
+            "pair": "Crypto.BTC/USDC",
+            "id": 1,
+            "position_size_stable": Decimal(50),
+            "collateral_stable": Decimal(10),
+            "open_price": Decimal("97500.5"),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "leverage": Decimal(5),
+            "liquidation_price": Decimal(90000),
+            "extra": {"base_size": "0.0005128", "timestamp": "1710000000001"},
+        }
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
+            _cached_orders=[{"id": "abc"}],
+            _cached_positions=[],
+            _cached_prices={},
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
+        )
+        fetcher.fetch_all_positions.side_effect = lambda: fetcher._cached_positions.append(
+            live_position
+        )
+        exchange = _build_exchange(message_bus=message_bus, trader=trader, fetcher=fetcher)
+        exchange.submit_position_tp_sl = AsyncMock()  # type: ignore[method-assign]
+
+        # Act
+        await exchange.create_order(
+            pair="Crypto.BTC/USDC",
+            amount=Decimal(10),
+            trade_direction=PerpsTradeDirection.LONG,
+            trade_type=PerpsTradeType.MARKET,
+            execution_price=Decimal("97500.5"),
+            take_profit=1.0,
+            stop_loss=1.0,
+        )
+
+        # Assert
+        exchange.submit_position_tp_sl.assert_awaited_once()
+        message = message_bus.send_message.emit.call_args.args[0]
+        assert message.level is MessageLevel.INFO
+        assert message.text == "Created MARKET order for Crypto.BTC/USDC and applied TP/SL"
+
+    async def test_create_limit_order_with_tp_sl_defers_activation_until_fill(self) -> None:
+        """Queue Orderly TP/SL intent for limit orders until a position actually changes."""
+        # Arrange
+        message_bus = _build_message_bus()
+        trader = SimpleNamespace(create_order=AsyncMock(return_value={"order_id": "abc"}))
+        open_order = {
+            "id": "open-limit",
+            "pair": "Crypto.BTC/USDC",
+            "trigger_price": Decimal("97500.5"),
+            "size_stable": Decimal(50),
+            "trade_direction": PerpsTradeDirection.LONG,
+            "order_type": PerpsTradeType.LIMIT,
+            "reduce_only": False,
+            "extra": {"native_order_id": "abc"},
+        }
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
+            _cached_orders=[open_order],
+            _cached_positions=[],
             _cached_prices={},
             _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
         )
@@ -498,17 +604,67 @@ class OrderlyExchangeParityTests(unittest.IsolatedAsyncioTestCase):
             trade_direction=PerpsTradeDirection.LONG,
             trade_type=PerpsTradeType.LIMIT,
             execution_price=Decimal("97500.5"),
+            take_profit=1.0,
+            stop_loss=1.0,
         )
 
         # Assert
         message = message_bus.send_message.emit.call_args.args[0]
-        assert message.level is MessageLevel.WARNING
+        assert message.level is MessageLevel.INFO
         assert message.text == (
-            "Created LIMIT order for Crypto.BTC/USDC, but failed to attach TP/SL: "
-            "[429] too many requests"
+            "Created LIMIT order for Crypto.BTC/USDC. TP/SL will activate after fill."
         )
-        fetcher.fetch_all_orders.assert_awaited_once()
-        fetcher.fetch_all_positions.assert_awaited_once()
+        assert len(exchange._ensure_tp_sl_coordinator().pending_intents()) == 1
+
+    async def test_reconcile_pending_limit_tp_sl_applies_after_position_change(self) -> None:
+        """Apply deferred limit-order TP/SL after a matching position appears later."""
+        # Arrange
+        fetcher = SimpleNamespace(
+            fetch_all_orders=AsyncMock(),
+            fetch_all_positions=AsyncMock(),
+            fetch_current_price=AsyncMock(return_value={"price": Decimal("97500.5")}),
+            _cached_orders=[],
+            _cached_positions=[],
+            _cached_prices={},
+            _balance_with_unsettled_pnl=Mock(return_value=Decimal(100)),
+        )
+        exchange = _build_exchange(fetcher=fetcher)
+        exchange.submit_position_tp_sl = AsyncMock()  # type: ignore[method-assign]
+        coordinator = exchange._ensure_tp_sl_coordinator()
+        coordinator.enqueue(
+            coordinator.create_intent(
+                pair="Crypto.BTC/USDC",
+                symbol="PERP_BTC_USDC",
+                trade_direction=PerpsTradeDirection.LONG,
+                trade_type=PerpsTradeType.LIMIT,
+                take_profit_price=Decimal(101000),
+                stop_loss_price=Decimal("96525.495"),
+                reference_price=Decimal("97500.5"),
+                source_order_id="abc",
+                original_position=None,
+            )
+        )
+        fetcher._cached_positions = [
+            {
+                "pair": "Crypto.BTC/USDC",
+                "id": 1,
+                "position_size_stable": Decimal(50),
+                "collateral_stable": Decimal(10),
+                "open_price": Decimal("97500.5"),
+                "trade_direction": PerpsTradeDirection.LONG,
+                "leverage": Decimal(5),
+                "liquidation_price": Decimal(90000),
+                "extra": {"base_size": "0.0005128", "timestamp": "1710000000001"},
+            }
+        ]
+
+        # Act
+        applied = await exchange._reconcile_pending_tp_sl_intents(notify=False)
+
+        # Assert
+        assert applied == 1
+        exchange.submit_position_tp_sl.assert_awaited_once()
+        assert exchange._ensure_tp_sl_coordinator().pending_intents() == ()
 
     async def test_create_order_warns_when_refresh_fails_after_successful_submission(self) -> None:
         """Preserve a successful order submission even if the follow-up refresh crashes."""

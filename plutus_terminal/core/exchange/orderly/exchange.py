@@ -30,6 +30,11 @@ from plutus_terminal.core.exchange.orderly.models import (
     endpoints_for_network,
 )
 from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRequestError, OrderlyRestClient
+from plutus_terminal.core.exchange.orderly.tp_sl_coordinator import (
+    OrderlyTpSlCoordinator,
+    PositionSnapshot,
+    snapshot_from_position,
+)
 from plutus_terminal.core.exchange.orderly.trader import OrderlyTrader
 from plutus_terminal.core.exchange.orderly.websocket import OrderlyWebsocketManager
 from plutus_terminal.core.types_ import (
@@ -134,6 +139,9 @@ class OrderlyExchange(ExchangeBase):
             message_bus=self.message_bus,
         )
         self._trader = OrderlyTrader(self._private_rest_client, self._market_registry)
+        self._tp_sl_coordinator = OrderlyTpSlCoordinator()
+        self._tp_sl_reconcile_task: asyncio.Task[None] | None = None
+        self._connect_tp_sl_reconciliation()
         self._max_leverage = max(
             await self._fetch_max_leverage(),
             getattr(self._market_registry, "max_leverage", 0),
@@ -359,15 +367,28 @@ class OrderlyExchange(ExchangeBase):
             "take_profit": take_profit_target,
             "stop_loss": stop_loss_target,
         }
+        deferred_tp_sl_message: str | None = None
+        original_position = self._current_position_snapshot(
+            pair=pair, trade_direction=trade_direction
+        )
 
         try:
             result = await self.trader.create_order(trade_arguments)
-            if isinstance(result, dict) and result.get("partial_success") is True:
-                message_text = (
-                    f"Created {trade_type.name} order for {pair}, but failed to attach TP/SL: "
-                    f"{result.get('tp_sl_error', 'unknown error')}"
+            if trade_type.is_regular_order and (take_profit_target > 0 or stop_loss_target > 0):
+                deferred_tp_sl_message = await self._handle_deferred_entry_tp_sl(
+                    pair=pair,
+                    symbol=symbol,
+                    trade_direction=trade_direction,
+                    trade_type=trade_type,
+                    result=result,
+                    take_profit_price=take_profit_target if take_profit_target > 0 else None,
+                    stop_loss_price=stop_loss_target if stop_loss_target > 0 else None,
+                    reference_price=price,
+                    original_position=original_position,
                 )
-                message_level = MessageLevel.WARNING
+            if deferred_tp_sl_message is not None:
+                message_text = deferred_tp_sl_message
+                message_level = MessageLevel.INFO
             else:
                 message_text = f"Creating {trade_type.name} order for {pair}"
                 message_level = MessageLevel.INFO
@@ -390,6 +411,152 @@ class OrderlyExchange(ExchangeBase):
             return
 
         await self._refresh_after_order_submission(pair=pair, refresh_positions=True)
+
+    async def _handle_deferred_entry_tp_sl(
+        self,
+        *,
+        pair: str,
+        symbol: str,
+        trade_direction: PerpsTradeDirection,
+        trade_type: PerpsTradeType,
+        result: object,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+        reference_price: Decimal,
+        original_position: PositionSnapshot | None,
+    ) -> str:
+        """Queue and reconcile deferred TP/SL for Orderly regular entry orders."""
+        coordinator = self._ensure_tp_sl_coordinator()
+        coordinator.enqueue(
+            coordinator.create_intent(
+                pair=pair,
+                symbol=symbol,
+                trade_direction=trade_direction,
+                trade_type=trade_type,
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+                reference_price=reference_price,
+                source_order_id=_extract_source_order_id(result),
+                original_position=original_position,
+            )
+        )
+
+        await self._refresh_after_order_submission(pair=pair, refresh_positions=True)
+        applied_count = await self._reconcile_pending_tp_sl_intents(notify=False)
+        if applied_count > 0:
+            return f"Created {trade_type.name} order for {pair} and applied TP/SL"
+        if trade_type is PerpsTradeType.MARKET:
+            return f"Created MARKET order for {pair}. Applying TP/SL after fill."
+        return f"Created {trade_type.name} order for {pair}. TP/SL will activate after fill."
+
+    def _ensure_tp_sl_coordinator(self) -> OrderlyTpSlCoordinator:
+        """Return deferred TP/SL coordinator, creating one lazily in tests."""
+        coordinator = getattr(self, "_tp_sl_coordinator", None)
+        if coordinator is None:
+            coordinator = OrderlyTpSlCoordinator()
+            self._tp_sl_coordinator = coordinator
+        return coordinator
+
+    def _connect_tp_sl_reconciliation(self) -> None:
+        """Reconnect deferred TP/SL checks after live position updates."""
+        positions_signal = getattr(self.message_bus, "positions_fetched", None)
+        connect = getattr(positions_signal, "connect", None)
+        if callable(connect):
+            connect(self._schedule_tp_sl_reconciliation)
+
+    def _schedule_tp_sl_reconciliation(self, *_args: object) -> None:
+        """Schedule async TP/SL reconciliation from sync signal callbacks."""
+        task = getattr(self, "_tp_sl_reconcile_task", None)
+        if task is not None and not task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._tp_sl_reconcile_task = loop.create_task(self._reconcile_pending_tp_sl_intents())
+
+    async def _reconcile_pending_tp_sl_intents(self, *, notify: bool = True) -> int:
+        """Apply pending TP/SL intents when matching positions appear."""
+        coordinator = self._ensure_tp_sl_coordinator()
+        applied_count = 0
+
+        for intent in coordinator.pop_expired_intents():
+            if notify:
+                self._emit_tp_sl_deferred_warning(
+                    pair=intent.pair,
+                    reason="TP/SL could not be applied automatically before the retry window expired.",
+                )
+
+        current_positions = list(getattr(self.fetcher, "_cached_positions", []))
+        for intent, position in coordinator.pop_ready_intents(positions=current_positions):
+            await self.submit_position_tp_sl(
+                pair=intent.pair,
+                size_stable=position["position_size_stable"],
+                trade_direction=intent.trade_direction,
+                take_profit_price=intent.take_profit_price,
+                stop_loss_price=intent.stop_loss_price,
+                reference_price=intent.reference_price,
+                base_size=self._position_base_size(position),
+            )
+            applied_count += 1
+
+        current_orders = list(getattr(self.fetcher, "_cached_orders", []))
+        for intent in coordinator.pop_abandoned_limit_intents(open_orders=current_orders):
+            if notify:
+                self._emit_tp_sl_deferred_warning(
+                    pair=intent.pair,
+                    reason="The parent order closed before TP/SL could activate.",
+                )
+        return applied_count
+
+    def _current_position_snapshot(
+        self,
+        *,
+        pair: str,
+        trade_direction: PerpsTradeDirection,
+    ) -> PositionSnapshot | None:
+        """Return snapshot of current same-side position before entry submission."""
+        position = self._position_for_pair_direction(pair=pair, trade_direction=trade_direction)
+        if position is None:
+            return None
+        return snapshot_from_position(position)
+
+    def _position_for_pair_direction(
+        self,
+        *,
+        pair: str,
+        trade_direction: PerpsTradeDirection,
+    ) -> PerpsPosition | None:
+        """Return cached position for one pair and direction when present."""
+        for position in getattr(self.fetcher, "_cached_positions", []):
+            if not isinstance(position, dict):
+                continue
+            position_pair = position.get("pair")
+            position_direction = position.get("trade_direction")
+            if position_pair == pair and position_direction is trade_direction:
+                return position
+        return None
+
+    @staticmethod
+    def _position_base_size(position: PerpsPosition) -> Decimal | None:
+        """Return parsed base size from one cached position."""
+        position_extra = position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return None
+        base_size = position_extra.get("base_size")
+        if base_size in (None, ""):
+            return None
+        return Decimal(str(base_size))
+
+    def _emit_tp_sl_deferred_warning(self, *, pair: str, reason: str) -> None:
+        """Emit one consistent warning when deferred TP/SL could not complete."""
+        self.message_bus.send_message.emit(
+            UserMessage(
+                text=f"Order created for {pair}, but {reason}",
+                level=MessageLevel.WARNING,
+                timeout_ms=5000,
+            ),
+        )
 
     @asyncSlot()
     async def edit_order(
@@ -838,7 +1005,7 @@ class OrderlyExchange(ExchangeBase):
                     self.app_config.take_profit,
                     trade_direction,
                 )
-            elif self.app_config.stop_loss != 0:
+            if self.app_config.stop_loss != 0:
                 stop_loss_target = exchange_helpers.get_stop_loss_target(
                     execution_price,
                     self.app_config.stop_loss,
@@ -1150,6 +1317,16 @@ class OrderlyExchange(ExchangeBase):
         ].strip().lower() not in {"", "mainnet", "testnet"}:
             return False, "Network must be 'mainnet' or 'testnet'."
         return True, "Valid orderly credentials."
+
+
+def _extract_source_order_id(result: object) -> str | None:
+    """Return native Orderly order id from create-order response when present."""
+    if not isinstance(result, dict):
+        return None
+    order_id = result.get("order_id")
+    if order_id in (None, ""):
+        return None
+    return str(order_id)
 
 
 def _normalize_orderly_key(orderly_key: str) -> str:

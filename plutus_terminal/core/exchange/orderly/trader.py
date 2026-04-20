@@ -55,32 +55,9 @@ class OrderlyTrader:
         request = _build_order_request(trade_arguments, self._market_registry)
 
         try:
-            primary_result = await self._submit_order_request(request)
+            return await self._submit_order_request(request)
         except Exception as error:
             raise TransactionFailedError(_transaction_error_message(error)) from error
-
-        result: TradeResults = primary_result
-        if request.trade_type.is_regular_order and request.has_any_tp_sl:
-            try:
-                tp_sl_result = await self._rest_client.request_private(
-                    "POST",
-                    "/v1/algo/order",
-                    json_body=_build_attached_tp_sl_order_payload(request),
-                )
-                result = {"primary": primary_result, "tp_sl": tp_sl_result}
-            except (
-                HTTPStatusError,
-                OrderlyRequestError,
-                RequestError,
-                TransactionFailedError,
-            ) as error:
-                result = {
-                    "primary": primary_result,
-                    "tp_sl": None,
-                    "partial_success": True,
-                    "tp_sl_error": str(error),
-                }
-        return result
 
     async def create_reduce_order(self, trade_arguments: dict) -> TradeResults:
         """Create reduce-only order for an existing position."""
@@ -268,47 +245,6 @@ def _build_stop_edit_payload(order_id: str, request: OrderlyOrderRequest) -> dic
     body = dict(_build_stop_order_payload(request))
     body["order_id"] = order_id
     return body
-
-
-def _build_attached_tp_sl_order_payload(
-    request: OrderlyOrderRequest,
-    *,
-    tp_child_order_id: str | None = None,
-    sl_child_order_id: str | None = None,
-) -> dict[str, object]:
-    """Build native Orderly `TP_SL` payload for attached regular-order exits."""
-    child_orders: list[dict[str, object]] = []
-    if request.has_take_profit:
-        child_orders.append(
-            _build_tp_sl_child_order(
-                request,
-                OrderlyTpSlChildType.TAKE_PROFIT,
-                request.take_profit,
-                child_order_type=OrderlyOrderType.MARKET,
-                child_order_id=tp_child_order_id,
-            ),
-        )
-    if request.has_stop_loss:
-        child_orders.append(
-            _build_tp_sl_child_order(
-                request,
-                OrderlyTpSlChildType.STOP_LOSS,
-                request.stop_loss,
-                child_order_type=OrderlyOrderType.MARKET,
-                child_order_id=sl_child_order_id,
-            ),
-        )
-    if not child_orders:
-        msg = "TP/SL algo orders require at least one trigger target."
-        raise ValueError(msg)
-
-    return {
-        "symbol": request.symbol,
-        "algo_type": OrderlyAlgoType.TP_SL.value,
-        "quantity": str(request.quantity),
-        "trigger_price_type": request.trigger_price_type.value,
-        "child_orders": child_orders,
-    }
 
 
 def _build_reduce_tp_sl_order_payload(
