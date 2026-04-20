@@ -1,4 +1,4 @@
-# ruff: noqa: S101, PLR2004, PT027
+# ruff: noqa: S101, PT027
 
 """Focused parity tests for native Orderly order builders."""
 
@@ -127,10 +127,10 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         assert payload["child_orders"][0]["type"] == "CLOSE_POSITION"
         assert Decimal(payload["child_orders"][0]["trigger_price"]) == Decimal("94000.00")
 
-    async def test_create_order_submits_primary_order_and_paired_tp_sl_algo_request(self) -> None:
-        """Submit a regular order plus a paired native TP/SL algo request."""
+    async def test_create_order_with_tp_sl_targets_submits_only_primary_regular_order(self) -> None:
+        """Keep entry creation on the regular endpoint even when TP/SL intent is present."""
         # Arrange
-        self.request_private.side_effect = [{"order_id": "primary"}, {"algo_order_id": "tp_sl"}]
+        self.request_private.return_value = {"order_id": "primary"}
 
         # Act
         result = await self.trader.create_order(
@@ -141,33 +141,22 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         # Assert
-        assert result == {
-            "primary": {"order_id": "primary"},
-            "tp_sl": {"algo_order_id": "tp_sl"},
-        }
-        assert self.request_private.await_count == 2
-        first_call = self.request_private.await_args_list[0]
-        second_call = self.request_private.await_args_list[1]
-        assert first_call.args[:2] == ("POST", "/v1/order")
-        assert second_call.args[:2] == ("POST", "/v1/algo/order")
-        regular_payload = first_call.kwargs["json_body"]
-        tp_sl_payload = second_call.kwargs["json_body"]
+        assert result == {"order_id": "primary"}
+        assert self.request_private.await_count == 1
+        call = self.request_private.await_args
+        assert call is not None
+        assert call.args[:2] == ("POST", "/v1/order")
+        regular_payload = call.kwargs["json_body"]
         assert regular_payload["order_type"] == "LIMIT"
         assert Decimal(regular_payload["order_quantity"]) == Decimal("0.01")
         assert Decimal(regular_payload["order_price"]) == Decimal("97500.50")
-        assert "side" not in tp_sl_payload
-        assert tp_sl_payload["trigger_price_type"] == "MARK_PRICE"
-        assert len(tp_sl_payload["child_orders"]) == 2
-        assert {child["algo_type"] for child in tp_sl_payload["child_orders"]} == {
-            "TAKE_PROFIT",
-            "STOP_LOSS",
-        }
-        assert {child["side"] for child in tp_sl_payload["child_orders"]} == {"SELL"}
 
-    async def test_create_order_quantizes_attached_tp_sl_trigger_prices(self) -> None:
-        """Round attached TP/SL trigger prices to the market quote tick before sending."""
+    async def test_create_order_quantizes_tp_sl_targets_without_submitting_algo_request(
+        self,
+    ) -> None:
+        """Normalize TP/SL targets on the request model without posting an algo order."""
         # Arrange
-        self.request_private.side_effect = [{"order_id": "primary"}, {"algo_order_id": "tp_sl"}]
+        self.request_private.return_value = {"order_id": "primary"}
 
         # Act
         await self.trader.create_order(
@@ -178,34 +167,8 @@ class OrderlyTraderBuilderParityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         # Assert
-        payload = self.request_private.await_args_list[1].kwargs["json_body"]
-        child_orders = {child["algo_type"]: child for child in payload["child_orders"]}
-        assert Decimal(child_orders["TAKE_PROFIT"]["trigger_price"]) == Decimal("99000.01")
-        assert Decimal(child_orders["STOP_LOSS"]["trigger_price"]) == Decimal("94000.01")
-
-    async def test_create_order_returns_partial_success_when_tp_sl_attach_fails(self) -> None:
-        """Keep the live primary order visible when the follow-up TP/SL request fails."""
-        # Arrange
-        self.request_private.side_effect = [
-            {"order_id": "primary"},
-            TransactionFailedError("[429] too many requests"),
-        ]
-
-        # Act
-        result = await self.trader.create_order(
-            _build_trade_arguments(
-                take_profit=Decimal(99000),
-                stop_loss=Decimal(94000),
-            ),
-        )
-
-        # Assert
-        assert result == {
-            "primary": {"order_id": "primary"},
-            "tp_sl": None,
-            "partial_success": True,
-            "tp_sl_error": "[429] too many requests",
-        }
+        payload = self.request_private.await_args.kwargs["json_body"]
+        assert Decimal(payload["order_quantity"]) == Decimal("0.01")
 
     async def test_create_order_without_tp_sl_submits_only_the_primary_regular_order(self) -> None:
         """Keep regular order creation on the native regular endpoint without TP/SL targets."""

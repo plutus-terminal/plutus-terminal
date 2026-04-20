@@ -30,6 +30,11 @@ from plutus_terminal.core.exchange.orderly.models import (
     endpoints_for_network,
 )
 from plutus_terminal.core.exchange.orderly.rest_client import OrderlyRequestError, OrderlyRestClient
+from plutus_terminal.core.exchange.orderly.tp_sl_coordinator import (
+    OrderlyTpSlCoordinator,
+    PositionSnapshot,
+    snapshot_from_position,
+)
 from plutus_terminal.core.exchange.orderly.trader import OrderlyTrader
 from plutus_terminal.core.exchange.orderly.websocket import OrderlyWebsocketManager
 from plutus_terminal.core.types_ import (
@@ -134,6 +139,9 @@ class OrderlyExchange(ExchangeBase):
             message_bus=self.message_bus,
         )
         self._trader = OrderlyTrader(self._private_rest_client, self._market_registry)
+        self._tp_sl_coordinator = OrderlyTpSlCoordinator()
+        self._tp_sl_reconcile_task: asyncio.Task[None] | None = None
+        self._connect_tp_sl_reconciliation()
         self._max_leverage = max(
             await self._fetch_max_leverage(),
             getattr(self._market_registry, "max_leverage", 0),
@@ -359,15 +367,28 @@ class OrderlyExchange(ExchangeBase):
             "take_profit": take_profit_target,
             "stop_loss": stop_loss_target,
         }
+        deferred_tp_sl_message: str | None = None
+        original_position = self._current_position_snapshot(
+            pair=pair, trade_direction=trade_direction
+        )
 
         try:
             result = await self.trader.create_order(trade_arguments)
-            if isinstance(result, dict) and result.get("partial_success") is True:
-                message_text = (
-                    f"Created {trade_type.name} order for {pair}, but failed to attach TP/SL: "
-                    f"{result.get('tp_sl_error', 'unknown error')}"
+            if trade_type.is_regular_order and (take_profit_target > 0 or stop_loss_target > 0):
+                deferred_tp_sl_message = await self._handle_deferred_entry_tp_sl(
+                    pair=pair,
+                    symbol=symbol,
+                    trade_direction=trade_direction,
+                    trade_type=trade_type,
+                    result=result,
+                    take_profit_price=take_profit_target if take_profit_target > 0 else None,
+                    stop_loss_price=stop_loss_target if stop_loss_target > 0 else None,
+                    reference_price=price,
+                    original_position=original_position,
                 )
-                message_level = MessageLevel.WARNING
+            if deferred_tp_sl_message is not None:
+                message_text = deferred_tp_sl_message
+                message_level = MessageLevel.INFO
             else:
                 message_text = f"Creating {trade_type.name} order for {pair}"
                 message_level = MessageLevel.INFO
@@ -391,6 +412,152 @@ class OrderlyExchange(ExchangeBase):
 
         await self._refresh_after_order_submission(pair=pair, refresh_positions=True)
 
+    async def _handle_deferred_entry_tp_sl(
+        self,
+        *,
+        pair: str,
+        symbol: str,
+        trade_direction: PerpsTradeDirection,
+        trade_type: PerpsTradeType,
+        result: object,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+        reference_price: Decimal,
+        original_position: PositionSnapshot | None,
+    ) -> str:
+        """Queue and reconcile deferred TP/SL for Orderly regular entry orders."""
+        coordinator = self._ensure_tp_sl_coordinator()
+        coordinator.enqueue(
+            coordinator.create_intent(
+                pair=pair,
+                symbol=symbol,
+                trade_direction=trade_direction,
+                trade_type=trade_type,
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+                reference_price=reference_price,
+                source_order_id=_extract_source_order_id(result),
+                original_position=original_position,
+            )
+        )
+
+        await self._refresh_after_order_submission(pair=pair, refresh_positions=True)
+        applied_count = await self._reconcile_pending_tp_sl_intents(notify=False)
+        if applied_count > 0:
+            return f"Created {trade_type.name} order for {pair} and applied TP/SL"
+        if trade_type is PerpsTradeType.MARKET:
+            return f"Created MARKET order for {pair}. Applying TP/SL after fill."
+        return f"Created {trade_type.name} order for {pair}. TP/SL will activate after fill."
+
+    def _ensure_tp_sl_coordinator(self) -> OrderlyTpSlCoordinator:
+        """Return deferred TP/SL coordinator, creating one lazily in tests."""
+        coordinator = getattr(self, "_tp_sl_coordinator", None)
+        if coordinator is None:
+            coordinator = OrderlyTpSlCoordinator()
+            self._tp_sl_coordinator = coordinator
+        return coordinator
+
+    def _connect_tp_sl_reconciliation(self) -> None:
+        """Reconnect deferred TP/SL checks after live position updates."""
+        positions_signal = getattr(self.message_bus, "positions_fetched", None)
+        connect = getattr(positions_signal, "connect", None)
+        if callable(connect):
+            connect(self._schedule_tp_sl_reconciliation)
+
+    def _schedule_tp_sl_reconciliation(self, *_args: object) -> None:
+        """Schedule async TP/SL reconciliation from sync signal callbacks."""
+        task = getattr(self, "_tp_sl_reconcile_task", None)
+        if task is not None and not task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._tp_sl_reconcile_task = loop.create_task(self._reconcile_pending_tp_sl_intents())
+
+    async def _reconcile_pending_tp_sl_intents(self, *, notify: bool = True) -> int:
+        """Apply pending TP/SL intents when matching positions appear."""
+        coordinator = self._ensure_tp_sl_coordinator()
+        applied_count = 0
+
+        for intent in coordinator.pop_expired_intents():
+            if notify:
+                self._emit_tp_sl_deferred_warning(
+                    pair=intent.pair,
+                    reason="TP/SL could not be applied automatically before the retry window expired.",
+                )
+
+        current_positions = list(getattr(self.fetcher, "_cached_positions", []))
+        for intent, position in coordinator.pop_ready_intents(positions=current_positions):
+            await self.submit_position_tp_sl(
+                pair=intent.pair,
+                size_stable=position["position_size_stable"],
+                trade_direction=intent.trade_direction,
+                take_profit_price=intent.take_profit_price,
+                stop_loss_price=intent.stop_loss_price,
+                reference_price=intent.reference_price,
+                base_size=self._position_base_size(position),
+            )
+            applied_count += 1
+
+        current_orders = list(getattr(self.fetcher, "_cached_orders", []))
+        for intent in coordinator.pop_abandoned_limit_intents(open_orders=current_orders):
+            if notify:
+                self._emit_tp_sl_deferred_warning(
+                    pair=intent.pair,
+                    reason="The parent order closed before TP/SL could activate.",
+                )
+        return applied_count
+
+    def _current_position_snapshot(
+        self,
+        *,
+        pair: str,
+        trade_direction: PerpsTradeDirection,
+    ) -> PositionSnapshot | None:
+        """Return snapshot of current same-side position before entry submission."""
+        position = self._position_for_pair_direction(pair=pair, trade_direction=trade_direction)
+        if position is None:
+            return None
+        return snapshot_from_position(position)
+
+    def _position_for_pair_direction(
+        self,
+        *,
+        pair: str,
+        trade_direction: PerpsTradeDirection,
+    ) -> PerpsPosition | None:
+        """Return cached position for one pair and direction when present."""
+        for position in getattr(self.fetcher, "_cached_positions", []):
+            if not isinstance(position, dict):
+                continue
+            position_pair = position.get("pair")
+            position_direction = position.get("trade_direction")
+            if position_pair == pair and position_direction is trade_direction:
+                return position
+        return None
+
+    @staticmethod
+    def _position_base_size(position: PerpsPosition) -> Decimal | None:
+        """Return parsed base size from one cached position."""
+        position_extra = position.get("extra", {})
+        if not isinstance(position_extra, dict):
+            return None
+        base_size = position_extra.get("base_size")
+        if base_size in (None, ""):
+            return None
+        return Decimal(str(base_size))
+
+    def _emit_tp_sl_deferred_warning(self, *, pair: str, reason: str) -> None:
+        """Emit one consistent warning when deferred TP/SL could not complete."""
+        self.message_bus.send_message.emit(
+            UserMessage(
+                text=f"Order created for {pair}, but {reason}",
+                level=MessageLevel.WARNING,
+                timeout_ms=5000,
+            ),
+        )
+
     @asyncSlot()
     async def edit_order(
         self,
@@ -408,17 +575,57 @@ class OrderlyExchange(ExchangeBase):
         try:
             await self.trader.edit_order(trade_arguments)
         except TransactionFailedError as error:
-            self.message_bus.send_message.emit(
-                UserMessage(
-                    text=f"Failed to edit order: {error}",
-                    level=MessageLevel.ERROR,
-                    timeout_ms=5000,
-                ),
-            )
-            return
+            if order_data[
+                "order_type"
+            ].is_regular_order and self._should_replace_regular_order_on_edit_failure(error):
+                try:
+                    await self._replace_regular_order(order_data, trade_arguments)
+                except TransactionFailedError as replace_error:
+                    self.message_bus.send_message.emit(
+                        UserMessage(
+                            text=f"Failed to edit order: {replace_error}",
+                            level=MessageLevel.ERROR,
+                            timeout_ms=5000,
+                        ),
+                    )
+                    return
+            else:
+                self.message_bus.send_message.emit(
+                    UserMessage(
+                        text=f"Failed to edit order: {error}",
+                        level=MessageLevel.ERROR,
+                        timeout_ms=5000,
+                    ),
+                )
+                return
 
         await self.fetcher.fetch_all_orders()
         self.message_bus.orders_fetched.emit(self.fetcher._cached_orders)  # noqa: SLF001
+
+    async def _replace_regular_order(
+        self,
+        order_data: OrderData,
+        trade_arguments: dict[str, object],
+    ) -> None:
+        """Replace one regular order when native edit fails in practice."""
+        await self.trader.cancel_order(
+            {
+                "order_id": self._cancel_order_id(order_data),
+                "symbol": self._symbol_from_order(order_data),
+                "trade_type": order_data["order_type"],
+            },
+        )
+        create_arguments = dict(trade_arguments)
+        create_arguments.pop("order_id", None)
+        await self.trader.create_order(create_arguments)
+
+    @staticmethod
+    def _should_replace_regular_order_on_edit_failure(error: TransactionFailedError) -> bool:
+        """Return whether a failed regular-order edit should fall back to cancel plus create."""
+        error_text = str(error)
+        return not any(
+            marker in error_text for marker in ("[429]", "[401]", "[403]", "[500]", "timeout")
+        )
 
     @asyncSlot()
     async def create_reduce_order(
@@ -455,6 +662,121 @@ class OrderlyExchange(ExchangeBase):
 
         await self._refresh_after_order_submission(pair=pair, refresh_positions=False)
 
+    async def submit_position_tp_sl(
+        self,
+        *,
+        pair: str,
+        size_stable: Decimal,
+        trade_direction: PerpsTradeDirection,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+        reference_price: Decimal,
+        base_size: Decimal | None = None,
+    ) -> None:
+        """Create or edit native positional TP/SL protection through core exchange logic."""
+        if take_profit_price is None and stop_loss_price is None:
+            return
+
+        existing_order = self.fetcher.get_open_positional_tp_sl_order(
+            pair=pair,
+            trade_direction=trade_direction,
+        )
+        resolved_take_profit, resolved_stop_loss = self._merge_position_tp_sl_targets(
+            existing_order=existing_order,
+            take_profit_price=take_profit_price,
+            stop_loss_price=stop_loss_price,
+        )
+        trade_arguments = self._build_position_tp_sl_trade_arguments(
+            pair=pair,
+            size_stable=size_stable,
+            trade_direction=trade_direction,
+            take_profit_price=resolved_take_profit,
+            stop_loss_price=resolved_stop_loss,
+            reference_price=reference_price,
+            base_size=base_size,
+            existing_order=existing_order,
+        )
+
+        action = "create"
+        try:
+            if existing_order is None:
+                await self.trader.create_reduce_order(trade_arguments)
+            elif self._requires_positional_tp_sl_recreate(
+                existing_order=existing_order,
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+            ):
+                await self._replace_position_tp_sl_order(
+                    existing_order=existing_order,
+                    trade_arguments=self._build_position_tp_sl_trade_arguments(
+                        pair=pair,
+                        size_stable=size_stable,
+                        trade_direction=trade_direction,
+                        take_profit_price=resolved_take_profit,
+                        stop_loss_price=resolved_stop_loss,
+                        reference_price=reference_price,
+                        base_size=base_size,
+                        existing_order=None,
+                    ),
+                )
+                action = "update"
+            else:
+                await self.trader.edit_order(trade_arguments)
+                action = "update"
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=self._tp_sl_submission_message(
+                        pair=pair,
+                        take_profit_price=take_profit_price,
+                        stop_loss_price=stop_loss_price,
+                        action=action,
+                    ),
+                    level=MessageLevel.INFO,
+                    timeout_ms=5000,
+                ),
+            )
+        except TransactionFailedError as error:
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Failed to {action} reduce order: {error}",
+                    level=MessageLevel.ERROR,
+                    timeout_ms=5000,
+                ),
+            )
+            return
+
+        try:
+            await asyncio.gather(
+                self.fetcher.fetch_all_orders(), self.fetcher.fetch_all_positions()
+            )
+            self.message_bus.orders_fetched.emit(self.fetcher._cached_orders)  # noqa: SLF001
+            self.message_bus.positions_fetched.emit(self.fetcher._cached_positions)  # noqa: SLF001
+        except Exception as error:
+            LOGGER.exception("Failed to refresh Orderly state after submitting position TP/SL")
+            self.message_bus.send_message.emit(
+                UserMessage(
+                    text=f"Created TP/SL order, but failed to refresh Orderly data: {error}",
+                    level=MessageLevel.WARNING,
+                    timeout_ms=5000,
+                ),
+            )
+
+    async def _replace_position_tp_sl_order(
+        self,
+        *,
+        existing_order: OrderData,
+        trade_arguments: dict[str, object],
+    ) -> None:
+        """Replace one positional TP/SL root when Orderly cannot add a sibling by PUT."""
+        await self.trader.cancel_order(
+            {
+                "order_id": self._native_order_id(existing_order),
+                "symbol": self._symbol_from_order(existing_order),
+                "trade_type": existing_order["order_type"],
+            },
+        )
+        await self.trader.create_reduce_order(trade_arguments)
+
     async def _refresh_after_order_submission(self, *, pair: str, refresh_positions: bool) -> None:
         """Refresh order state after a successful Orderly order mutation."""
         try:
@@ -479,9 +801,28 @@ class OrderlyExchange(ExchangeBase):
     @asyncSlot()
     async def cancel_order(self, order_data: OrderData) -> None:
         """Cancel one open order."""
+        if order_data["order_type"].is_tp_sl_order:
+            try:
+                await self._cancel_tp_sl_order_preserving_sibling(order_data)
+            except TransactionFailedError as error:
+                self.message_bus.send_message.emit(
+                    UserMessage(
+                        text=f"Failed to cancel order: {error}",
+                        level=MessageLevel.ERROR,
+                        timeout_ms=5000,
+                    ),
+                )
+                return
+
+            await self._refresh_after_order_submission(
+                pair=order_data["pair"],
+                refresh_positions=False,
+            )
+            return
+
         symbol = self._symbol_from_order(order_data)
         cancel_arguments = {
-            "order_id": self._native_order_id(order_data),
+            "order_id": self._cancel_order_id(order_data),
             "symbol": symbol,
             "trade_type": order_data["order_type"],
         }
@@ -498,6 +839,84 @@ class OrderlyExchange(ExchangeBase):
             return
 
         await self._refresh_after_order_submission(pair=order_data["pair"], refresh_positions=False)
+
+    async def _cancel_tp_sl_order_preserving_sibling(self, order_data: OrderData) -> None:
+        """Cancel TP/SL root and recreate surviving sibling leg when needed."""
+        sibling_order = self._tp_sl_surviving_sibling(order_data)
+        await self.trader.cancel_order(
+            {
+                "order_id": self._native_order_id(order_data),
+                "symbol": self._symbol_from_order(order_data),
+                "trade_type": order_data["order_type"],
+            },
+        )
+        if sibling_order is None:
+            return
+
+        take_profit_price, stop_loss_price = self._surviving_tp_sl_targets(sibling_order)
+        await self.trader.create_reduce_order(
+            self._build_position_tp_sl_trade_arguments(
+                pair=sibling_order["pair"],
+                size_stable=sibling_order["size_stable"],
+                trade_direction=sibling_order["trade_direction"],
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+                reference_price=sibling_order["trigger_price"],
+                base_size=self._tp_sl_order_base_size(sibling_order),
+                existing_order=None,
+            ),
+        )
+
+    @staticmethod
+    def _surviving_tp_sl_targets(order_data: OrderData) -> tuple[Decimal, Decimal]:
+        """Return only the surviving TP or SL trigger for root recreation after delete."""
+        if order_data["order_type"] is PerpsTradeType.TRIGGER_TP:
+            return order_data["trigger_price"], Decimal(0)
+        if order_data["order_type"] is PerpsTradeType.TRIGGER_SL:
+            return Decimal(0), order_data["trigger_price"]
+        return Decimal(0), Decimal(0)
+
+    def _tp_sl_order_base_size(self, order_data: OrderData) -> Decimal | None:
+        """Return preserved native base size for TP/SL recreate flows."""
+        order_extra = order_data.get("extra", {})
+        if isinstance(order_extra, dict):
+            base_size = self._parse_positive_decimal(order_extra.get("base_size"))
+            if base_size is not None:
+                return base_size
+
+        for position in getattr(self.fetcher, "_cached_positions", []):
+            if (
+                position["pair"] == order_data["pair"]
+                and position["trade_direction"] is order_data["trade_direction"]
+            ):
+                position_extra = position.get("extra", {})
+                if not isinstance(position_extra, dict):
+                    continue
+                base_size = self._parse_positive_decimal(position_extra.get("base_size"))
+                if base_size is not None:
+                    return base_size
+        return None
+
+    @staticmethod
+    def _parse_positive_decimal(value: object) -> Decimal | None:
+        """Return positive decimals only, treating zero-like values as missing."""
+        if value in (None, ""):
+            return None
+        parsed = Decimal(str(value))
+        if parsed <= Decimal(0):
+            return None
+        return parsed
+
+    def _tp_sl_surviving_sibling(self, order_data: OrderData) -> OrderData | None:
+        """Return sibling TP/SL order that should survive a clicked child cancel."""
+        sibling_orders = [
+            candidate
+            for candidate in self._tp_sl_sibling_orders(order_data)
+            if candidate["id"] != order_data["id"]
+        ]
+        if not sibling_orders:
+            return None
+        return sibling_orders[0]
 
     @asyncSlot()
     async def close_position(self, perps_position: PerpsPosition) -> None:
@@ -586,7 +1005,7 @@ class OrderlyExchange(ExchangeBase):
                     self.app_config.take_profit,
                     trade_direction,
                 )
-            elif self.app_config.stop_loss != 0:
+            if self.app_config.stop_loss != 0:
                 stop_loss_target = exchange_helpers.get_stop_loss_target(
                     execution_price,
                     self.app_config.stop_loss,
@@ -660,6 +1079,7 @@ class OrderlyExchange(ExchangeBase):
         )
         trade_arguments["take_profit"] = take_profit
         trade_arguments["stop_loss"] = stop_loss
+        trade_arguments.update(self._tp_sl_child_order_ids(order_data))
         return trade_arguments
 
     def _tp_sl_targets_for_edit(
@@ -684,6 +1104,101 @@ class OrderlyExchange(ExchangeBase):
                 stop_loss = trigger_price
 
         return take_profit, stop_loss
+
+    def _build_position_tp_sl_trade_arguments(
+        self,
+        *,
+        pair: str,
+        size_stable: Decimal,
+        trade_direction: PerpsTradeDirection,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+        reference_price: Decimal,
+        base_size: Decimal | None,
+        existing_order: OrderData | None,
+    ) -> dict[str, object]:
+        """Build native trade arguments for positional TP/SL create or edit flows."""
+        resolved_take_profit, resolved_stop_loss = self._merge_position_tp_sl_targets(
+            existing_order=existing_order,
+            take_profit_price=take_profit_price,
+            stop_loss_price=stop_loss_price,
+        )
+        trade_arguments: dict[str, object] = {
+            "symbol": self._market_registry.get_symbol_for_pair(pair),
+            "trade_direction": trade_direction,
+            "trade_type": (
+                PerpsTradeType.TRIGGER_TP
+                if resolved_take_profit != Decimal(0)
+                else PerpsTradeType.TRIGGER_SL
+            ),
+            "price": reference_price,
+            "size_stable": size_stable,
+            "reduce_only": True,
+            "take_profit": resolved_take_profit,
+            "stop_loss": resolved_stop_loss,
+        }
+        if base_size is not None:
+            trade_arguments["base_size"] = base_size
+        if existing_order is None:
+            return trade_arguments
+
+        trade_arguments["order_id"] = self._native_order_id(existing_order)
+        order_extra = existing_order.get("extra", {})
+        if isinstance(order_extra, dict):
+            root_algo_type = order_extra.get("root_algo_type")
+            if root_algo_type not in (None, ""):
+                trade_arguments["root_algo_type"] = str(root_algo_type)
+        trade_arguments.update(self._tp_sl_child_order_ids(existing_order))
+        return trade_arguments
+
+    def _merge_position_tp_sl_targets(
+        self,
+        *,
+        existing_order: OrderData | None,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+    ) -> tuple[Decimal, Decimal]:
+        """Merge requested TP/SL values with cached existing positional protection."""
+        if existing_order is None:
+            return take_profit_price or Decimal(0), stop_loss_price or Decimal(0)
+
+        current_take_profit, current_stop_loss = self._tp_sl_targets_for_edit(
+            order_data=existing_order,
+            edited_trigger_price=existing_order["trigger_price"],
+        )
+        return (
+            take_profit_price if take_profit_price is not None else current_take_profit,
+            stop_loss_price if stop_loss_price is not None else current_stop_loss,
+        )
+
+    def _requires_positional_tp_sl_recreate(
+        self,
+        *,
+        existing_order: OrderData,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+    ) -> bool:
+        """Return whether Orderly requires cancel+create to add a missing sibling leg."""
+        current_take_profit, current_stop_loss = self._tp_sl_targets_for_edit(
+            order_data=existing_order,
+            edited_trigger_price=existing_order["trigger_price"],
+        )
+        return (current_take_profit == Decimal(0) and take_profit_price is not None) or (
+            current_stop_loss == Decimal(0) and stop_loss_price is not None
+        )
+
+    def _tp_sl_child_order_ids(self, order_data: OrderData) -> dict[str, str]:
+        """Return existing TP/SL child ids keyed by leg for native edit payloads."""
+        child_order_ids: dict[str, str] = {}
+        for candidate in self._tp_sl_sibling_orders(order_data):
+            child_id = str(candidate["id"]).strip()
+            if child_id in {"", "0"}:
+                continue
+            if candidate["order_type"] is PerpsTradeType.TRIGGER_TP:
+                child_order_ids["tp_child_order_id"] = child_id
+            elif candidate["order_type"] is PerpsTradeType.TRIGGER_SL:
+                child_order_ids["sl_child_order_id"] = child_id
+        return child_order_ids
 
     def _tp_sl_sibling_orders(self, order_data: OrderData) -> list[OrderData]:
         """Return TP/SL siblings linked by the same Orderly root order id."""
@@ -717,12 +1232,44 @@ class OrderlyExchange(ExchangeBase):
     @staticmethod
     def _native_order_id(order_data: OrderData) -> str:
         """Return the native Orderly order identifier used for edits and cancels."""
+        root_algo_order_id = OrderlyExchange._root_algo_order_id(order_data)
+        if order_data["order_type"].is_tp_sl_order and root_algo_order_id is not None:
+            return root_algo_order_id
         order_extra = order_data.get("extra", {})
         if isinstance(order_extra, dict):
             native_order_id = order_extra.get("native_order_id")
             if native_order_id not in (None, ""):
                 return str(native_order_id)
         return str(order_data["id"])
+
+    @staticmethod
+    def _cancel_order_id(order_data: OrderData) -> str:
+        """Return native Orderly identifier used for one-click cancellation."""
+        order_extra = order_data.get("extra", {})
+        if isinstance(order_extra, dict):
+            native_algo_order_id = order_extra.get("algo_order_id")
+            if native_algo_order_id not in (None, "", "0"):
+                return str(native_algo_order_id)
+            native_order_id = order_extra.get("native_order_id")
+            if native_order_id not in (None, ""):
+                return str(native_order_id)
+        return str(order_data["id"])
+
+    @staticmethod
+    def _tp_sl_submission_message(
+        *,
+        pair: str,
+        take_profit_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+        action: str,
+    ) -> str:
+        """Build user-facing message for positional TP/SL create or update flows."""
+        verb = "Updating" if action == "update" else "Creating"
+        if take_profit_price is not None and stop_loss_price is not None:
+            return f"{verb} TP and SL order for {pair}"
+        if take_profit_price is not None:
+            return f"{verb} take-profit order for {pair}"
+        return f"{verb} stop-loss order for {pair}"
 
     @staticmethod
     def name() -> str:
@@ -770,6 +1317,16 @@ class OrderlyExchange(ExchangeBase):
         ].strip().lower() not in {"", "mainnet", "testnet"}:
             return False, "Network must be 'mainnet' or 'testnet'."
         return True, "Valid orderly credentials."
+
+
+def _extract_source_order_id(result: object) -> str | None:
+    """Return native Orderly order id from create-order response when present."""
+    if not isinstance(result, dict):
+        return None
+    order_id = result.get("order_id")
+    if order_id in (None, ""):
+        return None
+    return str(order_id)
 
 
 def _normalize_orderly_key(orderly_key: str) -> str:

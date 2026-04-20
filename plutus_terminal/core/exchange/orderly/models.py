@@ -167,6 +167,7 @@ class OrderlyTpSlChildOrderPayload(TypedDict):
     trigger_price: str
     trigger_price_type: str
     reduce_only: bool
+    order_id: NotRequired[str]
     price: NotRequired[str]
 
 

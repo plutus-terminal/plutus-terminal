@@ -60,6 +60,68 @@
       }
     ]
   },
+  "positional_tp_sl_algo_order": {
+    "algo_order_id": "61000",
+    "root_algo_order_id": "61000",
+    "symbol": "PERP_BTC_USDC",
+    "side": "SELL",
+    "algo_type": "POSITIONAL_TP_SL",
+    "algo_status": "NEW",
+    "root_algo_order_status": "NEW",
+    "quantity": "0.01",
+    "updated_time": 1710000003000,
+    "child_orders": [
+      {
+        "algo_order_id": "61001",
+        "algo_type": "TAKE_PROFIT",
+        "algo_status": "NEW",
+        "type": "CLOSE_POSITION",
+        "trigger_price": "99500",
+        "trigger_price_type": "MARK_PRICE",
+        "updated_time": 1710000003001
+      },
+      {
+        "algo_order_id": "61002",
+        "algo_type": "STOP_LOSS",
+        "algo_status": "NEW",
+        "type": "CLOSE_POSITION",
+        "trigger_price": "94500",
+        "trigger_price_type": "MARK_PRICE",
+        "updated_time": 1710000003002
+      }
+    ]
+  },
+  "positional_tp_only_algo_order": {
+    "algo_order_id": "62000",
+    "root_algo_order_id": "62000",
+    "symbol": "PERP_BTC_USDC",
+    "side": "SELL",
+    "algo_type": "POSITIONAL_TP_SL",
+    "algo_status": "NEW",
+    "root_algo_order_status": "NEW",
+    "quantity": "0.01",
+    "updated_time": 1710000004000,
+    "child_orders": [
+      {
+        "algo_order_id": "62001",
+        "algo_type": "TAKE_PROFIT",
+        "algo_status": "NEW",
+        "type": "CLOSE_POSITION",
+        "trigger_price": "100500",
+        "trigger_price_type": "MARK_PRICE",
+        "updated_time": 1710000004001
+      },
+      {
+        "algo_order_id": "",
+        "algo_type": "STOP_LOSS",
+        "algo_status": "",
+        "type": "CLOSE_POSITION",
+        "trigger_price": "0",
+        "trigger_price_type": "MARK_PRICE",
+        "updated_time": 1710000004002
+      }
+    ]
+  },
   "position": {
     "symbol": "PERP_BTC_USDC",
     "position_id": 77,

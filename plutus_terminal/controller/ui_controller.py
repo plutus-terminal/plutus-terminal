@@ -309,11 +309,9 @@ class UIController(QObject):
         take_profit_price: Decimal | None,
         stop_loss_price: Decimal | None,
     ) -> None:
-        """Send native Orderly TP/SL reduce-order payloads through the existing exchange services."""
-        market_registry = getattr(self.current_exchange, "_market_registry", None)
-        trader = getattr(self.current_exchange, "trader", None)
-        fetcher = getattr(self.current_exchange, "fetcher", None)
-        if market_registry is None or trader is None or fetcher is None:
+        """Delegate native Orderly TP/SL handling to core exchange logic."""
+        submit_position_tp_sl = getattr(self.current_exchange, "submit_position_tp_sl", None)
+        if submit_position_tp_sl is None:
             execution_price = (
                 take_profit_price if take_profit_price is not None else stop_loss_price
             )
@@ -332,74 +330,16 @@ class UIController(QObject):
             )
             return
 
-        trade_arguments = {
-            "symbol": market_registry.get_symbol_for_pair(str(order_request["pair"])),
-            "trade_direction": order_request["trade_direction"],
-            "trade_type": (
-                PerpsTradeType.TRIGGER_TP
-                if take_profit_price is not None
-                else PerpsTradeType.TRIGGER_SL
-            ),
-            "price": Decimal(str(order_request["reference_price"])),
-            "size_stable": Decimal(str(order_request["size_stable"])),
-            "reduce_only": True,
-            "take_profit": take_profit_price or Decimal(0),
-            "stop_loss": stop_loss_price or Decimal(0),
-        }
         base_size = order_request.get("base_size")
-        if base_size is not None:
-            trade_arguments["base_size"] = Decimal(str(base_size))
-
-        try:
-            await trader.create_reduce_order(trade_arguments)
-            self.message_bus.send_message.emit(
-                UserMessage(
-                    text=self._tp_sl_submission_message(
-                        pair=str(order_request["pair"]),
-                        take_profit_price=take_profit_price,
-                        stop_loss_price=stop_loss_price,
-                    ),
-                    level=MessageLevel.INFO,
-                    timeout_ms=5000,
-                ),
-            )
-        except TransactionFailedError as error:
-            self.message_bus.send_message.emit(
-                UserMessage(
-                    text=f"Failed to create reduce order: {error}",
-                    level=MessageLevel.ERROR,
-                    timeout_ms=5000,
-                ),
-            )
-            return
-
-        try:
-            await asyncio.gather(fetcher.fetch_all_orders(), fetcher.fetch_all_positions())
-            self.message_bus.orders_fetched.emit(fetcher._cached_orders)  # noqa: SLF001
-            self.message_bus.positions_fetched.emit(fetcher._cached_positions)  # noqa: SLF001
-        except Exception as error:
-            LOGGER.exception("Failed to refresh Orderly state after submitting position TP/SL")
-            self.message_bus.send_message.emit(
-                UserMessage(
-                    text=f"Created TP/SL order, but failed to refresh Orderly data: {error}",
-                    level=MessageLevel.WARNING,
-                    timeout_ms=5000,
-                ),
-            )
-
-    def _tp_sl_submission_message(
-        self,
-        *,
-        pair: str,
-        take_profit_price: Decimal | None,
-        stop_loss_price: Decimal | None,
-    ) -> str:
-        """Build user-facing message for single or paired TP/SL submission."""
-        if take_profit_price is not None and stop_loss_price is not None:
-            return f"Creating TP and SL order for {pair}"
-        if take_profit_price is not None:
-            return f"Creating take-profit order for {pair}"
-        return f"Creating stop-loss order for {pair}"
+        await submit_position_tp_sl(
+            pair=str(order_request["pair"]),
+            size_stable=Decimal(str(order_request["size_stable"])),
+            trade_direction=order_request["trade_direction"],
+            take_profit_price=take_profit_price,
+            stop_loss_price=stop_loss_price,
+            reference_price=Decimal(str(order_request["reference_price"])),
+            base_size=Decimal(str(base_size)) if base_size is not None else None,
+        )
 
     @staticmethod
     def _optional_decimal(value: object | None) -> Decimal | None:

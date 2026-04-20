@@ -110,6 +110,61 @@ class OrderlyFetcherParserParityTests(unittest.IsolatedAsyncioTestCase):
         assert orders_by_id["60002"]["trigger_price"] == Decimal(94000)
         assert orders_by_id["60002"]["size_stable"] == Decimal(940)
 
+    async def test_fetch_all_orders_parses_positional_tp_sl_orders(self) -> None:
+        """Return positional TP/SL child orders so UI matches Orderly SDK behavior."""
+        # Arrange
+        payloads = _load_payloads()
+        self.request_private.side_effect = [
+            {"data": {"rows": []}},
+            {"data": {"rows": [payloads["positional_tp_sl_algo_order"]]}},
+        ]
+
+        # Act
+        orders = await self.fetcher.fetch_all_orders()
+
+        # Assert
+        assert len(orders) == 2
+        orders_by_id = {order["id"]: order for order in orders}
+        assert orders_by_id["61001"]["order_type"] is PerpsTradeType.TRIGGER_TP
+        assert orders_by_id["61001"]["trigger_price"] == Decimal(99500)
+        assert orders_by_id["61001"]["reduce_only"] is True
+        assert orders_by_id["61002"]["order_type"] is PerpsTradeType.TRIGGER_SL
+        assert orders_by_id["61002"]["trigger_price"] == Decimal(94500)
+        tp_extra = cast("dict[str, str]", orders_by_id["61001"].get("extra", {}))
+        sl_extra = cast("dict[str, str]", orders_by_id["61002"].get("extra", {}))
+        assert tp_extra["algo_order_id"] == "61001"
+        assert sl_extra["algo_order_id"] == "61002"
+        assert tp_extra["base_size"] == "0.01"
+        assert sl_extra["base_size"] == "0.01"
+        assert tp_extra["root_algo_type"] == "POSITIONAL_TP_SL"
+        assert sl_extra["root_algo_type"] == "POSITIONAL_TP_SL"
+        assert tp_extra["root_algo_order_id"] == "61000"
+        assert sl_extra["root_algo_order_id"] == "61000"
+        cached_order = self.fetcher.get_open_positional_tp_sl_order(
+            pair="Crypto.BTC/USDC",
+            trade_direction=PerpsTradeDirection.LONG,
+        )
+        assert cached_order is not None
+        assert cached_order["id"] in {"61001", "61002"}
+
+    async def test_fetch_all_orders_skips_placeholder_tp_sl_children(self) -> None:
+        """Ignore empty sibling placeholders so TP-only roots do not surface fake SL rows."""
+        # Arrange
+        payloads = _load_payloads()
+        self.request_private.side_effect = [
+            {"data": {"rows": []}},
+            {"data": {"rows": [payloads["positional_tp_only_algo_order"]]}},
+        ]
+
+        # Act
+        orders = await self.fetcher.fetch_all_orders()
+
+        # Assert
+        assert len(orders) == 1
+        assert orders[0]["id"] == "62001"
+        assert orders[0]["order_type"] is PerpsTradeType.TRIGGER_TP
+        assert orders[0]["trigger_price"] == Decimal(100500)
+
     async def test_fetch_all_orders_filters_unknown_and_terminal_native_rows(self) -> None:
         """Drop rows that should not surface as active terminal orders."""
         # Arrange

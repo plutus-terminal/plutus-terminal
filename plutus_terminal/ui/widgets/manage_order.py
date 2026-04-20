@@ -18,6 +18,7 @@ from plutus_terminal.core.exchange.types import (
 from plutus_terminal.ui import ui_utils
 from plutus_terminal.ui.widgets.decimal_spin_box import DecimalSpinBoxWithButton
 from plutus_terminal.ui.widgets.pnl_breakdown import PnlBreakdown
+from plutus_terminal.ui.widgets.toast import Toast, ToastType
 from plutus_terminal.ui.widgets.top_bar_widget import TopBar
 
 
@@ -328,7 +329,7 @@ class ManageOrder(QtWidgets.QDialog):
             primary_order_type, primary_trigger_price
         )
         if validation_error is not None:
-            QtWidgets.QMessageBox.warning(self, "Invalid Trigger Price", validation_error)
+            self._show_reduce_trigger_validation_error(validation_error)
             return None
 
         secondary_order_type: PerpsTradeType | None = None
@@ -341,7 +342,7 @@ class ManageOrder(QtWidgets.QDialog):
                 secondary_trigger_price,
             )
             if validation_error is not None:
-                QtWidgets.QMessageBox.warning(self, "Invalid Trigger Price", validation_error)
+                self._show_reduce_trigger_validation_error(validation_error)
                 return None
 
         take_profit_price = (
@@ -363,6 +364,11 @@ class ManageOrder(QtWidgets.QDialog):
             "stop_loss_price": stop_loss_price,
             "reference_price": primary_trigger_price,
         }
+
+    @staticmethod
+    def _show_reduce_trigger_validation_error(message: str) -> None:
+        """Surface TP/SL validation failures through a toast instead of modal dialog."""
+        Toast.show_message(message, type_=ToastType.ERROR)
 
     def set_edit_mode(self, edit_mode: bool) -> None:
         """Set if the widget is editing or creating order.

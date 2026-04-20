@@ -182,6 +182,7 @@ class OrderlyFetcher(ExchangeFetcher):
         self._cached_free_collateral = Decimal(0)
         self._cached_positions: list[PerpsPosition] = []
         self._cached_orders: list[OrderData] = []
+        self._cached_positional_tp_sl_orders: dict[tuple[str, PerpsTradeDirection], OrderData] = {}
         self._cached_sum_unitary_funding: dict[str, Decimal] = {}
         self._cached_funding_fees: dict[str, Decimal] = {}
         self._cached_opening_fees: dict[str, Decimal] = {}
@@ -489,7 +490,19 @@ class OrderlyFetcher(ExchangeFetcher):
             key=_order_sort_tuple,
             reverse=True,
         )
+        self._cached_positional_tp_sl_orders = _build_positional_tp_sl_order_cache(
+            self._cached_orders
+        )
         return self._cached_orders
+
+    def get_open_positional_tp_sl_order(
+        self,
+        *,
+        pair: str,
+        trade_direction: PerpsTradeDirection,
+    ) -> OrderData | None:
+        """Return cached open positional TP/SL order for one pair and side."""
+        return self._cached_positional_tp_sl_orders.get((pair, trade_direction))
 
     @retry(
         retry=(
@@ -1616,7 +1629,7 @@ def _parse_algo_orders(
         return []
 
     algo_type = str(row.get("algo_type", ""))
-    if algo_type == "TP_SL":
+    if algo_type in {"TP_SL", "POSITIONAL_TP_SL"}:
         return _parse_tp_sl_algo_orders(row, market_registry)
     if algo_type == "STOP":
         parsed_order = _parse_stop_algo_order(row, market_registry)
@@ -1695,6 +1708,9 @@ def _parse_tp_sl_child_order(
     quantity: Decimal,
 ) -> OrderData | None:
     """Parse one native TP/SL child row into terminal order schema."""
+    if not _has_visible_tp_sl_child_payload(child_row):
+        return None
+
     child_type = str(child_row.get("algo_type", ""))
     if child_type == "TAKE_PROFIT":
         order_type = PerpsTradeType.TRIGGER_TP
@@ -1707,7 +1723,17 @@ def _parse_tp_sl_child_order(
     child_extra = dict(cast("dict[str, Any]", order_base.get("extra", {})))
     child_extra.update(
         {
+            "algo_order_id": str(
+                child_row.get("algo_order_id", child_extra.get("algo_order_id", ""))
+            ),
+            "parent_algo_order_id": str(
+                child_row.get("parent_algo_order_id", child_extra.get("parent_algo_order_id", ""))
+            ),
+            "root_algo_order_id": str(
+                child_row.get("root_algo_order_id", child_extra.get("root_algo_order_id", ""))
+            ),
             "algo_type": child_type,
+            "base_size": str(_decimal_from_mapping(child_row, ("quantity",)) or quantity),
             "trigger_price_type": str(child_row.get("trigger_price_type", "")),
             "algo_status": str(child_row.get("algo_status", child_extra.get("algo_status", ""))),
             "updated_time": str(
@@ -1728,6 +1754,14 @@ def _parse_tp_sl_child_order(
     }
 
 
+def _has_visible_tp_sl_child_payload(child_row: Mapping[str, Any]) -> bool:
+    """Return whether one TP/SL child contains enough data for a visible UI row."""
+    child_order_id = str(child_row.get("algo_order_id", "")).strip()
+    if child_order_id == "":
+        return False
+    return _decimal_from_mapping(child_row, ("trigger_price",)) > Decimal(0)
+
+
 def _parse_algo_order_base(
     row: Mapping[str, Any],
     market_registry: OrderlyMarketRegistry,
@@ -1741,9 +1775,10 @@ def _parse_algo_order_base(
     except KeyError:
         return None
 
-    reduce_only = (
-        _bool_from_mapping(row, ("reduce_only",)) or str(row.get("algo_type", "")) == "TP_SL"
-    )
+    reduce_only = _bool_from_mapping(row, ("reduce_only",)) or str(row.get("algo_type", "")) in {
+        "TP_SL",
+        "POSITIONAL_TP_SL",
+    }
     side = str(row.get("side", "BUY"))
     return {
         "id": str(row.get("root_algo_order_id", row.get("algo_order_id", ""))),
@@ -1861,3 +1896,20 @@ def _order_sort_tuple(order: OrderData) -> tuple[int, str]:
         ),
     )
     return (updated_time, native_id)
+
+
+def _build_positional_tp_sl_order_cache(
+    orders: list[OrderData],
+) -> dict[tuple[str, PerpsTradeDirection], OrderData]:
+    """Index visible positional TP/SL orders by pair and position direction."""
+    cache: dict[tuple[str, PerpsTradeDirection], OrderData] = {}
+    for order in orders:
+        if not order["order_type"].is_tp_sl_order:
+            continue
+        order_extra = order.get("extra", {})
+        if not isinstance(order_extra, dict):
+            continue
+        if str(order_extra.get("root_algo_type", "")) != "POSITIONAL_TP_SL":
+            continue
+        cache.setdefault((order["pair"], order["trade_direction"]), order)
+    return cache
